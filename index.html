@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>Lego Sky Spartanburg</title>
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="./src/style.css" />
+  </head>
+  <body>
+    <canvas id="game"></canvas>
+
+    <div id="labels"></div>
+
+    <div id="hud" hidden>
+      <div class="panel" id="instruments">
+        <div><span class="k">SPD</span> <b id="spd">0</b> kt</div>
+        <div><span class="k">ALT</span> <b id="alt">0</b> ft</div>
+        <div><span class="k">HDG</span> <b id="hdg">000</b>°</div>
+        <div><span class="k">V/S</span> <b id="vs">0</b> fpm</div>
+        <div class="throttle"><span class="k">THR</span><div class="bar"><div id="thr"></div></div></div>
+      </div>
+      <div class="panel" id="over"></div>
+      <canvas id="minimap" width="200" height="200"></canvas>
+      <div id="message"></div>
+      <button id="helpBtn" class="chip" aria-label="Controls">?</button>
+    </div>
+
+    <div id="touch" hidden>
+      <div id="stick"><div id="knob"></div></div>
+      <div id="throttleTouch"><div id="throttleKnob"></div><span>THROTTLE</span></div>
+      <div id="touchButtons">
+        <button class="chip" data-act="cam">CAM</button>
+        <button class="chip" data-act="brake">BRAKE</button>
+        <button class="chip" data-act="reset">RESET</button>
+      </div>
+    </div>
+
+    <div id="menu" class="overlay">
+      <div class="card">
+        <h1><span class="brick r"></span><span class="brick y"></span><span class="brick b"></span> Lego Sky</h1>
+        <p class="sub">Fly a Lego airplane over Spartanburg, South Carolina</p>
+        <div id="loading">
+          <div class="bar"><div id="loadBar"></div></div>
+          <p id="loadText">Loading Spartanburg…</p>
+        </div>
+        <div id="startButtons" hidden>
+          <button class="big" id="startRunway">Take off from Downtown Memorial Airport</button>
+          <button class="big alt" id="startAir">Start in the air over downtown</button>
+        </div>
+        <div class="controls">
+          <div><kbd>W</kbd><kbd>S</kbd> / <kbd>↑</kbd><kbd>↓</kbd> climb / dive</div>
+          <div><kbd>A</kbd><kbd>D</kbd> / <kbd>←</kbd><kbd>→</kbd> bank left / right</div>
+          <div><kbd>Q</kbd><kbd>E</kbd> rudder</div>
+          <div><kbd>Shift</kbd> / <kbd>Ctrl</kbd> throttle up / down</div>
+          <div><kbd>B</kbd> brakes &nbsp; <kbd>C</kbd> camera &nbsp; <kbd>R</kbd> restart</div>
+          <div><kbd>I</kbd> invert pitch &nbsp; <kbd>M</kbd> sound</div>
+        </div>
+        <p class="tip">Takeoff: full throttle, and gently pull up at about 55 kt.</p>
+        <p class="credit">Map data © OpenStreetMap contributors, Overture Maps Foundation. Elevation: Mapzen Terrain Tiles.</p>
+      </div>
+    </div>
+
+    <script type="module" src="./src/main.js"></script>
+  </body>
+</html>
