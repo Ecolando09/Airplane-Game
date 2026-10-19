@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { World } from './world.js';
-import { createLegoPlane } from './airplane.js';
+import { createLegoPlane, GROUND_TILT, MAIN_CONTACT } from './airplane.js';
 import { Flight } from './flight.js';
 import { Input } from './input.js';
 import { EngineSound } from './sound.js';
@@ -137,9 +137,17 @@ function updateCamera(dt) {
   const flatF = new THREE.Vector3(f.x, 0, f.z).normalize();
   let want;
   let look;
+  if (window.__game?.photo) {
+    const ph = window.__game.photo; // test hook: fixed camera relative to the plane
+    camera.position.copy(p).add(ph.offset);
+    camera.up.set(0, 1, 0);
+    camera.lookAt(p);
+    return;
+  }
   for (const m of plane.cockpitHidden) m.visible = mode !== 'cockpit';
   if (mode === 'cockpit') {
-    camera.position.copy(p).addScaledVector(up, 1.9).addScaledVector(f, -0.4);
+    plane.group.updateMatrixWorld();
+    camera.position.copy(plane.cockpitEye).applyMatrix4(plane.group.matrixWorld);
     camera.quaternion.copy(plane.group.quaternion);
     camera.up.copy(up);
     camInit = false;
@@ -295,6 +303,7 @@ function start(airborne) {
   clearDebris();
   airborne ? flight.resetAirborne() : flight.reset();
   input.syncThrottle(flight.throttle);
+  tilt = flight.onGround ? GROUND_TILT : 0;
   wasOnGround.v = flight.onGround;
   crashTimer = 0;
   camInit = false;
@@ -322,6 +331,28 @@ input.on('air', () => running && start(true));
 input.on('mute', () => sound.toggle());
 input.on('invert', () => message(input.invertPitch ? 'Pitch inverted (flight-sim style)' : 'Pitch normal', 1.5));
 
+// ------------------------------------------------------------------ airplane pose
+// Tail-dragger: sits nose-up on the ground and lifts its tail as it speeds up.
+// The tilt pivots around the main wheels' contact point so they stay on the ground.
+let tilt = 0;
+const tiltQ = new THREE.Quaternion();
+const AXIS_X = new THREE.Vector3(1, 0, 0);
+function poseAirplane(dt) {
+  const want = flight.onGround ? GROUND_TILT * THREE.MathUtils.clamp(1 - flight.speed / 24, 0, 1) : 0;
+  tilt += (want - tilt) * (1 - Math.exp(-dt * 5));
+  tiltQ.setFromAxisAngle(AXIS_X, tilt);
+  const offset = MAIN_CONTACT.clone().sub(MAIN_CONTACT.clone().applyQuaternion(tiltQ)).applyQuaternion(flight.quat);
+  plane.group.position.copy(flight.pos).add(offset);
+  plane.group.quaternion.copy(flight.quat).multiply(tiltQ);
+
+  const c = flight.ctrl;
+  const [left, right] = plane.controls.ailerons;
+  left.rotation.x = c.roll * 0.35;
+  right.rotation.x = -c.roll * 0.35;
+  plane.controls.elevator.rotation.x = -c.pitch * 0.4;
+  plane.controls.rudder.rotation.y = c.yaw * 0.4;
+}
+
 // ------------------------------------------------------------------ loop
 const timer = new THREE.Timer();
 function frame() {
@@ -341,8 +372,7 @@ function frame() {
       crashTimer += dt;
     }
     updateDebris(dt);
-    plane.group.position.copy(flight.pos);
-    plane.group.quaternion.copy(flight.quat);
+    poseAirplane(dt);
     const rpm = 8 + flight.throttle * 60;
     plane.propeller.rotation.z += rpm * dt;
     plane.propDisc.material.opacity = flight.throttle * 0.25;

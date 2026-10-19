@@ -1,6 +1,6 @@
 # Lego Sky: Spartanburg
 
-A browser flying game: a Lego airplane over a Lego-brick version of Spartanburg, SC, built from real map data.
+A browser flying game: the LEGO Technic 42198 Bush Plane over a Lego-brick version of Spartanburg, SC, built from real map data.
 
 - **Real city layout.** Roads, rail, rivers, parks and ~36,000 building footprints come from OpenStreetMap (via Overture Maps), on real terrain elevation.
 - **Lego style.** Studded baseplate ground, brick buildings with windows, gable roofs, Lego trees and brick clouds.
@@ -47,7 +47,7 @@ The map area is set by `W, S, E, N` in `tools/fetch_data.py`. The runway isn't i
 ## Code layout
 
 - `src/world.js`: terrain, map texture, buildings, trees, runway, clouds, collisions
-- `src/airplane.js`: the Lego plane model (a placeholder until we model the real set)
+- `src/airplane.js`: the LEGO Technic 42198 Bush Plane model (moving ailerons, elevator and rudder; sits tail-down on the ground)
 - `src/flight.js`: flight physics (takeoff, stall, banked turns, landing and crash checks)
 - `src/main.js`: rendering, cameras, HUD, minimap, game flow
 - `src/lego.js`: Lego colors and the stud/window shader
