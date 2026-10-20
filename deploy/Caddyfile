@@ -1,0 +1,11 @@
+# /etc/caddy/Caddyfile: serves the game and passes /ws to the phone-controller relay.
+games.latlas.lol {
+    encode gzip
+    handle /ws {
+        reverse_proxy localhost:8787
+    }
+    handle {
+        root * /var/www/games
+        file_server
+    }
+}

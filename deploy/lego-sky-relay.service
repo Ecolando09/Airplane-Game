@@ -1,0 +1,14 @@
+# /etc/systemd/system/lego-sky-relay.service: keeps the phone-controller relay running.
+[Unit]
+Description=Lego Sky phone-controller relay
+After=network.target
+
+[Service]
+WorkingDirectory=/opt/lego-sky
+ExecStart=/usr/bin/node server/relay.js
+Environment=PORT=8787
+Restart=always
+User=www-data
+
+[Install]
+WantedBy=multi-user.target

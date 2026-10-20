@@ -8,6 +8,7 @@ export class Input {
     this.touchStick = { x: 0, y: 0 };
     this.touchThrottle = null;
     this.touchBrake = false;
+    this.remote = null;
 
     const actions = { KeyC: 'cam', KeyR: 'reset', KeyT: 'air', KeyM: 'mute', KeyI: 'invert', KeyB: 'floats', KeyN: 'map' };
     addEventListener('keydown', (e) => {
@@ -47,6 +48,18 @@ export class Input {
     }
     if (this.touchThrottle !== null) throttleSet = this.touchThrottle;
     brake ||= this.touchBrake;
+
+    // Phone controller (via the relay); ignored if it stops sending for half a second.
+    const rm = this.remote;
+    if (rm && performance.now() - rm.time < 500) {
+      if (rm.pitch || rm.roll) {
+        pitch = rm.pitch;
+        roll = rm.roll;
+      }
+      if (rm.yaw) yaw = rm.yaw;
+      throttleSet = rm.throttle;
+      brake ||= rm.brake;
+    }
 
     // Gamepad
     const gp = navigator.getGamepads?.().find((g) => g);

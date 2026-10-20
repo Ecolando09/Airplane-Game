@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <meta name="theme-color" content="#1b2a34" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <title>Lego Sky Controller</title>
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="./src/pad.css" />
+  </head>
+  <body>
+    <div id="rotate">Turn your phone sideways ↻</div>
+
+    <header id="bar">
+      <span id="dot" class="dot"></span>
+      <span id="conn">Connecting…</span>
+      <span class="tel"><b id="spd">–</b> kt</span>
+      <span class="tel"><b id="alt">–</b> ft</span>
+      <span class="tel" id="gear">WHEELS</span>
+    </header>
+
+    <main id="pad">
+      <section id="left">
+        <div id="stick"><div id="knob"></div></div>
+        <div id="tiltInfo" hidden>
+          <p>Tilt like a steering wheel to bank.<br />Tip the top away to dive, toward you to climb.</p>
+          <button class="small" id="center">Re-center</button>
+        </div>
+        <div class="modes">
+          <button class="small on" id="modeStick">Stick</button>
+          <button class="small" id="modeTilt">Tilt</button>
+        </div>
+      </section>
+
+      <section id="mid">
+        <div id="menuButtons" hidden>
+          <button class="act red" data-a="menuStart">Take off</button>
+          <button class="act blue" data-a="menuAir">Start in air</button>
+        </div>
+        <div id="flyButtons">
+          <button class="act" data-a="floats">Floats</button>
+          <button class="act" data-a="cam">Camera</button>
+          <button class="act" data-a="map">Map</button>
+          <button class="act hold" id="brake">Brake</button>
+          <button class="act red" data-a="reset">Restart</button>
+        </div>
+        <div class="rudder">
+          <button class="act" id="yawL">◀ Rudder</button>
+          <button class="act" id="yawR">Rudder ▶</button>
+        </div>
+      </section>
+
+      <section id="right">
+        <div id="thr"><div id="thrFill"></div><div id="thrKnob"></div></div>
+        <span class="lbl">THROTTLE <b id="thrPct">0%</b></span>
+      </section>
+    </main>
+
+    <div id="join" hidden>
+      <div class="card">
+        <h1>Lego Sky Controller</h1>
+        <p>Enter the room code shown on the game screen.</p>
+        <input id="code" maxlength="4" autocomplete="off" autocapitalize="characters" placeholder="ABCD" />
+        <button class="act red" id="joinBtn">Connect</button>
+      </div>
+    </div>
+
+    <script type="module" src="./src/remote-pad.js"></script>
+  </body>
+</html>

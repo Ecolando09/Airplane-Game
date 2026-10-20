@@ -35,6 +35,22 @@ Touch screens get an on-screen stick, a throttle slider and buttons. Gamepads (X
 
 **Takeoff:** set full throttle, then gently pull up at about 55 kt. **Landing:** line up with the runway, ease the throttle to about 20% and hold S lightly to descend. Close to the ground the plane raises its nose and cushions the touchdown, so just keep the wings level. With floats down (B) you can land on the river, creeks and ponds.
 
+## Phone as a controller
+
+Click **📱 Use my phone as the controller** (or the 📱 button while flying). The game shows a QR code and a 4-letter room code. Scan the code with your phone to open the controller: a stick (or tilt-to-steer), a throttle slider, and buttons for floats, camera, map, brakes, rudder and restart. The phone shows your speed and altitude and buzzes when you crash.
+
+The phone and the game talk through a small relay (`server/relay.js`) on the same server that hosts the game, so this works on any network, but only when the game is self-hosted. It doesn't work on the claude.ai preview.
+
+Local test: `npm run relay` in one terminal and `npm run dev` in another (Vite forwards `/ws` to the relay).
+
+## Deploying to a VPS (games.latlas.lol)
+
+1. DNS (Porkbun): an **A** record for `games` pointing to the server's IP.
+2. On the server, install Node.js 18+ and Caddy, then copy the repo to `/opt/lego-sky` and run `npm install --omit=dev` there (the relay needs the `ws` package).
+3. Build and upload the site: `npm run build` locally, then `rsync -av dist/ root@SERVER:/var/www/games/`.
+4. Copy `deploy/Caddyfile` to `/etc/caddy/Caddyfile` (or merge it in) and run `sudo systemctl reload caddy`. Caddy gets the HTTPS certificate automatically.
+5. Copy `deploy/lego-sky-relay.service` to `/etc/systemd/system/`, then run `sudo systemctl enable --now lego-sky-relay`.
+
 ## Rebuilding the map data
 
 `public/city.json` is generated. To regenerate it (for example, to change the area):
@@ -54,5 +70,7 @@ The map area is set by `W, S, E, N` in `tools/fetch_data.py`. The runway isn't i
 - `src/flight.js`: flight physics (takeoff, stall, banked turns, landing and crash checks)
 - `src/main.js`: rendering, cameras, HUD, minimap, game flow
 - `src/lego.js`: Lego colors and the stud/window shader
+- `src/remote.js`, `remote.html`, `src/remote-pad.js`: phone controller (game side and phone page)
+- `server/relay.js`: WebSocket relay between phones and the game screen
 
 Map data © OpenStreetMap contributors (ODbL), Overture Maps Foundation. Elevation: Mapzen Terrain Tiles (AWS Open Data).

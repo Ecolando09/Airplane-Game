@@ -5,6 +5,7 @@ import { Flight } from './flight.js';
 import { Input } from './input.js';
 import { EngineSound } from './sound.js';
 import { legoMaterial } from './lego.js';
+import { RemoteLink } from './remote.js';
 
 const $ = (id) => document.getElementById(id);
 const SKY = 0x9fd0ff;
@@ -519,6 +520,43 @@ $('helpBtn').onclick = () => {
   $('startRunway').textContent = 'Restart on the runway';
   $('startAir').textContent = 'Restart in the air';
 };
+
+// ------------------------------------------------------------------ phone controller
+const STATUS = {
+  waiting: ['Waiting for your phone…', ''],
+  connected: ['Phone connected! ✅', 'ok'],
+  offline: ["Can't reach the phone relay. It only works when the game is hosted on your server.", 'bad'],
+};
+const remote = new RemoteLink(input, {
+  onStatus(state) {
+    const [text, cls] = STATUS[state];
+    $('phoneStatus').textContent = state === 'connected' && remote.pads > 1 ? `${remote.pads} phones connected ✅` : text;
+    $('phoneStatus').className = `status ${cls}`;
+    $('phoneChip').classList.toggle('on', state === 'connected');
+    if (state === 'connected' && !$('phonePanel').hidden) setTimeout(() => ($('phonePanel').hidden = true), 1500);
+  },
+});
+async function showPhonePanel() {
+  remote.connect();
+  $('roomCode').textContent = remote.code;
+  $('padUrl').textContent = remote.padUrl;
+  $('qr').src = await remote.qrDataUrl();
+  $('phonePanel').hidden = false;
+}
+$('phoneBtn').onclick = showPhonePanel;
+$('phoneChip').onclick = showPhonePanel;
+$('phoneDone').onclick = () => ($('phonePanel').hidden = true);
+setInterval(() => {
+  const p = plane.group.position;
+  remote.sendTelemetry({
+    menu: !running,
+    spd: Math.round(flight.speed * 1.944),
+    alt: Math.round((p.y - plane.gearHeight + world.baseElevation) * 3.281),
+    gear: flight.floats ? 'FLOATS' : 'WHEELS',
+    crashed: flight.crashed,
+    thr: flight.throttle,
+  });
+}, 200);
 
 input.on('cam', () => (camMode = (camMode + 1) % CAMS.length));
 input.on('floats', toggleFloats);
