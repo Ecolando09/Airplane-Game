@@ -293,6 +293,7 @@ export function createLegoPlane() {
   }
 
   // ---------------------------------------------------------------- landing gear
+  const wheels = [];
   const wheel = (r, w, x, y, z, hubColor) => {
     const tire = new THREE.Mesh(new THREE.CylinderGeometry(r, r, w, 20).rotateZ(Math.PI / 2), mat(LEGO.black));
     tire.position.set(x, y, z);
@@ -301,6 +302,7 @@ export function createLegoPlane() {
     const hubM = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.58, r * 0.58, w + 0.04, 16).rotateZ(Math.PI / 2), mat(hubColor));
     hubM.position.set(x, y, z);
     plane.add(hubM);
+    wheels.push(tire, hubM);
   };
   for (const sx of [-1, 1]) {
     beam(new THREE.Vector3(sx * 0.8, -0.95, -3.2), new THREE.Vector3(sx * 1.55, -2.4, MAIN_WHEEL_Z), 0.22, 0.22, LEGO.black, blackHoles);
@@ -310,8 +312,31 @@ export function createLegoPlane() {
   beam(new THREE.Vector3(0, 0.45, 6.0), new THREE.Vector3(0, TAIL_WHEEL.y + tailR, TAIL_WHEEL.z), 0.16, 0.16, LEGO.darkGray, blackHoles);
   wheel(tailR, 0.16, 0, TAIL_WHEEL.y + tailR, TAIL_WHEEL.z, LEGO.lightGray);
 
+  // ---------------------------------------------------------------- floats (B key)
+  // Twin pontoons for landing on water. The group's origin is at the belly so
+  // scaling it from 0 to 1 looks like the floats extending downward.
+  const floats = new THREE.Group();
+  floats.position.set(0, -1.0, 0);
+  plane.add(floats);
+  for (const sx of [-1, 1]) {
+    const x = sx * 1.7;
+    const yB = -GEAR_HEIGHT + 1.0 + 0.45; // pontoon center; bottom touches the ground plane
+    box(0.9, 0.9, 7.0, x, yB, -0.6, LEGO.white, { py: mat(LEGO.yellow) }, floats);
+    const nose = new THREE.Mesh(new THREE.ConeGeometry(0.62, 1.6, 4).rotateX(-Math.PI / 2).rotateZ(Math.PI / 4), mat(LEGO.yellow));
+    nose.scale.set(1, 0.72, 1);
+    nose.position.set(x, yB, -4.9);
+    floats.add(nose);
+    for (const z of [-3.2, 0.6]) {
+      beam(new THREE.Vector3(sx * 0.7, 0.05, z), new THREE.Vector3(x, yB + 0.45, z), 0.16, 0.2, LEGO.black, blackHoles, floats);
+    }
+  }
+  floats.scale.setScalar(0.001);
+  floats.visible = false;
+
   return {
     group: plane,
+    floats,
+    wheels,
     propeller,
     propDisc: disc,
     controls: { ailerons, elevator, rudder },

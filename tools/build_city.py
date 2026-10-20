@@ -65,6 +65,7 @@ out['polys'] = polys
 # --- roads / rail / streams (polylines) ------------------------------------
 ROAD_W = {'motorway': 22, 'trunk': 18, 'primary': 14, 'secondary': 12, 'tertiary': 10,
           'residential': 7, 'unclassified': 7, 'living_street': 6, 'service': 4.5, 'unknown': 6}
+MAJOR = {'motorway', 'trunk', 'primary', 'secondary', 'tertiary'}
 lines = []
 for r in pq.read_table(f'{D}/segments.parquet').to_pylist():
     k = r['class'] if r['subtype'] == 'road' else 'rail'
@@ -73,7 +74,11 @@ for r in pq.read_table(f'{D}/segments.parquet').to_pylist():
     g = shapely.from_wkb(r['geometry'])
     for l in getattr(g, 'geoms', [g]):
         pts = [xy(*c) for c in l.coords]
-        lines.append({'k': k, 'p': [v for p in pts for v in p]})
+        line = {'k': k, 'p': [v for p in pts for v in p]}
+        name = (r['names'] or {}).get('primary')
+        if name and k in MAJOR:
+            line['n'] = name
+        lines.append(line)
 out['lines'] = lines
 
 water_polys, streams = [], []
@@ -123,6 +128,13 @@ LANDMARKS = [
     ('Downtown Memorial Airport', 34.91857, -81.95728),
 ]
 out['landmarks'] = [{'name': n, 'x': xy(lon, lat)[0], 'z': xy(lon, lat)[1]} for n, lat, lon in LANDMARKS]
+# Map pins the player asked for. Pineview Circle has no house-number data, so the
+# pin sits on the street itself (a short cul-de-sac, so within ~100 m).
+LOCATORS = [
+    ('2225 Pineview Cir', 34.93660, -81.88470, 'home'),
+    ("Denny's Building", 34.94985, -81.92824, 'pin'),
+]
+out['locators'] = [{'name': n, 'x': xy(lon, lat)[0], 'z': xy(lon, lat)[1], 'kind': k} for n, lat, lon, k in LOCATORS]
 # Runway 5/23, 1585 m x 46 m; centerline placed in the airfield gap in the map data.
 cx, cz = xy(-81.9567, 34.9155)
 out['runway'] = {'x': cx, 'z': cz, 'heading': 44, 'length': 1585, 'width': 46}

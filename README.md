@@ -5,6 +5,7 @@ A browser flying game: the LEGO Technic 42198 Bush Plane over a Lego-brick versi
 - **Real city layout.** Roads, rail, rivers, parks and ~36,000 building footprints come from OpenStreetMap (via Overture Maps), on real terrain elevation.
 - **Lego style.** Studded baseplate ground, brick buildings with windows, gable roofs, Lego trees and brick clouds.
 - **Airport.** Take off from runway 5 at Spartanburg Downtown Memorial Airport (SPA), or start in the air over downtown.
+- **Map pins.** 2225 Pineview Cir and the Denny's building have tall beacons and show on the street map in the corner.
 - **Landmarks.** Morgan Square, Wofford, Converse, USC Upstate, Duncan Park, Drayton Mills, Cleveland Park and more are labeled.
 
 ## Play locally
@@ -23,14 +24,16 @@ npm run build      # static site in dist/ (works on GitHub Pages or any static h
 | A / D or ← / → | Bank left / right (the plane levels itself when you let go) |
 | Q / E | Rudder |
 | Shift / Ctrl (or + / −) | Throttle up / down |
-| B or Space | Brakes |
+| B | Boat floats up/down (land on water) |
+| Space | Brakes |
 | C | Camera: chase / far / cockpit |
+| N (or tap the map) | Enlarge the street map |
 | R / T | Restart on the runway / in the air |
 | M | Sound on/off |
 
-Touch screens get an on-screen stick, a throttle slider and buttons. Gamepads work too: left stick to steer, triggers for throttle.
+Touch screens get an on-screen stick, a throttle slider and buttons. Gamepads (Xbox layout) work too: left stick to fly, right stick for rudder, triggers for throttle, A brakes, B floats, Y camera, Menu restarts, View enlarges the map. A starts the game from the menu.
 
-**Takeoff:** set full throttle, then gently pull up at about 55 kt. **Landing:** line up with the runway, cut the throttle to about 25% and descend slowly. Touch down at less than about 1,400 fpm with the wings level.
+**Takeoff:** set full throttle, then gently pull up at about 55 kt. **Landing:** line up with the runway, ease the throttle to about 20% and hold S lightly to descend. Close to the ground the plane raises its nose and cushions the touchdown, so just keep the wings level. With floats down (B) you can land on the river, creeks and ponds.
 
 ## Rebuilding the map data
 

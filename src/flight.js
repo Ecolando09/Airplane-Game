@@ -7,6 +7,7 @@ const STALL = 22; // m/s; below this the wings stop flying
 const LIFT_RAMP = 10; // m/s above stall until the wings fully fly
 const ROTATE = 27; // m/s; can lift off above this
 const MAX_BANK = THREE.MathUtils.degToRad(60);
+const MAX_PITCH = THREE.MathUtils.degToRad(35);
 const G = 9.81;
 
 const X = new THREE.Vector3(1, 0, 0);
@@ -48,6 +49,8 @@ export class Flight {
     this.crashed = false;
     this.crashReason = '';
     this.ctrl = { pitch: 0, roll: 0, yaw: 0 };
+    this.floats = false;
+    this.onWater = false;
   }
 
   /** Start in the air above downtown, heading north-east. */
@@ -99,7 +102,17 @@ export class Flight {
     const auth = THREE.MathUtils.clamp(this.speed / 45, 0.15, 1); // control authority
 
     // ---- rotation
-    let pitchRate = c.pitch * 1.1 * auth;
+    // The stick commands a climb/dive angle (up to 35°); centered stick flies level.
+    const pitch = Math.asin(THREE.MathUtils.clamp(fwd.y, -1, 1));
+    let targetPitch = c.pitch * MAX_PITCH;
+    const aglNow = this.pos.y - this.plane.gearHeight - this.world.heightAt(this.pos.x, this.pos.z);
+    if (!this.onGround) {
+      const lift = THREE.MathUtils.clamp((this.speed - STALL) / LIFT_RAMP, 0, 1);
+      if (lift < 1) targetPitch = Math.min(targetPitch, -0.15 * (1 - lift)); // stall: nose drops
+      // Auto-flare: just above the ground the nose comes up for a gentle touchdown.
+      if (aglNow < 18) targetPitch = Math.max(targetPitch, -0.07 + (18 - aglNow) * 0.005);
+    }
+    let pitchRate = THREE.MathUtils.clamp((targetPitch - pitch) * 2.2, -1.1, 1.1) * auth;
     // The stick commands a bank angle (up to 60°); centered stick levels the wings.
     const bank = Math.asin(THREE.MathUtils.clamp(right.y, -1, 1)); // + = right wing up (left bank)
     const targetBank = -c.roll * MAX_BANK;
@@ -110,10 +123,6 @@ export class Flight {
       rollRate = 0;
       yawRate = -(c.yaw + c.roll) * 0.6 * Math.min(1, this.speed / 8); // nose-wheel steering
       if (this.speed < ROTATE * 0.85) pitchRate = Math.min(pitchRate, 0);
-    } else {
-      // Stall: nose drops.
-      const lift = THREE.MathUtils.clamp((this.speed - STALL) / LIFT_RAMP, 0, 1);
-      if (lift < 1 && fwd.y > -0.6) pitchRate -= (1 - lift) * 0.7;
     }
 
     this._tmpQ.setFromAxisAngle(X, pitchRate * dt);
@@ -134,12 +143,21 @@ export class Flight {
     const f = this.forward;
     let accel = this.throttle * THRUST - DRAG * this.speed * this.speed - G * f.y;
     if (this.onGround) accel -= input.brake ? 8 : 0.4;
+    if (this.floats) accel -= 0.002 * this.speed * this.speed; // floats add drag
     this.speed = Math.max(0, this.speed + accel * dt);
 
     // ---- velocity: along the nose, plus sink when slow
     const lift = THREE.MathUtils.clamp((this.speed - STALL) / LIFT_RAMP, 0, 1);
     this.vel.copy(f).multiplyScalar(this.speed);
-    if (!this.onGround) this.vel.y -= (1 - lift) * 14;
+    if (!this.onGround) this.vel.y -= (1 - lift) * 8;
+
+    // Landing assist: close to the ground with the wings roughly level, the
+    // plane floats on a cushion of air so touchdowns are gentle.
+    const bankNow = Math.abs(Math.asin(THREE.MathUtils.clamp(this.right.y, -1, 1)));
+    const agl = this.pos.y - this.plane.gearHeight - this.world.heightAt(this.pos.x, this.pos.z);
+    if (!this.onGround && agl < 15 && bankNow < 0.6 && f.y > -0.35) {
+      this.vel.y = Math.max(this.vel.y, -(1.2 + agl * 0.3));
+    }
     this.verticalSpeed = this.vel.y;
     this.pos.addScaledVector(this.vel, dt);
 
@@ -149,11 +167,15 @@ export class Flight {
     if (this.pos.y <= minY) {
       const pitchDeg = THREE.MathUtils.radToDeg(Math.asin(f.y));
       const bankDeg = Math.abs(THREE.MathUtils.radToDeg(bank));
-      if (!this.onGround && (this.vel.y < -7 || bankDeg > 25 || pitchDeg < -12)) {
+      if (!this.onGround && (this.vel.y < -9 || bankDeg > 35 || pitchDeg < -20)) {
         return this.crash(
-          pitchDeg < -12 || this.vel.y < -15 ? 'Crashed into the ground!'
-            : bankDeg > 25 ? 'Wing hit the ground!' : 'Landed too hard!'
+          pitchDeg < -20 || this.vel.y < -15 ? 'Crashed into the ground!'
+            : bankDeg > 35 ? 'Wing hit the ground!' : 'Landed too hard!'
         );
+      }
+      this.onWater = this.world.isWater(this.pos.x, this.pos.z);
+      if (this.onWater && !this.floats) {
+        return this.crash('Splash! Press B for floats before landing on water.');
       }
       this.pos.y = minY;
       if (!this.onGround) this.onGround = true;
@@ -165,7 +187,10 @@ export class Flight {
     } else if (this.onGround && this.pos.y > minY + 0.5) {
       this.onGround = false;
     }
-    if (this.onGround && this.speed > 15 && !this.world.isOnRunway(this.pos.x, this.pos.z)) {
+    if (!this.onGround) this.onWater = false;
+    if (this.onGround && this.onWater) {
+      this.speed = Math.max(0, this.speed - 3 * dt); // water drag
+    } else if (this.onGround && this.speed > 15 && !this.world.isOnRunway(this.pos.x, this.pos.z)) {
       // Rough grass slows you down.
       this.speed = Math.max(0, this.speed - 6 * dt);
     }

@@ -40,7 +40,94 @@ export class World {
     this._buildBuildings();
     this._buildTrees();
     this._buildClouds();
+    this._buildWaterMask();
     this.landmarks = data.landmarks.map((l) => ({ ...l, y: this.heightAt(l.x, l.z) }));
+    this.locators = this._buildLocators(data.locators || []);
+  }
+
+  // ------------------------------------------------------------ water & pins
+  _buildWaterMask() {
+    const S = (this.waterRes = 2048);
+    const cv = document.createElement('canvas');
+    cv.width = cv.height = S;
+    const g = cv.getContext('2d');
+    const sx = S / this.sizeX;
+    const sz = S / this.sizeZ;
+    const path = (p) => {
+      g.beginPath();
+      for (let i = 0; i < p.length; i += 2) {
+        const X = (p[i] + this.halfX) * sx;
+        const Y = (p[i + 1] + this.halfZ) * sz;
+        i ? g.lineTo(X, Y) : g.moveTo(X, Y);
+      }
+    };
+    g.fillStyle = g.strokeStyle = '#fff';
+    for (const w of this.data.water) {
+      path(w);
+      g.fill();
+    }
+    g.lineCap = 'round';
+    for (const st of this.data.streams) {
+      // Generous widths so floatplanes can set down on the creeks and river.
+      g.lineWidth = Math.max(2, (st.k === 'river' ? 40 : 18) * sx);
+      path(st.p);
+      g.stroke();
+    }
+    const px = g.getImageData(0, 0, S, S).data;
+    this.waterMask = new Uint8Array(S * S);
+    for (let i = 0; i < S * S; i++) this.waterMask[i] = px[i * 4] > 100 ? 1 : 0;
+  }
+
+  isWater(x, z) {
+    const S = this.waterRes;
+    const i = Math.floor(((x + this.halfX) / this.sizeX) * S);
+    const j = Math.floor(((z + this.halfZ) / this.sizeZ) * S);
+    if (i < 0 || j < 0 || i >= S || j >= S) return false;
+    return this.waterMask[j * S + i] === 1;
+  }
+
+  _buildLocators(list) {
+    const COLORS = { home: LEGO.blue, pin: LEGO.red };
+    return list.map((l) => {
+      const color = COLORS[l.kind] ?? LEGO.red;
+      const y = this.heightAt(l.x, l.z);
+      const group = new THREE.Group();
+      group.position.set(l.x, y, l.z);
+      // Light beam so the spot can be found from far away.
+      const beam = new THREE.Mesh(
+        new THREE.CylinderGeometry(6, 6, 700, 16, 1, true).translate(0, 350, 0),
+        new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.28, depthWrite: false, fog: false })
+      );
+      group.add(beam);
+      // Map pin made of round Lego parts: a ball on a cone, pointing at the spot.
+      const pin = new THREE.Group();
+      pin.position.y = 110;
+      const ballMat = legoMaterial({ color, emissive: color, emissiveIntensity: 0.25 });
+      const ball = new THREE.Mesh(new THREE.SphereGeometry(20, 24, 16), ballMat);
+      ball.position.y = 26;
+      const cone = new THREE.Mesh(new THREE.ConeGeometry(15, 46, 20).rotateX(Math.PI), ballMat);
+      const dot = new THREE.Mesh(new THREE.CylinderGeometry(8, 8, 4, 16).rotateX(Math.PI / 2), legoMaterial({ color: LEGO.white }));
+      dot.position.set(0, 26, 18.5);
+      pin.add(ball, cone, dot);
+      group.add(pin);
+      // Ring on the ground marking the exact spot.
+      const ring = new THREE.Mesh(
+        new THREE.RingGeometry(18, 26, 32).rotateX(-Math.PI / 2),
+        new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.8, depthWrite: false })
+      );
+      ring.position.y = 1.5;
+      group.add(ring);
+      this.scene.add(group);
+      return { ...l, y, color, pin, group };
+    });
+  }
+
+  /** Animate the map pins. */
+  update(t) {
+    for (const l of this.locators) {
+      l.pin.rotation.y = t * 1.2;
+      l.pin.position.y = 110 + Math.sin(t * 2) * 5;
+    }
   }
 
   // ---------------------------------------------------------------- terrain
@@ -150,7 +237,7 @@ export class World {
     g.lineCap = g.lineJoin = 'round';
     g.strokeStyle = hex(LEGO.lightBlue);
     for (const s of this.data.streams) {
-      g.lineWidth = (s.k === 'river' ? 14 : 4) * sx;
+      g.lineWidth = (s.k === 'river' ? 30 : 9) * sx;
       path(s.p);
       g.stroke();
     }

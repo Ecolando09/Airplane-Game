@@ -77,6 +77,34 @@ const labelEls = world.landmarks.map((l) => {
   return el;
 });
 
+const pinEls = world.locators.map((l) => {
+  const el = document.createElement('div');
+  el.className = 'label pin';
+  el.style.setProperty('--pin', '#' + l.color.toString(16).padStart(6, '0'));
+  $('labels').appendChild(el);
+  return el;
+});
+
+// ------------------------------------------------------------------ floats
+let floatsAnim = 0;
+function toggleFloats() {
+  if (!running || flight.crashed) return;
+  if (flight.onGround && flight.floats && flight.onWater) {
+    message("Can't raise the floats while on the water!", 2);
+    return;
+  }
+  flight.floats = !flight.floats;
+  message(flight.floats ? 'Floats down 🛶 — you can land on water' : 'Floats up — wheels only', 2);
+}
+function updateFloats(dt) {
+  floatsAnim += ((flight.floats ? 1 : 0) - floatsAnim) * (1 - Math.exp(-dt * 4));
+  plane.floats.visible = floatsAnim > 0.02;
+  plane.floats.scale.setScalar(Math.max(0.001, floatsAnim));
+  for (const w of plane.wheels) w.visible = floatsAnim < 0.6;
+  $('gear').textContent = flight.floats ? 'FLOATS' : 'WHEELS';
+  $('gear').classList.toggle('floats', flight.floats);
+}
+
 // ------------------------------------------------------------------ crash debris
 let debris = [];
 function explode() {
@@ -180,29 +208,121 @@ function updateCamera(dt) {
 }
 
 // ------------------------------------------------------------------ minimap
+// Map in the lower right: the city's ground texture, with major streets drawn on
+// top in map colors and labeled with their names. Tap it (or press N) to enlarge.
 const mm = $('minimap');
 const mctx = mm.getContext('2d');
+let bigMap = false;
+const toggleMap = () => {
+  bigMap = !bigMap;
+  mm.classList.toggle('big', bigMap);
+};
+mm.addEventListener('click', toggleMap);
+
+const ROAD_STYLE = {
+  motorway: { color: '#e8590c', w: 7, rank: 0 },
+  trunk: { color: '#f59f00', w: 6, rank: 1 },
+  primary: { color: '#f2cd37', w: 5, rank: 2 },
+  secondary: { color: '#ffffff', w: 4, rank: 3 },
+  tertiary: { color: '#ffffff', w: 2.5, rank: 4 },
+};
+const majorRoads = world.data.lines
+  .filter((l) => ROAD_STYLE[l.k])
+  .map((l) => {
+    let minx = Infinity, minz = Infinity, maxx = -Infinity, maxz = -Infinity, len = 0;
+    for (let i = 0; i < l.p.length; i += 2) {
+      minx = Math.min(minx, l.p[i]); maxx = Math.max(maxx, l.p[i]);
+      minz = Math.min(minz, l.p[i + 1]); maxz = Math.max(maxz, l.p[i + 1]);
+      if (i) len += Math.hypot(l.p[i] - l.p[i - 2], l.p[i + 1] - l.p[i - 1]);
+    }
+    return { ...l, style: ROAD_STYLE[l.k], minx, minz, maxx, maxz, len };
+  })
+  .sort((a, b) => b.style.rank - a.style.rank); // draw big roads last (on top)
+
 function drawMinimap() {
   const W = mm.width;
-  const range = 3000; // meters shown across
+  const range = bigMap ? 11000 : 3500; // meters shown across
+  const k = W / range;
   const src = world.mapCanvas;
   const sx = src.width / world.sizeX;
   const sz = src.height / world.sizeZ;
   const p = plane.group.position;
+  const toMap = (x, z) => [(x - p.x) * k + W / 2, (z - p.z) * k + W / 2];
+  const inView = (r) => r.maxx > p.x - range / 2 && r.minx < p.x + range / 2 && r.maxz > p.z - range / 2 && r.minz < p.z + range / 2;
+
   mctx.save();
   mctx.fillStyle = '#58ab41';
   mctx.fillRect(0, 0, W, W);
   mctx.drawImage(src, (p.x + world.halfX - range / 2) * sx, (p.z + world.halfZ - range / 2) * sz,
     range * sx, range * sz, 0, 0, W, W);
-  const toMap = (x, z) => [((x - p.x) / range + 0.5) * W, ((z - p.z) / range + 0.5) * W];
+  mctx.fillStyle = 'rgba(244, 244, 236, 0.45)'; // wash out the ground so streets stand out
+  mctx.fillRect(0, 0, W, W);
+
+  // Major streets: dark casing, then color.
+  const visible = majorRoads.filter(inView);
+  const scale = bigMap ? 0.7 : 1;
+  mctx.lineCap = mctx.lineJoin = 'round';
+  for (const pass of [0, 1]) {
+    for (const r of visible) {
+      mctx.lineWidth = (r.style.w + (pass ? 0 : 2.5)) * scale;
+      mctx.strokeStyle = pass ? r.style.color : 'rgba(27, 42, 52, 0.55)';
+      mctx.beginPath();
+      for (let i = 0; i < r.p.length; i += 2) {
+        const [x, y] = toMap(r.p[i], r.p[i + 1]);
+        i ? mctx.lineTo(x, y) : mctx.moveTo(x, y);
+      }
+      mctx.stroke();
+    }
+  }
+
   // Runway
   const rw = world.runway;
-  mctx.strokeStyle = '#333';
-  mctx.lineWidth = Math.max(3, (rw.width / range) * W);
+  mctx.strokeStyle = '#1b2a34';
+  mctx.lineWidth = Math.max(5, rw.width * k);
   mctx.beginPath();
   mctx.moveTo(...toMap(rw.x - rw.fx * rw.length / 2, rw.z - rw.fz * rw.length / 2));
   mctx.lineTo(...toMap(rw.x + rw.fx * rw.length / 2, rw.z + rw.fz * rw.length / 2));
   mctx.stroke();
+
+  // Street names, biggest roads first, skipping any that would overlap.
+  const placed = [];
+  const named = new Set();
+  const labels = visible.filter((r) => r.n && r.style.rank <= (bigMap ? 2 : 4))
+    .sort((a, b) => a.style.rank - b.style.rank || b.len - a.len);
+  mctx.font = `700 ${bigMap ? 13 : 15}px system-ui, sans-serif`;
+  mctx.textAlign = 'center';
+  mctx.textBaseline = 'middle';
+  for (const r of labels) {
+    if (named.has(r.n) || placed.length >= (bigMap ? 24 : 12)) continue;
+    const mid = Math.floor(r.p.length / 4) * 2;
+    if (mid + 3 >= r.p.length) continue;
+    const [x1, y1] = toMap(r.p[mid], r.p[mid + 1]);
+    const [x2, y2] = toMap(r.p[mid + 2], r.p[mid + 3]);
+    const cx = (x1 + x2) / 2;
+    const cy = (y1 + y2) / 2;
+    if (cx < 30 || cy < 30 || cx > W - 30 || cy > W - 30) continue;
+    const tw = mctx.measureText(r.n).width + 8;
+    let ang = Math.atan2(y2 - y1, x2 - x1);
+    if (ang > Math.PI / 2) ang -= Math.PI;
+    if (ang < -Math.PI / 2) ang += Math.PI;
+    // Bounding box of the rotated label, for the overlap test.
+    const hw = (Math.abs(Math.cos(ang)) * tw + Math.abs(Math.sin(ang)) * 22) / 2;
+    const hh = (Math.abs(Math.sin(ang)) * tw + Math.abs(Math.cos(ang)) * 22) / 2;
+    const box = [cx - hw, cy - hh, cx + hw, cy + hh];
+    if (placed.some((b) => box[0] < b[2] && box[2] > b[0] && box[1] < b[3] && box[3] > b[1])) continue;
+    placed.push(box);
+    named.add(r.n);
+    mctx.save();
+    mctx.translate(cx, cy);
+    mctx.rotate(ang);
+    mctx.lineWidth = 4;
+    mctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
+    mctx.strokeText(r.n, 0, 0);
+    mctx.fillStyle = '#1b2a34';
+    mctx.fillText(r.n, 0, 0);
+    mctx.restore();
+  }
+
   // Landmarks
   for (const l of world.landmarks) {
     const [x, y] = toMap(l.x, l.z);
@@ -211,29 +331,84 @@ function drawMinimap() {
     mctx.strokeStyle = '#1b2a34';
     mctx.lineWidth = 2;
     mctx.beginPath();
-    mctx.arc(x, y, 5, 0, Math.PI * 2);
+    mctx.arc(x, y, 6, 0, Math.PI * 2);
     mctx.fill();
     mctx.stroke();
   }
+
+  // Pins (address, Denny's) and the runway; arrows at the edge when off the map.
+  const pins = [...world.locators.map((l) => ({ x: l.x, z: l.z, color: '#' + l.color.toString(16).padStart(6, '0'), name: l.name })),
+    { x: rw.x, z: rw.z, color: '#1b2a34', name: 'Airport' }];
+  mctx.font = '700 14px system-ui, sans-serif';
+  for (const pin of pins) {
+    let [x, y] = toMap(pin.x, pin.z);
+    const off = x < 14 || y < 14 || x > W - 14 || y > W - 14;
+    if (off) {
+      const dx = x - W / 2;
+      const dy = y - W / 2;
+      const a = Math.atan2(dy, dx);
+      const f = (W / 2 - 16) / Math.max(Math.abs(dx), Math.abs(dy));
+      x = W / 2 + dx * f;
+      y = W / 2 + dy * f;
+      mctx.save();
+      mctx.translate(x, y);
+      mctx.rotate(a);
+      mctx.fillStyle = pin.color;
+      mctx.strokeStyle = '#fff';
+      mctx.lineWidth = 2;
+      mctx.beginPath();
+      mctx.moveTo(12, 0);
+      mctx.lineTo(-7, -8);
+      mctx.lineTo(-7, 8);
+      mctx.closePath();
+      mctx.fill();
+      mctx.stroke();
+      mctx.restore();
+      continue;
+    }
+    mctx.fillStyle = pin.color;
+    mctx.strokeStyle = '#fff';
+    mctx.lineWidth = 3;
+    mctx.beginPath();
+    mctx.arc(x, y - 14, 9, Math.PI * 0.8, Math.PI * 2.2);
+    mctx.lineTo(x, y);
+    mctx.closePath();
+    mctx.fill();
+    mctx.stroke();
+    if (pin.name !== 'Airport') {
+      mctx.lineWidth = 4;
+      mctx.strokeStyle = '#fff';
+      const leftSide = x + 12 + mctx.measureText(pin.name).width > W - 6;
+      mctx.textAlign = leftSide ? 'right' : 'left';
+      const tx = leftSide ? x - 12 : x + 12;
+      mctx.strokeText(pin.name, tx, y - 14);
+      mctx.fillStyle = pin.color;
+      mctx.fillText(pin.name, tx, y - 14);
+      mctx.textAlign = 'center';
+    }
+  }
+
   // Plane arrow
   mctx.translate(W / 2, W / 2);
   mctx.rotate(THREE.MathUtils.degToRad(flight.heading));
   mctx.fillStyle = '#c91a09';
   mctx.strokeStyle = '#fff';
-  mctx.lineWidth = 2;
+  mctx.lineWidth = 3;
   mctx.beginPath();
-  mctx.moveTo(0, -11);
-  mctx.lineTo(8, 9);
-  mctx.lineTo(0, 4);
-  mctx.lineTo(-8, 9);
+  mctx.moveTo(0, -16);
+  mctx.lineTo(12, 13);
+  mctx.lineTo(0, 6);
+  mctx.lineTo(-12, 13);
   mctx.closePath();
   mctx.fill();
   mctx.stroke();
   mctx.restore();
+  mctx.font = '800 18px system-ui, sans-serif';
+  mctx.lineWidth = 4;
+  mctx.strokeStyle = '#1b2a34';
+  mctx.strokeText('N', W / 2, 18);
   mctx.fillStyle = '#fff';
-  mctx.font = 'bold 14px system-ui';
-  mctx.textAlign = 'center';
-  mctx.fillText('N', W / 2, 16);
+  mctx.fillText('N', W / 2, 18);
 }
 
 // ------------------------------------------------------------------ HUD
@@ -266,7 +441,8 @@ function updateHud(dt) {
     const agl = p.y - plane.gearHeight - world.heightAt(p.x, p.z);
     if (wasOnGround.v && !flight.onGround && agl > 1) message('Airborne! 🛫', 2);
     if (!wasOnGround.v && flight.onGround) {
-      message(world.isOnRunway(p.x, p.z) ? 'Nice landing! 🛬' : 'Landed in a field!', 3);
+      message(flight.onWater ? 'Splashdown! 🌊 Nice water landing!'
+        : world.isOnRunway(p.x, p.z) ? 'Nice landing! 🛬' : 'Landed in a field!', 3);
     }
     if (!flight.onGround && flight.speed < 26 && flight.forward.y > -0.3) message('STALL — lower the nose!', 0.3);
     if (Math.abs(p.x) > world.halfX + 1500 || Math.abs(p.z) > world.halfZ + 1500) {
@@ -296,6 +472,24 @@ function updateHud(dt) {
   });
 }
 
+function updatePinLabels() {
+  const p = plane.group.position;
+  const v = new THREE.Vector3();
+  world.locators.forEach((l, i) => {
+    const el = pinEls[i];
+    const d = Math.hypot(l.x - p.x, l.z - p.z);
+    v.set(l.x, l.y + 170, l.z).project(camera);
+    if (v.z > 1 || Math.abs(v.x) > 1.2 || Math.abs(v.y) > 1.2) {
+      el.style.display = 'none';
+      return;
+    }
+    el.style.display = '';
+    el.textContent = `📍 ${l.name} · ${d < 1000 ? Math.round(d) + ' m' : (d / 1609).toFixed(1) + ' mi'}`;
+    el.style.left = `${(v.x * 0.5 + 0.5) * innerWidth}px`;
+    el.style.top = `${(-v.y * 0.5 + 0.5) * innerHeight}px`;
+  });
+}
+
 // ------------------------------------------------------------------ game flow
 let running = false;
 let crashTimer = 0;
@@ -304,6 +498,7 @@ function start(airborne) {
   airborne ? flight.resetAirborne() : flight.reset();
   input.syncThrottle(flight.throttle);
   tilt = flight.onGround ? GROUND_TILT : 0;
+  floatsAnim = 0;
   wasOnGround.v = flight.onGround;
   crashTimer = 0;
   camInit = false;
@@ -326,6 +521,10 @@ $('helpBtn').onclick = () => {
 };
 
 input.on('cam', () => (camMode = (camMode + 1) % CAMS.length));
+input.on('floats', toggleFloats);
+input.on('map', toggleMap);
+input.on('menuStart', () => !running && start(false));
+input.on('menuAir', () => !running && start(true));
 input.on('reset', () => running && start(false));
 input.on('air', () => running && start(true));
 input.on('mute', () => sound.toggle());
@@ -338,7 +537,7 @@ let tilt = 0;
 const tiltQ = new THREE.Quaternion();
 const AXIS_X = new THREE.Vector3(1, 0, 0);
 function poseAirplane(dt) {
-  const want = flight.onGround ? GROUND_TILT * THREE.MathUtils.clamp(1 - flight.speed / 24, 0, 1) : 0;
+  const want = flight.onGround && !flight.floats ? GROUND_TILT * THREE.MathUtils.clamp(1 - flight.speed / 24, 0, 1) : 0;
   tilt += (want - tilt) * (1 - Math.exp(-dt * 5));
   tiltQ.setFromAxisAngle(AXIS_X, tilt);
   const offset = MAIN_CONTACT.clone().sub(MAIN_CONTACT.clone().applyQuaternion(tiltQ)).applyQuaternion(flight.quat);
@@ -359,6 +558,8 @@ function frame() {
   requestAnimationFrame(frame);
   timer.update();
   const dt = Math.min(timer.getDelta(), 0.05);
+  input.pollButtons(!running);
+  world.update(timer.getElapsed());
   if (running) {
     const ctl = input.read();
     if (!flight.crashed) {
@@ -372,6 +573,7 @@ function frame() {
       crashTimer += dt;
     }
     updateDebris(dt);
+    updateFloats(dt);
     poseAirplane(dt);
     const rpm = 8 + flight.throttle * 60;
     plane.propeller.rotation.z += rpm * dt;
@@ -379,6 +581,7 @@ function frame() {
     sound.update(flight.crashed ? 0 : flight.throttle, flight.speed);
     updateCamera(dt);
     updateHud(dt);
+    updatePinLabels();
     drawMinimap();
   } else {
     // Slow orbit over downtown behind the menu.

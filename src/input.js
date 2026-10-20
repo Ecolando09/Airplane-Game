@@ -9,7 +9,7 @@ export class Input {
     this.touchThrottle = null;
     this.touchBrake = false;
 
-    const actions = { KeyC: 'cam', KeyR: 'reset', KeyT: 'air', KeyM: 'mute', KeyI: 'invert' };
+    const actions = { KeyC: 'cam', KeyR: 'reset', KeyT: 'air', KeyM: 'mute', KeyI: 'invert', KeyB: 'floats', KeyN: 'map' };
     addEventListener('keydown', (e) => {
       if (e.repeat) return;
       this.keys.add(e.code);
@@ -38,7 +38,7 @@ export class Input {
     let yaw = k('KeyE') - k('KeyQ');
     let throttle = k('ShiftLeft', 'ShiftRight', 'Equal', 'NumpadAdd') - k('ControlLeft', 'ControlRight', 'Minus', 'NumpadSubtract');
     let throttleSet;
-    let brake = k('KeyB', 'Space') === 1;
+    let brake = k('Space') === 1;
 
     // Touch
     if (this.touchStick.x || this.touchStick.y) {
@@ -134,6 +134,21 @@ export class Input {
         b.addEventListener('click', () => this.emit(act));
       }
     }
+  }
+
+  /**
+   * Gamepad buttons that trigger actions (Xbox layout): B floats, Y camera,
+   * Menu restart, View big map, A starts from the menu. Call once per frame.
+   */
+  pollButtons(inMenu) {
+    const gp = navigator.getGamepads?.().find((g) => g);
+    if (!gp) return;
+    const map = inMenu ? { 0: 'menuStart', 3: 'menuAir' } : { 1: 'floats', 3: 'cam', 9: 'reset', 8: 'map' };
+    this._prevButtons ||= [];
+    gp.buttons.forEach((b, i) => {
+      if (b.pressed && !this._prevButtons[i] && map[i]) this.emit(map[i]);
+      this._prevButtons[i] = b.pressed;
+    });
   }
 
   /** Reset touch throttle to match the plane after a restart. */
