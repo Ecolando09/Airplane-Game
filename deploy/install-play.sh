@@ -6,6 +6,8 @@
 #
 # First time:  curl -fsSL https://raw.githubusercontent.com/Ecolando09/Airplane-Game/claude/lego-airplane-game-ttd82x/deploy/install-play.sh | sudo bash
 # Updates:     run the same command again.
+# No GitHub?   copy lego-sky-bundle.tar.gz to the server, then:
+#              tar xzf lego-sky-bundle.tar.gz && sudo bash lego-sky/deploy/install-play.sh --bundle
 set -euo pipefail
 
 REPO=${REPO:-https://github.com/Ecolando09/Airplane-Game.git}
@@ -39,19 +41,28 @@ if ! command -v caddy >/dev/null; then
   apt-get update -qq && apt-get install -y -qq caddy >/dev/null
 fi
 
-say "Getting the code ($BRANCH)"
-if [ -d "$APP/.git" ]; then
-  git -C "$APP" fetch --depth 1 origin "$BRANCH"
-  git -C "$APP" reset --hard FETCH_HEAD
+# --bundle: install from an unpacked lego-sky-bundle.tar.gz (prebuilt site, no GitHub needed).
+if [ "${1:-}" = "--bundle" ]; then
+  SRC=$(cd "$(dirname "$0")/.." && pwd)
+  say "Installing from bundle at $SRC"
+  mkdir -p "$APP"
+  rsync -a --delete --exclude node_modules "$SRC/" "$APP/"
+  cd "$APP"
+  npm ci --omit=dev --no-audit --no-fund
 else
-  mkdir -p "$(dirname "$APP")"
-  git clone --depth 1 --branch "$BRANCH" "$REPO" "$APP"
+  say "Getting the code ($BRANCH)"
+  if [ -d "$APP/.git" ]; then
+    git -C "$APP" fetch --depth 1 origin "$BRANCH"
+    git -C "$APP" reset --hard FETCH_HEAD
+  else
+    mkdir -p "$(dirname "$APP")"
+    git clone --depth 1 --branch "$BRANCH" "$REPO" "$APP"
+  fi
+  say "Building the site"
+  cd "$APP"
+  npm ci --no-audit --no-fund
+  npm run build:play
 fi
-
-say "Building the site"
-cd "$APP"
-npm ci --no-audit --no-fund
-npm run build:play
 mkdir -p "$WEB"
 rsync -a --delete play-dist/ "$WEB/"
 
