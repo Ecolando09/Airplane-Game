@@ -3,3 +3,4 @@ dist
 tools/data
 .venv
 __pycache__
+play-dist

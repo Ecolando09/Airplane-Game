@@ -1,3 +1,5 @@
+import { Tilt } from './tilt.js';
+
 // Keyboard, touch and gamepad input merged into one control state.
 export class Input {
   constructor() {
@@ -9,6 +11,7 @@ export class Input {
     this.touchThrottle = null;
     this.touchBrake = false;
     this.remote = null;
+    this.tilt = new Tilt();
 
     const actions = { KeyC: 'cam', KeyR: 'reset', KeyT: 'air', KeyM: 'mute', KeyI: 'invert', KeyB: 'floats', KeyN: 'map' };
     addEventListener('keydown', (e) => {
@@ -41,8 +44,11 @@ export class Input {
     let throttleSet;
     let brake = k('Space') === 1;
 
-    // Touch
-    if (this.touchStick.x || this.touchStick.y) {
+    // Touch: tilt steering or the on-screen stick
+    if (this.tilt.active) {
+      roll = this.tilt.roll;
+      pitch = this.tilt.pitch;
+    } else if (this.touchStick.x || this.touchStick.y) {
       roll = this.touchStick.x;
       pitch = -this.touchStick.y;
     }
@@ -137,7 +143,17 @@ export class Input {
 
     for (const b of document.querySelectorAll('#touchButtons button')) {
       const act = b.dataset.act;
-      if (act === 'brake') {
+      if (act === 'tilt') {
+        b.addEventListener('click', async () => {
+          if (this.tilt.active) this.tilt.disable();
+          else if (!(await this.tilt.enable())) return;
+          b.classList.toggle('on', this.tilt.active);
+          document.getElementById('stick').hidden = this.tilt.active;
+          document.getElementById('recenter').hidden = !this.tilt.active;
+        });
+      } else if (act === 'recenter') {
+        b.addEventListener('click', () => this.tilt.recenter());
+      } else if (act === 'brake') {
         b.addEventListener('touchstart', (e) => {
           e.preventDefault();
           this.touchBrake = true;
@@ -166,8 +182,7 @@ export class Input {
 
   /** Reset touch throttle to match the plane after a restart. */
   syncThrottle(v) {
-    if (this.touchThrottle === null) return;
-    this.touchThrottle = v;
+    if (this.touchThrottle !== null) this.touchThrottle = v;
     const thr = document.getElementById('throttleTouch');
     document.getElementById('throttleKnob').style.bottom = `${v * (thr.clientHeight - 36)}px`;
   }

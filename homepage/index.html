@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>Latlas Play</title>
+    <meta name="description" content="Browser games by Latlas. No downloads, just play." />
+    <meta property="og:title" content="Latlas Play" />
+    <meta property="og:description" content="Browser games by Latlas. No downloads, just play." />
+    <meta property="og:image" content="images/legoplane.jpg" />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='2' y='8' width='28' height='18' rx='3' fill='%23f2cd37'/%3E%3Ccircle cx='10' cy='8' r='4' fill='%23f2cd37'/%3E%3Ccircle cx='22' cy='8' r='4' fill='%23f2cd37'/%3E%3C/svg%3E" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Figtree:wght@400;500;700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="brand" href="https://latlas.lol/">latlas<span>.lol</span></a>
+      <nav>
+        <a href="https://latlas.lol/">Home</a>
+        <a href="./" aria-current="page">Play</a>
+      </nav>
+    </header>
+
+    <main>
+      <section class="intro">
+        <p class="eyebrow">play.latlas.lol</p>
+        <h1>Games you can play right in your browser.</h1>
+        <p class="lede">No downloads, no accounts. Works with a keyboard, an Xbox controller, or your phone.</p>
+      </section>
+
+      <section class="games" aria-label="Games">
+        <article class="game">
+          <a class="shot" href="legoplane/" aria-label="Play Lego Sky: Spartanburg">
+            <img src="images/legoplane.jpg" alt="The Lego Technic bush plane flying over a brick-built Spartanburg" width="1200" height="675" />
+            <img class="hover" src="images/legoplane-hud.jpg" alt="" width="1200" height="675" loading="lazy" />
+            <span class="badge">New</span>
+          </a>
+          <div class="info">
+            <h2>Lego Sky: Spartanburg</h2>
+            <p class="tagline">Fly the LEGO Technic Bush Plane over a brick-built Spartanburg, SC.</p>
+            <p>
+              The whole city is built from real map data: 36,000 buildings, real streets, creeks and hills,
+              all in Lego bricks. Take off from Downtown Memorial Airport, buzz Morgan Square and Wofford,
+              and drop the boat floats to land on the river.
+            </p>
+            <ul class="chips" aria-label="Ways to play">
+              <li>Keyboard</li>
+              <li>Xbox controller</li>
+              <li>Phone tilt</li>
+              <li>Phone as controller</li>
+            </ul>
+            <div class="actions">
+              <a class="btn primary" href="legoplane/">Play now</a>
+              <a class="btn" href="#legoplane-how">How to play</a>
+            </div>
+          </div>
+        </article>
+
+        <section class="how" id="legoplane-how" aria-labelledby="how-title">
+          <h3 id="how-title">How to play Lego Sky</h3>
+          <div class="how-grid">
+            <figure>
+              <img src="images/legoplane-phone.jpg" alt="The game on a phone held sideways, with tilt controls" width="1200" height="554" loading="lazy" />
+              <figcaption><b>On a phone:</b> turn it sideways and tap <b>TILT</b> to steer by tilting, like a steering wheel. Tip the top toward you to climb.</figcaption>
+            </figure>
+            <figure>
+              <img src="images/legoplane-remote.jpg" alt="The phone controller screen with a stick, buttons and throttle" width="844" height="390" loading="lazy" />
+              <figcaption><b>On a TV or projector:</b> click 📱 in the game and scan the QR code. Your phone becomes the controller.</figcaption>
+            </figure>
+            <div class="keys">
+              <p><b>Keyboard</b></p>
+              <dl>
+                <dt>W / S</dt><dd>Climb / dive</dd>
+                <dt>A / D</dt><dd>Bank left / right</dd>
+                <dt>Shift / Ctrl</dt><dd>Throttle</dd>
+                <dt>B</dt><dd>Boat floats</dd>
+                <dt>Space</dt><dd>Brakes</dd>
+                <dt>C</dt><dd>Camera</dd>
+                <dt>N</dt><dd>Big map</dd>
+                <dt>R</dt><dd>Restart</dd>
+              </dl>
+              <p class="tip">Takeoff: full throttle, then pull up gently at about 55 kt.</p>
+            </div>
+          </div>
+        </section>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <p>Made in Spartanburg, SC · <a href="https://latlas.lol/">latlas.lol</a></p>
+      <p class="credit">Lego Sky map data © OpenStreetMap contributors, Overture Maps Foundation. LEGO® is a trademark of the LEGO Group, which does not sponsor or endorse this site.</p>
+    </footer>
+  </body>
+</html>

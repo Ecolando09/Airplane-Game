@@ -4,7 +4,7 @@ Description=Lego Sky phone-controller relay
 After=network.target
 
 [Service]
-WorkingDirectory=/opt/lego-sky
+WorkingDirectory=/opt/latlas-play/Airplane-Game
 ExecStart=/usr/bin/node server/relay.js
 Environment=PORT=8787
 Restart=always

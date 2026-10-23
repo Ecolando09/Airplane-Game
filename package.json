@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "relay": "node server/relay.js"
+    "relay": "node server/relay.js",
+    "build:play": "vite build --outDir play-dist/legoplane --emptyOutDir && cp -r homepage/. play-dist/"
   },
   "dependencies": {
     "qrcode": "^1.5.4",

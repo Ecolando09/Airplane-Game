@@ -502,3 +502,126 @@ kbd {
 .label.pin::after {
   border-top-color: var(--pin);
 }
+
+.chip.on {
+  background: var(--yellow);
+  color: var(--ink);
+}
+
+/* Phone held upright while playing: ask to rotate. */
+#rotate {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  text-align: center;
+  font-size: 24px;
+  font-weight: 800;
+  background: var(--ink);
+}
+
+@media (orientation: portrait) {
+  body.touch-play #rotate {
+    display: flex;
+  }
+}
+
+/* Phone in landscape: short screen, so shrink and rearrange the HUD. */
+@media (max-height: 500px) {
+  #instruments {
+    top: 8px;
+    left: max(8px, env(safe-area-inset-left));
+    font-size: 11px;
+    line-height: 1.35;
+    min-width: 0;
+    padding: 6px 10px;
+  }
+
+  #instruments b {
+    font-size: 14px;
+  }
+
+  #instruments .k {
+    width: 38px;
+  }
+
+  .label {
+    font-size: 10px;
+    padding: 2px 6px;
+  }
+
+  .label.pin {
+    font-size: 11px;
+  }
+
+  body.touch-play #phoneChip {
+    display: none;
+  }
+
+  #minimap {
+    width: 120px;
+    height: 120px;
+    top: 52px;
+    right: max(8px, env(safe-area-inset-right));
+    bottom: auto;
+  }
+
+  #minimap.big {
+    width: min(80vh, 60vw);
+    height: min(80vh, 60vw);
+  }
+
+  #topRight {
+    top: 8px;
+    right: max(8px, env(safe-area-inset-right));
+  }
+
+  #over {
+    top: 8px;
+    bottom: auto;
+    font-size: 12px;
+    padding: 4px 10px;
+    max-width: 40vw;
+  }
+
+  #stick {
+    width: 120px;
+    height: 120px;
+    left: max(16px, env(safe-area-inset-left));
+    bottom: 16px;
+  }
+
+  #knob {
+    width: 50px;
+    height: 50px;
+    margin: -25px 0 0 -25px;
+  }
+
+  #throttleTouch {
+    right: max(20px, env(safe-area-inset-right));
+    bottom: 22px;
+    width: 56px;
+    height: 130px;
+  }
+
+  #touchButtons {
+    bottom: 8px;
+    gap: 6px;
+  }
+
+  #touchButtons .chip {
+    padding: 6px 10px;
+    font-size: 12px;
+  }
+
+  #message {
+    font-size: 20px;
+  }
+
+  .card {
+    padding: 16px;
+  }
+}

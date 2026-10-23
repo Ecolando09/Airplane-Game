@@ -31,7 +31,7 @@ npm run build      # static site in dist/ (works on GitHub Pages or any static h
 | R / T | Restart on the runway / in the air |
 | M | Sound on/off |
 
-Touch screens get an on-screen stick, a throttle slider and buttons. Gamepads (Xbox layout) work too: left stick to fly, right stick for rudder, triggers for throttle, A brakes, B floats, Y camera, Menu restarts, View enlarges the map. A starts the game from the menu.
+On a phone, turn it sideways: you get an on-screen stick, a throttle slider and buttons, and **TILT** lets you steer by tilting the phone like a steering wheel (tip the top toward you to climb; **CENTER** re-centers). Gamepads (Xbox layout) work too: left stick to fly, right stick for rudder, triggers for throttle, A brakes, B floats, Y camera, Menu restarts, View enlarges the map. A starts the game from the menu.
 
 **Takeoff:** set full throttle, then gently pull up at about 55 kt. **Landing:** line up with the runway, ease the throttle to about 20% and hold S lightly to descend. Close to the ground the plane raises its nose and cushions the touchdown, so just keep the wings level. With floats down (B) you can land on the river, creeks and ponds.
 
@@ -43,13 +43,17 @@ The phone and the game talk through a small relay (`server/relay.js`) on the sam
 
 Local test: `npm run relay` in one terminal and `npm run dev` in another (Vite forwards `/ws` to the relay).
 
-## Deploying to a VPS (games.latlas.lol)
+## Deploying to play.latlas.lol
 
-1. DNS (Porkbun): an **A** record for `games` pointing to the server's IP.
-2. On the server, install Node.js 18+ and Caddy, then copy the repo to `/opt/lego-sky` and run `npm install --omit=dev` there (the relay needs the `ws` package).
-3. Build and upload the site: `npm run build` locally, then `rsync -av dist/ root@SERVER:/var/www/games/`.
-4. Copy `deploy/Caddyfile` to `/etc/caddy/Caddyfile` (or merge it in) and run `sudo systemctl reload caddy`. Caddy gets the HTTPS certificate automatically.
-5. Copy `deploy/lego-sky-relay.service` to `/etc/systemd/system/`, then run `sudo systemctl enable --now lego-sky-relay`.
+The site is a games homepage (`homepage/`) with this game under `/legoplane/`. `npm run build:play` builds both into `play-dist/`.
+
+On the server (Ubuntu/Debian, as root), one command installs or updates everything: Node.js and Caddy if they're missing, the site in `/var/www/play`, the phone-controller relay as a systemd service, and the Caddy site block with automatic HTTPS:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/Ecolando09/Airplane-Game/claude/lego-airplane-game-ttd82x/deploy/install-play.sh | sudo bash
+```
+
+Before the first run, add an **A** record for `play` in Porkbun pointing to the server's IP. Run the same command again to deploy updates.
 
 ## Rebuilding the map data
 

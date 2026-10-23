@@ -12,7 +12,9 @@ const SKY = 0x9fd0ff;
 
 // ------------------------------------------------------------------ renderer
 const renderer = new THREE.WebGLRenderer({ canvas: $('game'), antialias: true, logarithmicDepthBuffer: true });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+// Phones get a lighter render (lower resolution, smaller shadow map) to keep the frame rate up.
+const IS_TOUCH = matchMedia('(pointer: coarse)').matches;
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, IS_TOUCH ? 1.25 : 2));
 renderer.setSize(innerWidth, innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFShadowMap;
@@ -26,7 +28,7 @@ const camera = new THREE.PerspectiveCamera(65, innerWidth / innerHeight, 0.3, 40
 scene.add(new THREE.HemisphereLight(0xdff0ff, 0x6a8a50, 1.6));
 const sun = new THREE.DirectionalLight(0xfff4e0, 2.2);
 sun.castShadow = true;
-sun.shadow.mapSize.set(2048, 2048);
+sun.shadow.mapSize.setScalar(IS_TOUCH ? 1024 : 2048);
 Object.assign(sun.shadow.camera, { left: -160, right: 160, top: 160, bottom: -160, near: 1, far: 2000 });
 sun.shadow.bias = -0.0005;
 sun.shadow.normalBias = 0.5;
@@ -462,7 +464,7 @@ function updateHud(dt) {
     const el = labelEls[i];
     const d = Math.hypot(l.x - p.x, l.z - p.z);
     v.set(l.x, l.y + 40 + d * 0.01, l.z).project(camera);
-    if (d > 5000 || v.z > 1 || Math.abs(v.x) > 1.1 || Math.abs(v.y) > 1.1) {
+    if (d > (innerHeight < 500 ? 2500 : 5000) || v.z > 1 || Math.abs(v.x) > 1.1 || Math.abs(v.y) > 1.1) {
       el.style.display = 'none';
       return;
     }
@@ -506,6 +508,14 @@ function start(airborne) {
   $('menu').hidden = true;
   $('hud').hidden = false;
   $('touch').hidden = !input.isTouch;
+  input.syncThrottle(flight.throttle); // again now that the slider is visible and has a size
+  if (input.isTouch) {
+    document.body.classList.add('touch-play');
+    // Go fullscreen and hold landscape where the browser allows it (Android Chrome).
+    document.documentElement.requestFullscreen?.({ navigationUI: 'hide' })
+      .then(() => screen.orientation?.lock?.('landscape'))
+      .catch(() => {});
+  }
   sound.start();
   running = true;
   message(airborne ? 'Welcome to Spartanburg!' : 'Runway 5 — full throttle to take off!', 3);
@@ -638,4 +648,5 @@ frame();
 // Test hook: ?debug exposes the simulation for automated checks.
 if (new URLSearchParams(location.search).has('debug')) {
   window.__game = { world, flight, plane, start, step: (dt, ctl) => flight.update(dt, ctl) };
+  window.__tilt = input.tilt;
 }

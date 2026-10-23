@@ -1,3 +1,5 @@
+import { Tilt } from './tilt.js';
+
 // Phone controller page: sends stick/tilt, throttle and button presses to the
 // game screen through the relay at /ws, and shows the game's speed and altitude.
 const $ = (id) => document.getElementById(id);
@@ -89,43 +91,17 @@ stick.addEventListener('pointerup', endStick);
 stick.addEventListener('pointercancel', endStick);
 
 // ------------------------------------------------------------------ tilt
-// Hold the phone sideways like a steering wheel. Uses gravity from the motion
-// sensor, rotated into screen coordinates, relative to a calibrated "center".
-let tilt = false;
-let center = null;
-let gravity = null;
-function screenGravity() {
-  if (!gravity) return null;
-  const a = ((screen.orientation?.angle ?? window.orientation ?? 0) * Math.PI) / 180;
-  const sx = gravity.x * Math.cos(a) + gravity.y * Math.sin(a);
-  const sy = -gravity.x * Math.sin(a) + gravity.y * Math.cos(a);
-  return { steer: Math.atan2(sx, sy), lean: Math.atan2(gravity.z, Math.hypot(sx, sy)) };
-}
-window.addEventListener('devicemotion', (e) => {
-  const g = e.accelerationIncludingGravity;
-  if (g && g.x !== null) gravity = { x: g.x, y: g.y, z: g.z };
-  if (!tilt) return;
-  const s = screenGravity();
-  if (!s) return;
-  if (!center) center = s;
-  let d = s.steer - center.steer;
-  if (d > Math.PI) d -= 2 * Math.PI;
-  if (d < -Math.PI) d += 2 * Math.PI;
-  const clamp = (v) => Math.max(-1, Math.min(1, v));
-  state.roll = clamp(-d / 0.6);
-  state.pitch = clamp((s.lean - center.lean) / 0.45);
-});
+const tilt = new Tilt();
+setInterval(() => {
+  if (tilt.active) {
+    state.roll = tilt.roll;
+    state.pitch = tilt.pitch;
+  }
+}, 33);
 
 async function setMode(useTilt) {
-  if (useTilt && typeof DeviceMotionEvent?.requestPermission === 'function') {
-    try {
-      if ((await DeviceMotionEvent.requestPermission()) !== 'granted') return;
-    } catch {
-      return;
-    }
-  }
-  tilt = useTilt;
-  center = null;
+  if (useTilt && !(await tilt.enable())) return;
+  if (!useTilt) tilt.disable();
   state.roll = state.pitch = 0;
   stick.hidden = useTilt;
   $('tiltInfo').hidden = !useTilt;
@@ -134,7 +110,7 @@ async function setMode(useTilt) {
 }
 $('modeStick').onclick = () => setMode(false);
 $('modeTilt').onclick = () => setMode(true);
-$('center').onclick = () => (center = null);
+$('center').onclick = () => tilt.recenter();
 
 // ------------------------------------------------------------------ throttle
 const thr = $('thr');

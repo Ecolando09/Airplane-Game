@@ -1,11 +1,12 @@
-# /etc/caddy/Caddyfile: serves the game and passes /ws to the phone-controller relay.
-games.latlas.lol {
+# Site block for /etc/caddy/Caddyfile: the games homepage, the games under it,
+# and /ws passed to the phone-controller relay. Caddy handles HTTPS on its own.
+play.latlas.lol {
     encode gzip
     handle /ws {
         reverse_proxy localhost:8787
     }
     handle {
-        root * /var/www/games
+        root * /var/www/play
         file_server
     }
 }
