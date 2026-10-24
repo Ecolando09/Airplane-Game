@@ -6,6 +6,7 @@ import { Input } from './input.js';
 import { EngineSound } from './sound.js';
 import { legoMaterial } from './lego.js';
 import { RemoteLink } from './remote.js';
+import { Traffic } from './traffic.js';
 
 const $ = (id) => document.getElementById(id);
 const SKY = 0x9fd0ff;
@@ -65,6 +66,7 @@ await new Promise((r) => setTimeout(r, 30));
 const world = new World(scene, data);
 $('loadBar').style.width = '100%';
 
+const traffic = new Traffic(scene, world, IS_TOUCH ? 900 : 2500);
 const plane = createLegoPlane();
 scene.add(plane.group);
 const flight = new Flight(world, plane);
@@ -106,6 +108,17 @@ function updateFloats(dt) {
   for (const w of plane.wheels) w.visible = floatsAnim < 0.6;
   $('gear').textContent = flight.floats ? 'FLOATS' : 'WHEELS';
   $('gear').classList.toggle('floats', flight.floats);
+}
+
+// ------------------------------------------------------------------ turbo boosters
+// Rockets slide out when turbo is on: orange flames for T2X, blue for T3X.
+let boosterLevel = 0;
+let boosterColor = 2;
+function updateBoosters(dt) {
+  const on = flight.turbo > 1 && !flight.crashed;
+  if (on) boosterColor = flight.turbo;
+  boosterLevel += ((on ? 1 : 0) - boosterLevel) * (1 - Math.exp(-dt * 5));
+  plane.updateBoosters(boosterLevel, boosterColor, flight.throttle, timer.getElapsed());
 }
 
 // ------------------------------------------------------------------ crash debris
@@ -656,6 +669,7 @@ function frame() {
   const dt = Math.min(timer.getDelta(), 0.05);
   input.pollButtons(!running);
   world.update(timer.getElapsed());
+  traffic.update(dt);
   if (running) {
     const ctl = input.read();
     if (!flight.crashed) {
@@ -670,6 +684,7 @@ function frame() {
     }
     updateDebris(dt);
     updateFloats(dt);
+    updateBoosters(dt);
     poseAirplane(dt);
     const rpm = 8 + flight.throttle * 60;
     plane.propeller.rotation.z += rpm * dt;
@@ -697,4 +712,5 @@ frame();
 if (new URLSearchParams(location.search).has('debug')) {
   window.__game = { world, flight, plane, start, step: (dt, ctl) => flight.update(dt, ctl) };
   window.__tilt = input.tilt;
+  window.__traffic = traffic;
 }

@@ -3,7 +3,7 @@
 A browser flying game: the LEGO Technic 42198 Bush Plane over a Lego-brick version of Spartanburg, SC, built from real map data.
 
 - **Real city layout.** Roads, rail, rivers, parks and ~45,000 building footprints come from OpenStreetMap (via Overture Maps), on real terrain elevation.
-- **Lego style.** Studded baseplate ground, brick buildings with windows, gable roofs, Lego trees and brick clouds.
+- **Lego style.** Studded baseplate ground, brick buildings with windows, gable roofs, Lego trees, brick clouds and Lego cars driving the real streets.
 - **Airport.** Take off from runway 5 at Spartanburg Downtown Memorial Airport (SPA), or start in the air over downtown.
 - **Map pins.** 2225 Pineview Cir, the Denny's building and Lake Craig at Croft State Park have tall beacons and show on the street map in the corner.
 - **Landmarks.** Morgan Square, Wofford, Converse, USC Upstate, Duncan Park, Drayton Mills, Cleveland Park and more are labeled.
@@ -25,7 +25,7 @@ npm run build      # static site in dist/ (works on GitHub Pages or any static h
 | Q / E | Rudder |
 | Shift / Ctrl (or + / −) | Throttle up / down |
 | B | Boat floats up/down (land on water) |
-| T (or 1 / 2 / 3) | Turbo: normal, T2X (2× speed), T3X (3× speed) |
+| T (or 1 / 2 / 3) | Turbo: normal, T2X (2× speed, orange booster rockets), T3X (3× speed, blue flames) |
 | Space | Brakes |
 | C | Camera: chase / far / cockpit |
 | N (or tap the map) | Enlarge the street map |
@@ -75,6 +75,7 @@ The map area is set by `W, S, E, N` in `tools/fetch_data.py`. The runway isn't i
 - `src/flight.js`: flight physics (takeoff, stall, banked turns, landing and crash checks)
 - `src/main.js`: rendering, cameras, HUD, minimap, game flow
 - `src/lego.js`: Lego colors and the stud/window shader
+- `src/traffic.js`: cars driving the streets
 - `src/remote.js`, `remote.html`, `src/remote-pad.js`: phone controller (game side and phone page)
 - `server/relay.js`: WebSocket relay between phones and the game screen
 
