@@ -133,6 +133,7 @@ out['landmarks'] = [{'name': n, 'x': xy(lon, lat)[0], 'z': xy(lon, lat)[1]} for 
 LOCATORS = [
     ('2225 Pineview Cir', 34.93660, -81.88470, 'home'),
     ("Denny's Building", 34.94985, -81.92824, 'pin'),
+    ('Lake Craig · Croft State Park', 34.87007, -81.83842, 'park'),
 ]
 out['locators'] = [{'name': n, 'x': xy(lon, lat)[0], 'z': xy(lon, lat)[1], 'kind': k} for n, lat, lon, k in LOCATORS]
 # Runway 5/23, 1585 m x 46 m; centerline placed in the airfield gap in the map data.
@@ -181,7 +182,7 @@ block = np.array(block); kind = np.array(kind)
 PROB = {0: 0.55, 1: 0.18, 2: 0.25, 3: 0.95}
 rng = np.random.default_rng(3)
 trees = []
-for _ in range(140000):
+for _ in range(int(HALF_X * HALF_Z * 4 / 1e6 * 450)):  # ~450 candidates per km²
     x = rng.uniform(-HALF_X, HALF_X); z = rng.uniform(-HALF_Z, HALF_Z)
     i, j = int((x + HALF_X) / RES), int((z + HALF_Z) / RES)
     if i >= MW or j >= MH or block[j, i]:

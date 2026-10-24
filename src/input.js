@@ -13,7 +13,10 @@ export class Input {
     this.remote = null;
     this.tilt = new Tilt();
 
-    const actions = { KeyC: 'cam', KeyR: 'reset', KeyT: 'air', KeyM: 'mute', KeyI: 'invert', KeyB: 'floats', KeyN: 'map' };
+    const actions = {
+      KeyC: 'cam', KeyR: 'reset', KeyM: 'mute', KeyI: 'invert', KeyB: 'floats', KeyN: 'map',
+      KeyT: 'turbo', Digit1: 'turbo1', Digit2: 'turbo2', Digit3: 'turbo3',
+    };
     addEventListener('keydown', (e) => {
       if (e.repeat) return;
       this.keys.add(e.code);
@@ -161,12 +164,12 @@ export class Input {
 
   /**
    * Gamepad buttons that trigger actions (Xbox layout): B floats, Y camera,
-   * Menu restart, View big map, A starts from the menu. Call once per frame.
+   * RB turbo, Menu restart, View big map, A starts from the menu. Call once per frame.
    */
   pollButtons(inMenu) {
     const gp = navigator.getGamepads?.().find((g) => g);
     if (!gp) return;
-    const map = inMenu ? { 0: 'menuStart', 3: 'menuAir' } : { 1: 'floats', 3: 'cam', 9: 'reset', 8: 'map' };
+    const map = inMenu ? { 0: 'menuStart', 3: 'menuAir' } : { 1: 'floats', 3: 'cam', 5: 'turbo', 9: 'reset', 8: 'map' };
     this._prevButtons ||= [];
     gp.buttons.forEach((b, i) => {
       if (b.pressed && !this._prevButtons[i] && map[i]) this.emit(map[i]);

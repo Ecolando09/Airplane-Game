@@ -50,6 +50,8 @@ export class Flight {
     this.crashReason = '';
     this.ctrl = { pitch: 0, roll: 0, yaw: 0 };
     this.floats = false;
+    this.turboNow = this.turbo || 1;
+    this.turbo ||= 1;
     this.onWater = false;
   }
 
@@ -141,7 +143,10 @@ export class Flight {
 
     // ---- speed
     const f = this.forward;
-    let accel = this.throttle * THRUST - DRAG * this.speed * this.speed - G * f.y;
+    // Turbo (T2X / T3X) multiplies top speed: thrust scales with the square of the
+    // factor, so the plane settles at 2x or 3x its normal cruise. Eased in and out.
+    this.turboNow += (this.turbo - this.turboNow) * (1 - Math.exp(-dt * 1.5));
+    let accel = this.throttle * THRUST * this.turboNow * this.turboNow - DRAG * this.speed * this.speed - G * f.y;
     if (this.onGround) accel -= input.brake ? 8 : 0.4;
     if (this.floats) accel -= 0.002 * this.speed * this.speed; // floats add drag
     this.speed = Math.max(0, this.speed + accel * dt);
@@ -159,7 +164,12 @@ export class Flight {
       this.vel.y = Math.max(this.vel.y, -(1.2 + agl * 0.3));
     }
     this.verticalSpeed = this.vel.y;
-    this.pos.addScaledVector(this.vel, dt);
+    // Move in small steps so fast turbo flight can't skip through a building.
+    const steps = Math.max(1, Math.ceil((this.speed * dt) / 3));
+    for (let i = 0; i < steps; i++) {
+      this.pos.addScaledVector(this.vel, dt / steps);
+      if (this.world.hitsObstacle(this.pos, this.plane.radius * 0.8)) return this.crash('Crashed into the city!');
+    }
 
     // ---- ground contact
     const ground = this.world.heightAt(this.pos.x, this.pos.z);

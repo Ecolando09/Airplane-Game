@@ -44,7 +44,7 @@ addEventListener('resize', () => {
 // ------------------------------------------------------------------ loading
 async function loadCity() {
   const res = await fetch('./city.json');
-  const total = Number(res.headers.get('content-length')) || 6.3e6;
+  const total = Number(res.headers.get('content-length')) || 8.7e6;
   const reader = res.body.getReader();
   const chunks = [];
   let got = 0;
@@ -208,6 +208,12 @@ function updateCamera(dt) {
   camera.position.copy(camPos);
   camera.up.set(0, 1, 0).lerp(up, 0.25).normalize();
   camera.lookAt(camLook);
+  // Widen the view a little at turbo speeds for a sense of speed.
+  const fov = 65 + Math.min(20, Math.max(0, flight.speed - 75) * 0.1);
+  if (Math.abs(camera.fov - fov) > 0.05) {
+    camera.fov += (fov - camera.fov) * (1 - Math.exp(-dt * 3));
+    camera.updateProjectionMatrix();
+  }
 }
 
 // ------------------------------------------------------------------ minimap
@@ -589,6 +595,7 @@ setInterval(() => {
     spd: Math.round(flight.speed * 1.944),
     alt: Math.round((p.y - plane.gearHeight + world.baseElevation) * 3.281),
     gear: flight.floats ? 'FLOATS' : 'WHEELS',
+    turbo: flight.turbo,
     crashed: flight.crashed,
     thr: flight.throttle,
   });
@@ -596,6 +603,21 @@ setInterval(() => {
 
 input.on('cam', () => (camMode = (camMode + 1) % CAMS.length));
 input.on('floats', toggleFloats);
+// Turbo modes: 1X normal, T2X and T3X multiply top speed by 2 and 3.
+const turboName = (t) => (t === 1 ? '1X' : `T${t}X`);
+function setTurbo(t) {
+  if (!running) return;
+  flight.turbo = t;
+  $('turbo').textContent = turboName(t);
+  $('turbo').classList.toggle('on', t > 1);
+  $('turboChip').textContent = t === 1 ? 'TURBO' : turboName(t);
+  $('turboChip').classList.toggle('on', t > 1);
+  message(t === 1 ? 'Turbo off — normal speed' : `🚀 ${turboName(t)} — ${t}× speed!`, 1.8);
+}
+input.on('turbo', () => setTurbo((flight.turbo % 3) + 1));
+input.on('turbo1', () => setTurbo(1));
+input.on('turbo2', () => setTurbo(2));
+input.on('turbo3', () => setTurbo(3));
 input.on('map', toggleMap);
 input.on('menuStart', () => !running && start(false));
 input.on('menuAir', () => !running && start(true));

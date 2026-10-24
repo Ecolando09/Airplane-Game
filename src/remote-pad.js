@@ -36,6 +36,7 @@ function connect() {
       $('spd').textContent = m.spd;
       $('alt').textContent = m.alt.toLocaleString();
       $('gear').textContent = m.gear;
+      if (m.turbo) $('turboBtn').textContent = `Turbo ${m.turbo === 1 ? '1X' : `T${m.turbo}X`}`;
       $('menuButtons').hidden = !m.menu;
       $('flyButtons').hidden = m.menu;
       if (m.crashed && !wasCrashed) navigator.vibrate?.([120, 60, 240]);

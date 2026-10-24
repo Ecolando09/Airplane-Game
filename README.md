@@ -2,10 +2,10 @@
 
 A browser flying game: the LEGO Technic 42198 Bush Plane over a Lego-brick version of Spartanburg, SC, built from real map data.
 
-- **Real city layout.** Roads, rail, rivers, parks and ~36,000 building footprints come from OpenStreetMap (via Overture Maps), on real terrain elevation.
+- **Real city layout.** Roads, rail, rivers, parks and ~45,000 building footprints come from OpenStreetMap (via Overture Maps), on real terrain elevation.
 - **Lego style.** Studded baseplate ground, brick buildings with windows, gable roofs, Lego trees and brick clouds.
 - **Airport.** Take off from runway 5 at Spartanburg Downtown Memorial Airport (SPA), or start in the air over downtown.
-- **Map pins.** 2225 Pineview Cir and the Denny's building have tall beacons and show on the street map in the corner.
+- **Map pins.** 2225 Pineview Cir, the Denny's building and Lake Craig at Croft State Park have tall beacons and show on the street map in the corner.
 - **Landmarks.** Morgan Square, Wofford, Converse, USC Upstate, Duncan Park, Drayton Mills, Cleveland Park and more are labeled.
 
 ## Play locally
@@ -25,10 +25,11 @@ npm run build      # static site in dist/ (works on GitHub Pages or any static h
 | Q / E | Rudder |
 | Shift / Ctrl (or + / −) | Throttle up / down |
 | B | Boat floats up/down (land on water) |
+| T (or 1 / 2 / 3) | Turbo: normal, T2X (2× speed), T3X (3× speed) |
 | Space | Brakes |
 | C | Camera: chase / far / cockpit |
 | N (or tap the map) | Enlarge the street map |
-| R / T | Restart on the runway / in the air |
+| R | Restart on the runway |
 | M | Sound on/off |
 
 On a phone, turn it sideways: you get an on-screen stick, a throttle slider and buttons, and **TILT** lets you steer by tilting the phone like a steering wheel (tip the top toward you to climb; **CENTER** re-centers). Gamepads (Xbox layout) work too: left stick to fly, right stick for rudder, triggers for throttle, A brakes, B floats, Y camera, Menu restarts, View enlarges the map. A starts the game from the menu.

@@ -285,3 +285,7 @@ button.act.blue {
   color: var(--ink);
   font-weight: 800;
 }
+
+button.act.turbo {
+  background: #e8590c;
+}

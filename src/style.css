@@ -671,3 +671,14 @@ body.is-touch .menu-tip-keys {
 body.is-touch .card .sub {
   margin-bottom: 10px;
 }
+
+.turbo.on,
+#turboChip.on {
+  color: #ff922b;
+}
+
+#turboChip.on {
+  background: #e8590c;
+  color: #fff;
+  border-color: #ffc078;
+}

@@ -20,6 +20,7 @@
         <div><span class="k">V/S</span> <b id="vs">0</b> fpm</div>
         <div class="throttle"><span class="k">THR</span><div class="bar"><div id="thr"></div></div></div>
         <div><span class="k">GEAR</span> <b id="gear" class="gear">WHEELS</b></div>
+        <div><span class="k">MODE</span> <b id="turbo" class="turbo">1X</b></div>
       </div>
       <div class="panel" id="over"></div>
       <canvas id="minimap" width="480" height="480" title="Tap to enlarge (N)"></canvas>
@@ -39,6 +40,7 @@
         <button class="chip" data-act="cam">CAM</button>
         <button class="chip" data-act="brake">BRAKE</button>
         <button class="chip" data-act="floats">FLOATS</button>
+        <button class="chip" data-act="turbo" id="turboChip">TURBO</button>
         <button class="chip" data-act="reset">RESET</button>
       </div>
     </div>
@@ -71,12 +73,13 @@
           <div><kbd>Q</kbd><kbd>E</kbd> rudder</div>
           <div><kbd>Shift</kbd> / <kbd>Ctrl</kbd> throttle up / down</div>
           <div><kbd>B</kbd> boat floats (land on water) &nbsp; <kbd>Space</kbd> brakes</div>
+          <div><kbd>T</kbd> turbo (1X → T2X → T3X) &nbsp; <kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> pick turbo</div>
           <div><kbd>C</kbd> camera &nbsp; <kbd>N</kbd> big map &nbsp; <kbd>R</kbd> restart</div>
           <div><kbd>I</kbd> invert pitch &nbsp; <kbd>M</kbd> sound</div>
         </div>
         <p class="tip">Takeoff: full throttle, gently pull up at about 55 kt. Landing: line up with the
           runway, ease the throttle back and descend gently. The plane cushions itself near the ground.
-          <span class="menu-tip-keys">Xbox controller: left stick to fly, triggers for throttle, A brakes, B floats, Y camera.</span></p>
+          <span class="menu-tip-keys">Xbox controller: left stick to fly, triggers for throttle, A brakes, B floats, Y camera, RB turbo.</span></p>
         <p class="credit">Map data © OpenStreetMap contributors, Overture Maps Foundation. Elevation: Mapzen Terrain Tiles.</p>
       </div>
     </div>

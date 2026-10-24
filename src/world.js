@@ -87,7 +87,7 @@ export class World {
   }
 
   _buildLocators(list) {
-    const COLORS = { home: LEGO.blue, pin: LEGO.red };
+    const COLORS = { home: LEGO.blue, pin: LEGO.red, park: LEGO.green };
     return list.map((l) => {
       const color = COLORS[l.kind] ?? LEGO.red;
       const y = this.heightAt(l.x, l.z);

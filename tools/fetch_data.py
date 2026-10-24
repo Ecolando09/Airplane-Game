@@ -11,7 +11,7 @@ import numpy as np
 import pyarrow.dataset as ds, pyarrow.fs as fs, pyarrow.parquet as pq
 from PIL import Image
 
-W, S, E, N = -82.00, 34.88, -81.86, 35.00  # Spartanburg, SC
+W, S, E, N = -82.00, 34.83, -81.78, 35.00  # Spartanburg, SC, plus Croft State Park to the south-east
 RELEASE = '2026-09-23.1'
 OUT = sys.argv[1] if len(sys.argv) > 1 else 'tools/data'
 os.makedirs(OUT, exist_ok=True)
@@ -35,7 +35,7 @@ for name, (path, cols) in THEMES.items():
     print(name, t.num_rows)
 
 # Elevation: zoom-13 Terrarium tiles resampled to a 257x257 grid over the bbox.
-Z, G = 13, 257
+Z, G = 13, 321
 def tile(lon, lat):
     n = 2 ** Z
     return (lon + 180) / 360 * n, (1 - math.asinh(math.tan(math.radians(lat))) / math.pi) / 2 * n
