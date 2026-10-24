@@ -228,6 +228,11 @@ h1 {
   padding-top: 8px;
 }
 
+.phone-note {
+  font-size: 14px;
+  color: var(--muted);
+}
+
 .btn {
   display: inline-block;
   padding: 12px 20px;

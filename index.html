@@ -54,6 +54,13 @@
           <p id="loadText">Loading Spartanburg…</p>
         </div>
         <div id="startButtons" hidden>
+          <div id="phoneControls" hidden>
+            <p class="seg-label">Flying on this phone? Turn it sideways, then pick how to steer:</p>
+            <div class="seg" role="group" aria-label="Steering on this phone">
+              <button id="ctlTilt" class="on" aria-pressed="true">📱 Tilt the phone</button>
+              <button id="ctlStick" aria-pressed="false">🕹️ Touch stick</button>
+            </div>
+          </div>
           <button class="big" id="startRunway">Take off from Downtown Memorial Airport</button>
           <button class="big alt" id="startAir">Start in the air over downtown</button>
           <button class="big phone-btn" id="phoneBtn">📱 Use my phone as the controller</button>
@@ -69,7 +76,7 @@
         </div>
         <p class="tip">Takeoff: full throttle, gently pull up at about 55 kt. Landing: line up with the
           runway, ease the throttle back and descend gently. The plane cushions itself near the ground.
-          Xbox controller: left stick to fly, triggers for throttle, A brakes, B floats, Y camera.</p>
+          <span class="menu-tip-keys">Xbox controller: left stick to fly, triggers for throttle, A brakes, B floats, Y camera.</span></p>
         <p class="credit">Map data © OpenStreetMap contributors, Overture Maps Foundation. Elevation: Mapzen Terrain Tiles.</p>
       </div>
     </div>

@@ -496,7 +496,33 @@ function updatePinLabels() {
 // ------------------------------------------------------------------ game flow
 let running = false;
 let crashTimer = 0;
+// On a phone: choose tilt or touch-stick steering before starting.
+let phoneSteering = 'tilt';
+try {
+  phoneSteering = localStorage.getItem('legosky.steering') || 'tilt';
+} catch {}
+function setPhoneSteering(mode) {
+  phoneSteering = mode;
+  for (const [id, m] of [['ctlTilt', 'tilt'], ['ctlStick', 'stick']]) {
+    $(id).classList.toggle('on', m === mode);
+    $(id).setAttribute('aria-pressed', String(m === mode));
+  }
+  try {
+    localStorage.setItem('legosky.steering', mode);
+  } catch {}
+}
+if (input.isTouch) {
+  document.body.classList.add('is-touch');
+  $('phoneControls').hidden = false;
+  $('phoneBtn').hidden = true; // you're already on the phone
+  setPhoneSteering(phoneSteering);
+  $('ctlTilt').onclick = () => setPhoneSteering('tilt');
+  $('ctlStick').onclick = () => setPhoneSteering('stick');
+}
+
 function start(airborne) {
+  // Runs inside the tap, so the motion-sensor permission prompt is allowed here.
+  if (input.isTouch) input.setTilt(phoneSteering === 'tilt').then((on) => on && message('Tilt to steer — tap CENTER to re-center', 3));
   clearDebris();
   airborne ? flight.resetAirborne() : flight.reset();
   input.syncThrottle(flight.throttle);

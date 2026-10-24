@@ -144,13 +144,7 @@ export class Input {
     for (const b of document.querySelectorAll('#touchButtons button')) {
       const act = b.dataset.act;
       if (act === 'tilt') {
-        b.addEventListener('click', async () => {
-          if (this.tilt.active) this.tilt.disable();
-          else if (!(await this.tilt.enable())) return;
-          b.classList.toggle('on', this.tilt.active);
-          document.getElementById('stick').hidden = this.tilt.active;
-          document.getElementById('recenter').hidden = !this.tilt.active;
-        });
+        b.addEventListener('click', () => this.setTilt(!this.tilt.active));
       } else if (act === 'recenter') {
         b.addEventListener('click', () => this.tilt.recenter());
       } else if (act === 'brake') {
@@ -178,6 +172,19 @@ export class Input {
       if (b.pressed && !this._prevButtons[i] && map[i]) this.emit(map[i]);
       this._prevButtons[i] = b.pressed;
     });
+  }
+
+  /**
+   * Switch tilt steering on or off and update the touch controls to match.
+   * Call from a tap: iPhones ask for motion-sensor permission the first time.
+   */
+  async setTilt(on) {
+    if (on && !(await this.tilt.enable())) on = false;
+    if (!on) this.tilt.disable();
+    document.querySelector('#touchButtons [data-act=tilt]')?.classList.toggle('on', on);
+    document.getElementById('stick').hidden = on;
+    document.getElementById('recenter').hidden = !on;
+    return on;
   }
 
   /** Reset touch throttle to match the plane after a restart. */

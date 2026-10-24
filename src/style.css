@@ -253,7 +253,7 @@ button.big.phone-btn {
   position: fixed;
   inset: 0;
   display: flex;
-  align-items: center;
+  align-items: safe center;
   justify-content: center;
   background: rgba(10, 30, 60, 0.45);
   padding: 16px;
@@ -624,4 +624,50 @@ kbd {
   .card {
     padding: 16px;
   }
+}
+
+#phoneControls {
+  display: grid;
+  gap: 6px;
+}
+
+.seg-label {
+  margin: 0;
+  font-size: 14px;
+  color: #556;
+}
+
+.seg {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  background: #eef0f2;
+  padding: 4px;
+  border-radius: 12px;
+}
+
+.seg button {
+  border: 0;
+  border-radius: 9px;
+  padding: 10px 8px;
+  font-weight: 800;
+  font-size: 15px;
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.seg button.on {
+  background: var(--yellow);
+  box-shadow: 0 2px 0 #b8972a;
+}
+
+/* Phones: the keyboard list doesn't apply; keep the menu short. */
+body.is-touch .controls,
+body.is-touch .menu-tip-keys {
+  display: none;
+}
+
+body.is-touch .card .sub {
+  margin-bottom: 10px;
 }
