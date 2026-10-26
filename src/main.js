@@ -623,6 +623,9 @@ function start(airborne) {
   $('hud').hidden = false;
   $('touch').hidden = !input.isTouch;
   input.syncThrottle(flight.throttle); // again now that the slider is visible and has a size
+  // Helicopter on a touch screen: the stick only steers; LIFT starts at hold height.
+  if (isHeli && input.isTouch) input.touchLift = 0;
+  input.resetLift();
   if (input.isTouch) {
     document.body.classList.add('touch-play');
     // Go fullscreen and hold landscape where the browser allows it (Android Chrome).
@@ -633,7 +636,7 @@ function start(airborne) {
   sound.start();
   running = true;
   message(airborne ? `Welcome to ${data.name.split(',')[0]}!`
-    : isHeli ? 'Hold Shift (or push the throttle up) to lift off!'
+    : isHeli ? (input.isTouch ? 'Push LIFT up to take off!' : 'Hold W to lift off, Shift for speed!')
       : `Runway ${world.runway.names?.[0] ?? ''} — full throttle to take off!`, 3);
 }
 // Menu: choices and labels for this city and vehicle.
@@ -642,6 +645,8 @@ $('subtitle').textContent = `Fly a ${isHeli ? 'Ghost-Spider helicopter' : 'Lego 
 $('startRunway').textContent = `${isHeli ? 'Lift off from' : 'Take off from'} ${data.airport}`;
 $('startAir').textContent = 'Start in the air over downtown';
 document.body.classList.toggle('heli', isHeli);
+if (isHeli) $('throttleLabel').textContent = 'SPEED';
+input.heliMode = isHeli;
 for (const [id, key, val] of [['segCity', 'city', settings.city], ['segVehicle', 'vehicle', settings.vehicle], ['segLook', 'look', lookWanted]]) {
   for (const b of $(id).querySelectorAll('button')) {
     const on = b.dataset.v === val;
@@ -705,6 +710,7 @@ setInterval(() => {
     alt: Math.round((p.y - plane.gearHeight + world.baseElevation) * 3.281),
     gear: flight.floats ? 'FLOATS' : 'WHEELS',
     turbo: flight.turbo,
+    vehicle: isHeli ? 'heli' : 'plane',
     crashed: flight.crashed,
     thr: flight.throttle,
   });

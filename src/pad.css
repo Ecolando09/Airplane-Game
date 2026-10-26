@@ -289,3 +289,46 @@ button.act.blue {
 button.act.turbo {
   background: #e8590c;
 }
+
+/* Helicopter: an extra LIFT slider column (middle = hold height). */
+body:not(.heli) .heli-only {
+  display: none;
+}
+
+body.heli #pad {
+  grid-template-columns: 1.1fr 1fr 0.45fr 0.45fr;
+}
+
+#liftSec {
+  gap: 6px;
+}
+
+#lift {
+  position: relative;
+  width: 72px;
+  flex: 1;
+  max-height: 70vh;
+  border-radius: 16px;
+  background: #1f3240;
+  border: 3px solid var(--line);
+  overflow: hidden;
+}
+
+#lift .mid {
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  top: 50%;
+  border-top: 2px dashed rgba(255, 255, 255, 0.5);
+}
+
+#liftKnob {
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  height: 34px;
+  top: calc(50% - 17px);
+  border-radius: 10px;
+  background: var(--blue);
+  box-shadow: 0 3px 0 #003577;
+}

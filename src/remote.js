@@ -43,6 +43,7 @@ export class RemoteLink {
         this.input.remote = {
           pitch: clamp(m.pitch), roll: clamp(m.roll), yaw: clamp(m.yaw),
           throttle: Math.min(1, Math.max(0, Number(m.throttle) || 0)), brake: !!m.brake, time: performance.now(),
+          lift: typeof m.lift === 'number' ? clamp(m.lift) : undefined, // helicopter LIFT slider
         };
       } else if (m.t === 'act' && typeof m.a === 'string') {
         this.input.emit(m.a);

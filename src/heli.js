@@ -168,11 +168,11 @@ const Z = new THREE.Vector3(0, 0, 1);
 /**
  * Arcade helicopter flight. Same interface as Flight so the rest of the game
  * (HUD, camera, crash, floats, turbo) works unchanged.
- *   stick forward/back (pitch input)  -> fly forward / backward
- *   stick left/right (roll input)     -> turn
- *   rudder (yaw input)                -> slide sideways
- *   throttle up/down (Shift/Ctrl)     -> climb / descend; let go to hover
- *   throttle slider (touch / phone)   -> 50% hovers, above climbs, below descends
+ *   joystick left/right (A/D)         -> steer (turn)
+ *   throttle (Shift/Ctrl, slider)     -> forward speed; stays where you leave it
+ *   lift (W/S held, or LIFT slider)   -> climb / descend; centered holds height
+ *   rudder (Q/E)                      -> slide sideways
+ *   brake (Space)                     -> wind the throttle back to a stop
  */
 export class HeliFlight {
   constructor(world, heli) {
@@ -215,8 +215,7 @@ export class HeliFlight {
     this.vel.set(0, 0, 0);
     this.speed = 0;
     this.verticalSpeed = 0;
-    this.throttle = 0.5;
-    this.collective = 0;
+    this.throttle = 0;
     this.crashed = false;
     this.crashReason = '';
     this.ctrl = { pitch: 0, roll: 0, yaw: 0 };
@@ -257,18 +256,16 @@ export class HeliFlight {
     c.roll += (input.roll - c.roll) * k;
     c.yaw += (input.yaw - c.yaw) * k;
 
-    // Collective: keys climb/descend while held; a slider sets it directly.
-    let climb;
-    if (input.throttleSet !== undefined) {
-      this.throttle = input.throttleSet;
-      climb = THREE.MathUtils.clamp((this.throttle - 0.5) * 2.2, -1, 1);
-    } else {
-      climb = input.throttle;
-      this.throttle = 0.5 + climb * 0.5;
-    }
+    // Throttle sets forward speed and stays where it is left (Shift/Ctrl nudge it,
+    // a slider sets it directly). Brake winds it back to a stop.
+    if (input.throttleSet !== undefined) this.throttle = input.throttleSet;
+    else this.throttle = THREE.MathUtils.clamp(this.throttle + input.throttle * dt * 0.6, 0, 1);
+    if (input.brake) this.throttle = Math.max(0, this.throttle - dt * 1.2);
+    // Lift: the LIFT slider (touch / phone controller) or W/S held; centered holds height.
+    const climb = input.liftSet !== undefined ? input.liftSet : c.pitch;
     this.turboNow += (this.turbo - this.turboNow) * (1 - Math.exp(-dt * 1.5));
 
-    // Turning (A/D or stick left/right) is direct and faster when slow.
+    // Steering: the joystick (or A/D) turns, a little faster when slow.
     const turnRate = 1.1 / (1 + this.speed / 60);
     this.yaw -= c.roll * turnRate * dt;
 
@@ -278,7 +275,7 @@ export class HeliFlight {
     const fz = -Math.cos(this.yaw);
     const rx = -fz;
     const rz = fx;
-    const wantF = (this.onGround ? Math.max(0, c.pitch) * 0.2 : c.pitch) * maxFwd;
+    const wantF = (this.onGround ? 0.15 : 1) * this.throttle * maxFwd;
     const wantS = c.yaw * 14;
     const tx = fx * wantF + rx * wantS;
     const tz = fz * wantF + rz * wantS;
@@ -331,11 +328,6 @@ export class HeliFlight {
     } else if (this.onGround && this.pos.y > minY + 0.3) {
       this.onGround = false;
       this.onWater = false;
-    }
-    if (input.brake && !this.onGround) {
-      // Brake = come to a hover.
-      this.vel.x *= Math.exp(-dt * 2);
-      this.vel.z *= Math.exp(-dt * 2);
     }
   }
 

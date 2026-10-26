@@ -2,7 +2,7 @@
 
 A browser flying game over Spartanburg, SC and Fort Collins, CO, built from real map data.
 
-- **Vehicles:** the LEGO Technic 42198 Bush Plane, or Ghost-Spider's helicopter (helicopter controls: W/S forward/back, A/D turn, Shift/Ctrl up/down, let go to hover).
+- **Vehicles:** the LEGO Technic 42198 Bush Plane, or Ghost-Spider's helicopter. Helicopter controls: joystick (or A/D) steers, throttle (Shift/Ctrl or the SPEED slider) sets forward speed, lift (W/S or the LIFT slider) goes up and down with the middle holding height, rudder (Q/E or the RUDDER bar above the joystick on phones) slides sideways.
 - **Looks:** Lego bricks; realistic (Sentinel-2 satellite ground, natural colors, a painted version of the plane); or Google Photorealistic 3D Tiles (needs a Google Maps API key on the server).
 
 - **Real city layout.** Roads, rail, rivers, parks and ~45,000 building footprints come from OpenStreetMap (via Overture Maps), on real terrain elevation.

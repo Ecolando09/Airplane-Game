@@ -9,6 +9,8 @@ export class Input {
     this.isTouch = matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window;
     this.touchStick = { x: 0, y: 0 };
     this.touchThrottle = null;
+    this.touchLift = null;
+    this.touchRudder = 0; // helicopter LIFT slider: -1 descend .. 0 hold .. +1 climb
     this.touchBrake = false;
     this.remote = null;
     this.tilt = new Tilt();
@@ -45,6 +47,7 @@ export class Input {
     let yaw = k('KeyE') - k('KeyQ');
     let throttle = k('ShiftLeft', 'ShiftRight', 'Equal', 'NumpadAdd') - k('ControlLeft', 'ControlRight', 'Minus', 'NumpadSubtract');
     let throttleSet;
+    let liftSet;
     let brake = k('Space') === 1;
 
     // Touch: tilt steering or the on-screen stick
@@ -56,6 +59,8 @@ export class Input {
       pitch = -this.touchStick.y;
     }
     if (this.touchThrottle !== null) throttleSet = this.touchThrottle;
+    if (this.touchLift !== null) liftSet = this.touchLift;
+    if (this.touchRudder) yaw = this.touchRudder;
     brake ||= this.touchBrake;
 
     // Phone controller (via the relay); ignored if it stops sending for half a second.
@@ -67,6 +72,7 @@ export class Input {
       }
       if (rm.yaw) yaw = rm.yaw;
       throttleSet = rm.throttle;
+      if (typeof rm.lift === 'number') liftSet = rm.lift;
       brake ||= rm.brake;
     }
 
@@ -74,7 +80,11 @@ export class Input {
     const gp = navigator.getGamepads?.().find((g) => g);
     if (gp) {
       const dz = (v) => (Math.abs(v) < 0.12 ? 0 : v);
-      if (dz(gp.axes[0]) || dz(gp.axes[1])) {
+      if (this.heliMode) {
+        // Helicopter: left stick steers, right stick up/down is lift.
+        if (dz(gp.axes[0])) roll = dz(gp.axes[0]);
+        if (dz(gp.axes[3] ?? 0)) liftSet = -dz(gp.axes[3]);
+      } else if (dz(gp.axes[0]) || dz(gp.axes[1])) {
         roll = dz(gp.axes[0]);
         pitch = -dz(gp.axes[1]);
       }
@@ -86,7 +96,7 @@ export class Input {
     }
 
     if (this.invertPitch) pitch = -pitch;
-    return { pitch, roll, yaw, throttle, throttleSet, brake };
+    return { pitch, roll, yaw, throttle, throttleSet, liftSet, brake };
   }
 
   _setupTouch() {
@@ -144,6 +154,58 @@ export class Input {
       setThr(e.changedTouches[0]);
     });
 
+    // Rudder bar above the joystick: drag left/right, springs back to center.
+    const rud = document.getElementById('rudderTouch');
+    const rudKnob = document.getElementById('rudderKnob');
+    let rudId = null;
+    const setRud = (t) => {
+      const r = rud.getBoundingClientRect();
+      const v = Math.min(1, Math.max(-1, ((t.clientX - r.left) / r.width) * 2 - 1));
+      this.touchRudder = Math.abs(v) < 0.1 ? 0 : v;
+      rudKnob.style.transform = `translateX(${v * (r.width / 2 - 22)}px)`;
+    };
+    const endRud = (e) => {
+      for (const t of e.changedTouches) {
+        if (t.identifier !== rudId) continue;
+        rudId = null;
+        this.touchRudder = 0;
+        rudKnob.style.transform = '';
+      }
+    };
+    rud.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      rudId = e.changedTouches[0].identifier;
+      setRud(e.changedTouches[0]);
+    });
+    rud.addEventListener('touchmove', (e) => {
+      e.preventDefault();
+      for (const t of e.changedTouches) if (t.identifier === rudId) setRud(t);
+    });
+    rud.addEventListener('touchend', endRud);
+    rud.addEventListener('touchcancel', endRud);
+
+    // Helicopter LIFT slider: stays where you leave it; snaps to the middle (hold height).
+    const lift = document.getElementById('liftTouch');
+    const liftKnob = document.getElementById('liftKnob');
+    const setLift = (t) => {
+      const r = lift.getBoundingClientRect();
+      let v = (1 - (t.clientY - r.top) / r.height) * 2 - 1;
+      v = Math.min(1, Math.max(-1, v));
+      if (Math.abs(v) < 0.15) v = 0;
+      this.touchLift = v;
+      liftKnob.style.bottom = `${((v + 1) / 2) * (r.height - 36)}px`;
+    };
+    if (lift) {
+      lift.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        setLift(e.changedTouches[0]);
+      });
+      lift.addEventListener('touchmove', (e) => {
+        e.preventDefault();
+        setLift(e.changedTouches[0]);
+      });
+    }
+
     for (const b of document.querySelectorAll('#touchButtons button')) {
       const act = b.dataset.act;
       if (act === 'tilt') {
@@ -191,6 +253,13 @@ export class Input {
   }
 
   /** Reset touch throttle to match the plane after a restart. */
+  /** Center the helicopter LIFT slider (hold height). */
+  resetLift() {
+    if (this.touchLift !== null) this.touchLift = 0;
+    const lift = document.getElementById('liftTouch');
+    if (lift) document.getElementById('liftKnob').style.bottom = `${(lift.clientHeight - 36) / 2}px`;
+  }
+
   syncThrottle(v) {
     if (this.touchThrottle !== null) this.touchThrottle = v;
     const thr = document.getElementById('throttleTouch');

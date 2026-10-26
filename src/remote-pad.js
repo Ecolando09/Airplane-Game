@@ -5,6 +5,7 @@ import { Tilt } from './tilt.js';
 const $ = (id) => document.getElementById(id);
 
 const state = { pitch: 0, roll: 0, yaw: 0, throttle: 0, brake: false };
+let isHeli = false;
 let ws = null;
 let room = (new URLSearchParams(location.search).get('room') || '').toUpperCase();
 let gameOnline = false;
@@ -36,6 +37,13 @@ function connect() {
       $('spd').textContent = m.spd;
       $('alt').textContent = m.alt.toLocaleString();
       $('gear').textContent = m.gear;
+      if ((m.vehicle === 'heli') !== isHeli) {
+        isHeli = m.vehicle === 'heli';
+        document.body.classList.toggle('heli', isHeli);
+        $('thrName').textContent = isHeli ? 'SPEED' : 'THROTTLE';
+        state.lift = isHeli ? 0 : undefined;
+        setLiftUi(0);
+      }
       if (m.turbo) $('turboBtn').textContent = `Turbo ${m.turbo === 1 ? '1X' : `T${m.turbo}X`}`;
       $('menuButtons').hidden = !m.menu;
       $('flyButtons').hidden = m.menu;
@@ -130,6 +138,30 @@ thr.addEventListener('pointerdown', (e) => {
   setThrottle(e);
 });
 thr.addEventListener('pointermove', (e) => e.buttons && setThrottle(e));
+
+// ------------------------------------------------------------------ lift (helicopter)
+// Stays where you leave it; snaps to the middle, which holds height.
+const lift = $('lift');
+function setLiftUi(v) {
+  const r = lift.getBoundingClientRect();
+  $('liftKnob').style.top = `${((1 - v) / 2) * (r.height - 34)}px`;
+  $('liftVal').textContent = v === 0 ? 'HOLD' : v > 0 ? 'UP' : 'DOWN';
+}
+function setLift(e) {
+  const r = lift.getBoundingClientRect();
+  let v = (1 - (e.clientY - r.top - 17) / (r.height - 34)) * 2 - 1;
+  v = Math.min(1, Math.max(-1, v));
+  if (Math.abs(v) < 0.15) v = 0;
+  state.lift = Math.round(v * 20) / 20;
+  setLiftUi(state.lift);
+}
+lift.addEventListener('pointerdown', (e) => {
+  try {
+    lift.setPointerCapture(e.pointerId);
+  } catch {}
+  setLift(e);
+});
+lift.addEventListener('pointermove', (e) => e.buttons && setLift(e));
 
 // ------------------------------------------------------------------ buttons
 for (const b of document.querySelectorAll('button[data-a]')) {
