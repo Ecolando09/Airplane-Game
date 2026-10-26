@@ -51,7 +51,7 @@ Local test: `npm run relay` in one terminal and `npm run dev` in another (Vite f
 
 The site is a games homepage (`homepage/`) with this game under `/legoplane/`. `npm run build:play` builds both into `play-dist/`.
 
-On the server (Ubuntu/Debian, as root), one command installs or updates everything: Node.js and Caddy if they're missing, the site in `/var/www/play`, the phone-controller relay as a systemd service, and the Caddy site block with automatic HTTPS:
+On the server (Ubuntu/Debian, as root), one command installs or updates everything: Node.js if missing, the site in `/var/www/play`, the phone-controller relay as a systemd service, and the web server. If nginx is already running it adds a separate nginx site (`deploy/nginx.conf`) and gets HTTPS from certbot; otherwise it sets up Caddy (`deploy/Caddyfile`), which handles HTTPS itself:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/Ecolando09/Airplane-Game/claude/lego-airplane-game-ttd82x/deploy/install-play.sh | sudo bash

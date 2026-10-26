@@ -2,7 +2,11 @@
 # Installs or updates play.latlas.lol on this server (Ubuntu/Debian, run as root):
 #   - games homepage at https://play.latlas.lol/
 #   - Lego Sky at https://play.latlas.lol/legoplane/
-#   - phone-controller relay as a systemd service, behind Caddy at /ws
+#   - phone-controller relay as a systemd service, served at /ws
+#
+# Works with the web server already on the machine: if nginx is serving ports
+# 80/443 it adds a separate nginx site for the domain (other sites untouched)
+# and gets its HTTPS certificate with certbot; otherwise it uses Caddy.
 #
 # First time:  curl -fsSL https://raw.githubusercontent.com/Ecolando09/Airplane-Game/claude/lego-airplane-game-ttd82x/deploy/install-play.sh | sudo bash
 # Updates:     run the same command again.
@@ -20,22 +24,28 @@ say() { printf '\n\033[1;33m==> %s\033[0m\n' "$*"; }
 
 [ "$(id -u)" -eq 0 ] || { echo "Please run as root (sudo)."; exit 1; }
 
-say "Checking ports 80/443"
-if ss -tlnp | grep -E ':(80|443)\s' | grep -vq caddy; then
-  echo "Something other than Caddy is using port 80 or 443:"
-  ss -tlnp | grep -E ':(80|443)\s'
-  echo "Stop it (or ask Claude for a version that works alongside it) and run this again."
+say "Checking which web server is running"
+PORTS=$(ss -tlnp | grep -E ':(80|443)\s' || true)
+if echo "$PORTS" | grep -q nginx; then
+  SERVER=nginx
+elif [ -z "$PORTS" ] || ! echo "$PORTS" | grep -vq caddy; then
+  SERVER=caddy
+else
+  echo "Something other than nginx or Caddy is using port 80 or 443:"
+  echo "$PORTS"
+  echo "Send this output to Claude for a version that works with it."
   exit 1
 fi
+echo "Using $SERVER"
 
-say "Installing packages (git, rsync, Node.js, Caddy) if needed"
+say "Installing packages (git, rsync, Node.js) if needed"
 apt-get update -qq
 apt-get install -y -qq git rsync curl ca-certificates gnupg debian-keyring debian-archive-keyring apt-transport-https >/dev/null
 if ! command -v node >/dev/null || [ "$(node -p 'process.versions.node.split(".")[0]')" -lt 18 ]; then
   curl -fsSL https://deb.nodesource.com/setup_22.x | bash - >/dev/null
   apt-get install -y -qq nodejs >/dev/null
 fi
-if ! command -v caddy >/dev/null; then
+if [ "$SERVER" = caddy ] && ! command -v caddy >/dev/null; then
   curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | gpg --dearmor --yes -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
   curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' > /etc/apt/sources.list.d/caddy-stable.list
   apt-get update -qq && apt-get install -y -qq caddy >/dev/null
@@ -85,23 +95,57 @@ systemctl daemon-reload
 systemctl enable --now lego-sky-relay
 systemctl restart lego-sky-relay
 
-say "Configuring Caddy for $DOMAIN"
-if ! grep -q "^$DOMAIN" /etc/caddy/Caddyfile 2>/dev/null; then
-  # A fresh Caddy install ships a placeholder ":80" site; leave other sites alone.
-  if grep -q '^:80' /etc/caddy/Caddyfile 2>/dev/null; then
-    cp /etc/caddy/Caddyfile /etc/caddy/Caddyfile.bak
-    : > /etc/caddy/Caddyfile
-  fi
-  { echo; sed "s#^play.latlas.lol#$DOMAIN#" deploy/Caddyfile; } >> /etc/caddy/Caddyfile
-fi
-caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile >/dev/null
-systemctl enable --now caddy
-systemctl reload caddy
+IP=$(curl -fsS https://api.ipify.org || echo "")
 
-IP=$(curl -fsS https://api.ipify.org || echo "this server's IP")
+if [ "$SERVER" = nginx ]; then
+  say "Configuring nginx for $DOMAIN"
+  if [ -d /etc/nginx/sites-available ]; then
+    CONF=/etc/nginx/sites-available/$DOMAIN
+    LINK=/etc/nginx/sites-enabled/$DOMAIN
+  else
+    CONF=/etc/nginx/conf.d/$DOMAIN.conf
+    LINK=
+  fi
+  # Write the site once; on later runs keep it, since certbot adds its HTTPS lines to it.
+  if [ ! -f "$CONF" ]; then
+    sed -e "s#play.latlas.lol#$DOMAIN#g" -e "s#/var/www/play#$WEB#g" deploy/nginx.conf > "$CONF"
+  fi
+  [ -n "$LINK" ] && ln -sf "$CONF" "$LINK"
+  nginx -t
+  systemctl reload nginx
+
+  say "Getting the HTTPS certificate for $DOMAIN"
+  if ! command -v certbot >/dev/null; then
+    apt-get install -y -qq certbot python3-certbot-nginx >/dev/null
+  fi
+  DNS_IP=$(getent ahostsv4 "$DOMAIN" | awk '{print $1; exit}' || true)
+  if [ -z "$DNS_IP" ] || { [ -n "$IP" ] && [ "$DNS_IP" != "$IP" ]; }; then
+    echo "DNS for $DOMAIN doesn't point to this server yet (found: ${DNS_IP:-nothing}, this server: ${IP:-unknown})."
+    echo "Add the A record in Porkbun, wait a few minutes, then run this script again for HTTPS."
+  elif grep -q "ssl_certificate" "$CONF"; then
+    echo "Already set up."
+  else
+    certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos --redirect \
+      ${CERTBOT_EMAIL:+-m "$CERTBOT_EMAIL"} ${CERTBOT_EMAIL:---register-unsafely-without-email}
+  fi
+else
+  say "Configuring Caddy for $DOMAIN"
+  if ! grep -q "^$DOMAIN" /etc/caddy/Caddyfile 2>/dev/null; then
+    # A fresh Caddy install ships a placeholder ":80" site; leave other sites alone.
+    if grep -q '^:80' /etc/caddy/Caddyfile 2>/dev/null; then
+      cp /etc/caddy/Caddyfile /etc/caddy/Caddyfile.bak
+      : > /etc/caddy/Caddyfile
+    fi
+    { echo; sed "s#^play.latlas.lol#$DOMAIN#" deploy/Caddyfile; } >> /etc/caddy/Caddyfile
+  fi
+  caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile >/dev/null
+  systemctl enable --now caddy
+  systemctl reload caddy
+fi
+
 say "Done!"
 echo "Homepage:  https://$DOMAIN/"
 echo "Game:      https://$DOMAIN/legoplane/"
 echo
 echo "If the site doesn't load yet, check DNS: Porkbun needs an A record for"
-echo "'${DOMAIN%%.latlas.lol}' pointing to $IP. HTTPS starts working a minute after DNS does."
+echo "'${DOMAIN%%.latlas.lol}' pointing to ${IP:-this server}."
