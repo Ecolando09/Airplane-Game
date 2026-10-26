@@ -10,6 +10,7 @@ import { EngineSound } from './sound.js';
 import { legoMaterial } from './lego.js';
 import { RemoteLink } from './remote.js';
 import { Traffic } from './traffic.js';
+import { Multiplayer, randomRoomCode } from './multiplayer.js';
 
 const $ = (id) => document.getElementById(id);
 const SKY = 0x9fd0ff;
@@ -90,6 +91,23 @@ let pinEls = [];
 let worldObjects = [];
 const input = new Input();
 const sound = new EngineSound();
+const mp = new Multiplayer({
+  scene,
+  makeVehicle: (v) => (v === 'heli' ? createGhostSpiderHeli() : createLegoPlane()),
+  onChange: () => updateMpUi(),
+  onJoin: (p) => toast(`👋 ${p.name} joined${p.city !== settings.city ? ` (in ${CITIES[p.city] || 'another city'})` : ''}`, p.color),
+  onLeave: (p) => toast(`${p.name} left the room`, '#868e96'),
+});
+/** Small notification in the top-right corner (who joined/left the room). */
+function toast(text, color) {
+  const el = document.createElement('div');
+  el.className = 'toast';
+  el.style.setProperty('--c', color);
+  el.textContent = text;
+  $('toasts').appendChild(el);
+  setTimeout(() => el.classList.add('out'), 4000);
+  setTimeout(() => el.remove(), 4600);
+}
 const cityCache = new Map();
 const satCache = new Map();
 
@@ -194,6 +212,7 @@ async function buildWorld() {
     return el;
   });
   majorRoads = computeMajorRoads();
+  mp.resetModels(); // rebuild other players' vehicles in the new look
   $('loadBar').style.width = '100%';
 }
 
@@ -230,8 +249,6 @@ function updateFloats(dt) {
   plane.floats.visible = floatsAnim > 0.02;
   plane.floats.scale.setScalar(Math.max(0.001, floatsAnim));
   for (const w of plane.wheels) w.visible = floatsAnim < 0.6;
-  $('gear').textContent = flight.floats ? 'FLOATS' : isHeli ? 'LEGS' : 'WHEELS';
-  $('gear').classList.toggle('floats', flight.floats);
 }
 
 // ------------------------------------------------------------------ turbo boosters
@@ -542,6 +559,26 @@ function drawMinimap() {
     }
   }
 
+  // Other players
+  for (const pl of mp.visible(settings.city)) {
+    let [x, y] = toMap(pl.pos.x, pl.pos.z);
+    const off = x < 12 || y < 12 || x > W - 12 || y > W - 12;
+    if (off) {
+      const dx = x - W / 2;
+      const dy = y - W / 2;
+      const f = (W / 2 - 14) / Math.max(Math.abs(dx), Math.abs(dy));
+      x = W / 2 + dx * f;
+      y = W / 2 + dy * f;
+    }
+    mctx.fillStyle = pl.color;
+    mctx.strokeStyle = '#fff';
+    mctx.lineWidth = 3;
+    mctx.beginPath();
+    mctx.arc(x, y, off ? 7 : 10, 0, Math.PI * 2);
+    mctx.fill();
+    mctx.stroke();
+  }
+
   // Plane arrow
   mctx.translate(W / 2, W / 2);
   mctx.rotate(THREE.MathUtils.degToRad(flight.heading));
@@ -574,11 +611,12 @@ function message(html, seconds = 3) {
 const wasOnGround = { v: true };
 function updateHud(dt) {
   const p = plane.group.position;
-  $('spd').textContent = Math.round(flight.speed * 1.944);
+  $('spd').textContent = Math.round(flight.speed * 2.237); // m/s -> mph
   $('alt').textContent = Math.round((p.y - plane.gearHeight + world.baseElevation) * 3.281).toLocaleString();
-  $('hdg').textContent = String(Math.round(flight.heading) % 360).padStart(3, '0');
-  $('vs').textContent = Math.round((flight.verticalSpeed * 196.85) / 50) * 50;
-  $('thr').style.width = `${flight.throttle * 100}%`;
+  const hdg = Math.round(flight.heading) % 360;
+  $('hdg').textContent = compass(hdg);
+  $('hdgDeg').textContent = `${String(hdg).padStart(3, '0')}°`;
+  updateBuddies();
 
   let best = null;
   let bestD = 700;
@@ -615,6 +653,46 @@ function updateHud(dt) {
 
 }
 
+// ------------------------------------------------------------------ other players
+const COMPASS = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+const compass = (deg) => COMPASS[Math.round(deg / 45) % 8];
+const fmtDist = (m) => (m < 300 ? `${Math.round(m * 3.281)} ft` : `${(m / 1609).toFixed(m < 16000 ? 1 : 0)} mi`);
+/** One chip per other player: an arrow pointing to them (relative to where you're
+ *  heading) and how far away they are. Players in the other city show where they are. */
+function updateBuddies() {
+  const box = $('buddies');
+  const players = [...mp.players.values()];
+  while (box.children.length > players.length) box.lastChild.remove();
+  while (box.children.length < players.length) {
+    const el = document.createElement('div');
+    el.className = 'buddy';
+    el.innerHTML = '<span class="arrow">➤</span><span class="txt"></span>';
+    box.appendChild(el);
+  }
+  const p = plane.group.position;
+  players.forEach((pl, i) => {
+    const el = box.children[i];
+    el.style.setProperty('--c', pl.color);
+    const arrow = el.querySelector('.arrow');
+    const txt = el.querySelector('.txt');
+    if (pl.city !== settings.city) {
+      arrow.style.transform = '';
+      arrow.textContent = '✈';
+      txt.innerHTML = `${pl.name} <span class="far">in ${CITIES[pl.city] || 'another city'}</span>`;
+      return;
+    }
+    const dx = pl.pos.x - p.x;
+    const dz = pl.pos.z - p.z;
+    const bearing = (THREE.MathUtils.radToDeg(Math.atan2(dx, -dz)) + 360) % 360; // 0 = north
+    const rel = bearing - flight.heading;
+    arrow.textContent = '▲';
+    arrow.style.transform = `rotate(${rel}deg)`;
+    const up = pl.pos.y - p.y;
+    const alt = Math.abs(up) > 30 ? ` ${up > 0 ? '↑' : '↓'}${Math.round(Math.abs(up) * 3.281)} ft` : '';
+    txt.innerHTML = `${pl.name} <span class="far">${fmtDist(Math.hypot(dx, dz))} ${compass(bearing)}${alt}</span>`;
+  });
+}
+
 // ------------------------------------------------------------------ labels
 // Landmark labels and map pins, placed over the 3D view. They never cover the
 // vehicle (they fade out where it is) and never stack on top of each other:
@@ -626,7 +704,7 @@ function vehicleScreenRect() {
   if (_v.z > 1) return null;
   const dist = camera.position.distanceTo(p);
   const focal = innerHeight / 2 / Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
-  const r = (8 / Math.max(dist, 1)) * focal + 12; // vehicle radius in pixels, plus a margin
+  const r = (5 / Math.max(dist, 1)) * focal + 8; // vehicle radius in pixels, plus a margin
   const x = (_v.x * 0.5 + 0.5) * innerWidth;
   const y = (-_v.y * 0.5 + 0.5) * innerHeight;
   return [x - r, y - r, x + r, y + r];
@@ -644,6 +722,20 @@ function updateLabels() {
     const d = Math.hypot(l.x - p.x, l.z - p.z);
     items.push({ el: labelEls[i], x: l.x, y: l.y + 40 + d * 0.01, z: l.z, d, pin: false, hide: d > maxDist });
   });
+  for (const pl of mp.visible(settings.city)) {
+    if (!pl.label) {
+      pl.label = document.createElement('div');
+      pl.label.className = 'label player';
+      $('labels').appendChild(pl.label);
+    }
+    pl.label.style.setProperty('--pin', pl.color);
+    pl.label.textContent = pl.name;
+    const d = Math.hypot(pl.pos.x - p.x, pl.pos.z - p.z);
+    items.push({ el: pl.label, x: pl.pos.x, y: pl.pos.y + 6, z: pl.pos.z, d, pin: true });
+  }
+  for (const el of document.querySelectorAll('.label.player')) {
+    if (![...mp.players.values()].some((pl) => pl.label === el && pl.city === settings.city)) el.style.display = 'none';
+  }
   items.sort((a, b) => (b.pin - a.pin) || a.d - b.d);
   const placed = [];
   const veh = running && CAMS[camMode] !== 'cockpit' ? vehicleScreenRect() : null;
@@ -704,6 +796,7 @@ function start(airborne) {
   if (input.isTouch) input.setTilt(phoneSteering === 'tilt').then((on) => on && message('Tilt to steer — tap CENTER to re-center', 3));
   clearDebris();
   airborne ? flight.resetAirborne() : flight.reset();
+  snapToGoogleGround();
   input.syncThrottle(flight.throttle);
   tilt = flight.onGround && !isHeli ? GROUND_TILT : 0;
   floatsAnim = 0;
@@ -791,6 +884,71 @@ setInterval(() => {
   const a = google.tiles.getAttributions?.() || [];
   $('attribText').textContent = a.filter((x) => x.type === 'string').map((x) => x.value).join(' · ');
 }, 2000);
+// ------------------------------------------------------------------ fly together (menu)
+const MP_OK = !/claude\.ai|claudeusercontent/.test(location.host) && location.protocol !== 'file:';
+let mpName = '';
+try {
+  mpName = localStorage.getItem('legosky.name') || '';
+} catch {}
+$('mpName').value = mpName;
+function joinRoom(code) {
+  const name = $('mpName').value.trim() || 'Pilot';
+  try {
+    localStorage.setItem('legosky.name', name);
+  } catch {}
+  mp.join(code, name);
+  const q = new URLSearchParams(location.search);
+  q.set('room', code);
+  history.replaceState(null, '', `?${q}`);
+}
+function updateMpUi() {
+  $('mpOff').hidden = !!mp.room;
+  $('mpOn').hidden = !mp.room;
+  $('mpNote').hidden = MP_OK;
+  if (!mp.room) return;
+  $('mpRoomCode').textContent = mp.room;
+  $('mpStatus').textContent = { connecting: '· connecting…', on: '· connected', error: "· can't reach the server, retrying…" }[mp.status] || '';
+  const list = $('mpList');
+  list.innerHTML = '';
+  const me = document.createElement('li');
+  me.textContent = `${mp.name} (you)`;
+  list.appendChild(me);
+  for (const pl of mp.players.values()) {
+    const li = document.createElement('li');
+    li.style.setProperty('--c', pl.color);
+    li.textContent = `${pl.name || 'Pilot'} · ${VEHICLE_NAMES[pl.vehicle] || ''} · ${CITIES[pl.city] || ''}`;
+    list.appendChild(li);
+  }
+}
+$('mpCreate').onclick = () => joinRoom(randomRoomCode());
+$('mpJoin').onclick = () => {
+  const code = $('mpCode').value.trim().toUpperCase();
+  if (/^[A-Z]{4}$/.test(code)) joinRoom(code);
+  else $('mpCode').focus();
+};
+$('mpCode').addEventListener('keydown', (e) => e.key === 'Enter' && $('mpJoin').onclick());
+$('mpLeave').onclick = () => {
+  mp.leave();
+  const q = new URLSearchParams(location.search);
+  q.delete('room');
+  history.replaceState(null, '', `?${q}`);
+};
+$('mpCopy').onclick = async () => {
+  const url = `${location.origin}${location.pathname}?room=${mp.room}&city=${settings.city}`;
+  try {
+    await navigator.clipboard.writeText(url);
+    $('mpCopy').textContent = 'Copied!';
+  } catch {
+    prompt('Send this link:', url);
+  }
+  setTimeout(() => ($('mpCopy').textContent = 'Copy invite link'), 2000);
+};
+{
+  const code = (new URLSearchParams(location.search).get('room') || '').toUpperCase();
+  if (MP_OK && /^[A-Z]{4}$/.test(code)) joinRoom(code);
+  updateMpUi();
+}
+
 $('crashRetry').onclick = () => start(false);
 $('crashMenu').onclick = () => $('helpBtn').onclick();
 $('resumeBtn').onclick = () => {
@@ -858,8 +1016,6 @@ const turboName = (t) => (t === 1 ? '1X' : `T${t}X`);
 function setTurbo(t) {
   if (!running) return;
   flight.turbo = t;
-  $('turbo').textContent = turboName(t);
-  $('turbo').classList.toggle('on', t > 1);
   $('turboChip').textContent = t === 1 ? 'TURBO' : turboName(t);
   $('turboChip').classList.toggle('on', t > 1);
   message(t === 1 ? 'Turbo off — normal speed' : `🚀 ${turboName(t)} — ${t}× speed!`, 1.8);
@@ -905,6 +1061,16 @@ function poseAirplane(dt) {
   plane.controls.rudder.rotation.y = c.yaw * 0.4;
 }
 
+// ------------------------------------------------------------------ Google 3D ground
+// The start position comes from the elevation grid, which can be a few meters
+// off from Google's real 3D ground (and the tiles load after the start). While
+// the vehicle is parked or rolling (not climbing), keep it on the real surface.
+function snapToGoogleGround() {
+  if (!google || flight.crashed || !flight.onGround || flight.verticalSpeed > 0.05) return;
+  const g = google.heightAt(flight.pos.x, flight.pos.z);
+  if (g !== null) flight.pos.y = g + plane.gearHeight;
+}
+
 // ------------------------------------------------------------------ loop
 const timer = new THREE.Timer();
 function frame() {
@@ -915,6 +1081,12 @@ function frame() {
   world.update(timer.getElapsed());
   if (google) google.update(renderer);
   else traffic.update(dt);
+  if (plane && mp.room) {
+    mp.update(dt, {
+      group: plane.group, city: settings.city, vehicle: settings.vehicle, speed: flight.speed,
+      turbo: flight.turbo || 1, floats: !!flight.floats, crashed: flight.crashed,
+    });
+  }
   if (running) {
     const ctl = input.read();
     if (!flight.crashed) {
@@ -929,6 +1101,7 @@ function frame() {
     } else {
       crashTimer += dt;
     }
+    snapToGoogleGround();
     updateDebris(dt);
     updateFloats(dt);
     updateBoosters(dt);
@@ -947,6 +1120,7 @@ function frame() {
     // Live preview behind the menu: the vehicle parked where it is, with the
     // camera slowly circling it. The view is shifted right, clear of the menu.
     if (!building && plane) {
+      snapToGoogleGround();
       poseAirplane(dt);
       if (!isHeli) plane.propeller.rotation.z += 10 * dt;
       const t = timer.getElapsed() * 0.18;
@@ -981,7 +1155,7 @@ frame();
 
 // Test hook: ?debug exposes the simulation for automated checks.
 if (new URLSearchParams(location.search).has('debug')) {
-  window.__game = { world, flight, plane, start, google, step: (dt, ctl) => flight.update(dt, ctl) };
+  window.__game = { world, flight, plane, start, google, mp, step: (dt, ctl) => flight.update(dt, ctl) };
   window.__tilt = input.tilt;
   window.__traffic = traffic;
 }

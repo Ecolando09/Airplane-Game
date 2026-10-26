@@ -8,9 +8,9 @@
   ],
   "airport": "Northern Colorado Regional Airport",
   "runway": {
-    "lat": 40.4515,
-    "lon": -105.0115,
-    "heading": 159,
+    "lat": 40.4509,
+    "lon": -105.01227,
+    "heading": 161,
     "length": 2591,
     "width": 40,
     "names": [

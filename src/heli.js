@@ -334,8 +334,12 @@ export class HeliFlight {
       this.vel.x *= Math.exp(-dt * 3);
       this.vel.z *= Math.exp(-dt * 3);
     } else if (this.onGround && this.pos.y > minY + 0.3) {
-      this.onGround = false;
-      this.onWater = false;
+      if (this.vel.y <= 0.05) {
+        this.pos.y = minY; // ground dropped away under a parked copter: follow it
+      } else {
+        this.onGround = false;
+        this.onWater = false;
+      }
     }
   }
 

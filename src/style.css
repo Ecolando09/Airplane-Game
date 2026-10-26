@@ -1142,3 +1142,225 @@ details.help .controls {
 body.is-touch .crash-actions kbd {
   display: none;
 }
+
+/* ---------- simplified flight stats */
+#instruments {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+#instruments .stat {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+#instruments .stat b {
+  font-size: 24px;
+  min-width: 62px;
+  text-align: right;
+}
+
+#instruments .stat span {
+  color: var(--yellow);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+}
+
+/* ---------- other players: arrow + distance */
+#buddies {
+  position: fixed;
+  top: 60px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: center;
+  max-width: 70vw;
+  pointer-events: none;
+}
+
+.buddy {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--panel);
+  border-radius: 999px;
+  padding: 4px 12px 4px 4px;
+  font-weight: 700;
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+.buddy .arrow {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--c);
+  font-size: 16px;
+  line-height: 1;
+}
+
+.buddy .far {
+  color: #cfd6dc;
+  font-weight: 600;
+}
+
+.label.player {
+  background: var(--pin);
+  color: #fff;
+}
+
+.label.player::after {
+  border-top-color: var(--pin);
+}
+
+/* ---------- menu: fly together */
+#mpName,
+#mpCode {
+  font: inherit;
+  font-size: 14px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 2px solid #e1e4e8;
+  min-width: 0;
+}
+
+#mpName {
+  width: 100%;
+  margin-bottom: 6px;
+}
+
+#mpCode {
+  width: 72px;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  text-align: center;
+}
+
+.mp-row {
+  display: flex;
+  gap: 6px;
+  align-items: stretch;
+}
+
+.small-btn {
+  flex: 1;
+  font: inherit;
+  font-weight: 800;
+  font-size: 13px;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--ink);
+  color: #fff;
+  cursor: pointer;
+}
+
+.small-btn.ghost {
+  flex: 0 0 auto;
+  background: #eef0f2;
+  color: var(--ink);
+}
+
+.mp-room {
+  margin: 0 0 6px;
+}
+
+.mp-room b {
+  letter-spacing: 0.15em;
+  color: var(--red);
+  font-size: 18px;
+}
+
+#mpStatus {
+  font-size: 12px;
+  color: #6a7580;
+}
+
+#mpList {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  font-size: 13px;
+  display: grid;
+  gap: 3px;
+}
+
+#mpList li::before {
+  content: '';
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  margin-right: 6px;
+  background: var(--c, #2f8a45);
+}
+
+@media (max-height: 500px) {
+  #instruments .stat b {
+    font-size: 17px;
+    min-width: 46px;
+  }
+
+  #buddies {
+    top: 40px;
+  }
+
+  .buddy {
+    font-size: 12px;
+  }
+}
+
+#toasts {
+  position: fixed;
+  top: 64px;
+  right: max(12px, env(safe-area-inset-right));
+  display: grid;
+  gap: 6px;
+  justify-items: end;
+  pointer-events: none;
+  z-index: 30;
+}
+
+.toast {
+  background: var(--panel);
+  color: #fff;
+  font-weight: 700;
+  font-size: 14px;
+  padding: 8px 14px;
+  border-radius: 10px;
+  border-left: 5px solid var(--c, var(--yellow));
+  animation: toastIn 0.25s ease-out;
+  transition: opacity 0.5s, transform 0.5s;
+}
+
+.toast.out {
+  opacity: 0;
+  transform: translateX(20px);
+}
+
+@keyframes toastIn {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .toast {
+    animation: none;
+    transition: none;
+  }
+}
+
+@media (max-height: 500px) {
+  #toasts {
+    top: 180px;
+  }
+}

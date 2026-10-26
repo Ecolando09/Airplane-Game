@@ -3,6 +3,7 @@
 A browser flying game over Spartanburg, SC and Fort Collins, CO, built from real map data.
 
 - **Vehicles:** the LEGO Technic 42198 Bush Plane, or Ghost-Spider's helicopter. Helicopter controls: joystick (or A/D) steers, throttle (Shift/Ctrl or the SPEED slider) sets forward speed, lift (W/S or the LIFT slider) goes up and down with the middle holding height, rudder (Q/E or the RUDDER bar above the joystick on phones) slides sideways.
+- **Fly together:** in the menu, start a room and copy the invite link (or share the 4-letter code). Everyone in the room sees each other's vehicles, with an arrow, distance and direction to each player, dots on the map, and a notice when someone joins or leaves. Uses the same relay as the phone controller, so it works on the self-hosted site.
 - **Looks:** Lego bricks; realistic (Sentinel-2 satellite ground, natural colors, a painted version of the plane); or Google Photorealistic 3D Tiles (needs a Google Maps API key on the server).
 
 - **Real city layout.** Roads, rail, rivers, parks and ~45,000 building footprints come from OpenStreetMap (via Overture Maps), on real terrain elevation.
@@ -90,6 +91,7 @@ Each city is configured in `tools/cities/<city>.json`: map area, runway (set by 
 - `src/heli.js`: Ghost-Spider helicopter model and flight
 - `src/google3d.js`: Google Photorealistic 3D Tiles world
 - `src/remote.js`, `remote.html`, `src/remote-pad.js`: phone controller (game side and phone page)
-- `server/relay.js`: WebSocket relay between phones and the game screen
+- `server/relay.js`: WebSocket relay for the phone controller and multiplayer rooms
+- `src/multiplayer.js`: multiplayer rooms (sending your position, showing other players)
 
 Map data © OpenStreetMap contributors (ODbL), Overture Maps Foundation. Elevation: Mapzen Terrain Tiles (AWS Open Data). Satellite imagery contains modified Copernicus Sentinel data. Google 3D: © Google.

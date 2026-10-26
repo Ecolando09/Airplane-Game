@@ -20,7 +20,7 @@ export class Input {
       KeyT: 'turbo', Digit1: 'turbo1', Digit2: 'turbo2', Digit3: 'turbo3', Escape: 'pause',
     };
     addEventListener('keydown', (e) => {
-      if (e.repeat) return;
+      if (e.repeat || e.target.closest?.('input, textarea')) return; // typing a name, not flying
       this.keys.add(e.code);
       if (e.code === 'KeyI') this.invertPitch = !this.invertPitch;
       if (actions[e.code]) this.emit(actions[e.code]);

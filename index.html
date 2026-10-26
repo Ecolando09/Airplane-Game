@@ -11,17 +11,15 @@
     <canvas id="game"></canvas>
 
     <div id="labels"></div>
+    <div id="toasts" aria-live="polite"></div>
 
     <div id="hud" hidden>
       <div class="panel" id="instruments">
-        <div><span class="k">SPD</span> <b id="spd">0</b> kt</div>
-        <div><span class="k">ALT</span> <b id="alt">0</b> ft</div>
-        <div><span class="k">HDG</span> <b id="hdg">000</b>°</div>
-        <div><span class="k">V/S</span> <b id="vs">0</b> fpm</div>
-        <div class="throttle"><span class="k">THR</span><div class="bar"><div id="thr"></div></div></div>
-        <div><span class="k">GEAR</span> <b id="gear" class="gear">WHEELS</b></div>
-        <div><span class="k">MODE</span> <b id="turbo" class="turbo">1X</b></div>
+        <div class="stat"><b id="spd">0</b><span>MPH</span></div>
+        <div class="stat"><b id="alt">0</b><span>FT ELEV</span></div>
+        <div class="stat"><b id="hdg">N</b><span id="hdgDeg">000°</span></div>
       </div>
+      <div id="buddies" aria-live="polite"></div>
       <div class="panel" id="over"></div>
       <canvas id="minimap" width="480" height="480" title="Tap to enlarge (N)"></canvas>
       <div id="message"></div>
@@ -92,6 +90,27 @@
             <button data-v="google"><b>🌎 Google 3D</b><span>Real 3D city</span></button>
           </div>
           <p class="look-note" id="lookNote" hidden>Google 3D isn't set up on this server yet.</p>
+        </section>
+
+        <section class="opt" id="mpSection" aria-labelledby="optMp">
+          <h2 id="optMp">Fly together</h2>
+          <div id="mpOff">
+            <input id="mpName" maxlength="16" placeholder="Your name" autocomplete="nickname" aria-label="Your name" />
+            <div class="mp-row">
+              <button class="small-btn" id="mpCreate">Start a room</button>
+              <input id="mpCode" maxlength="4" placeholder="CODE" autocapitalize="characters" aria-label="Room code" />
+              <button class="small-btn" id="mpJoin">Join</button>
+            </div>
+          </div>
+          <div id="mpOn" hidden>
+            <p class="mp-room">Room <b id="mpRoomCode">····</b> <span id="mpStatus"></span></p>
+            <div class="mp-row">
+              <button class="small-btn" id="mpCopy">Copy invite link</button>
+              <button class="small-btn ghost" id="mpLeave">Leave</button>
+            </div>
+            <ul id="mpList"></ul>
+          </div>
+          <p class="look-note" id="mpNote" hidden>Multiplayer works on play.latlas.lol (your own server).</p>
         </section>
 
         <div id="phoneControls" class="opt" hidden>

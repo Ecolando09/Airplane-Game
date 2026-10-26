@@ -8,9 +8,9 @@
   ],
   "airport": "Downtown Memorial Airport",
   "runway": {
-    "lat": 34.9155,
-    "lon": -81.9567,
-    "heading": 44,
+    "lat": 34.91574,
+    "lon": -81.95651,
+    "heading": 42,
     "length": 1585,
     "width": 46,
     "names": [

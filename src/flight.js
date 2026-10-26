@@ -195,7 +195,10 @@ export class Flight {
       this.quat.setFromEuler(new THREE.Euler(keepPitch, yaw, 0, 'YXZ'));
       if (keepPitch > 0) this.quat.multiply(this._tmpQ.setFromAxisAngle(X, -Math.min(keepPitch, dt * 0.5)));
     } else if (this.onGround && this.pos.y > minY + 0.5) {
-      this.onGround = false;
+      // Ground dropped away under a parked or rolling plane (e.g. 3D tiles
+      // finished loading): follow it down instead of falling.
+      if (this.verticalSpeed <= 0.05) this.pos.y = minY;
+      else this.onGround = false;
     }
     if (!this.onGround) this.onWater = false;
     if (this.onGround && this.onWater) {
