@@ -25,9 +25,16 @@
       <div class="panel" id="over"></div>
       <canvas id="minimap" width="480" height="480" title="Tap to enlarge (N)"></canvas>
       <div id="message"></div>
+      <div id="crashBox" hidden>
+        <p id="crashReason">💥 Crashed!</p>
+        <div class="crash-actions">
+          <button class="big" id="crashRetry">Try again <kbd>R</kbd></button>
+          <button class="big alt" id="crashMenu">Menu <kbd>Esc</kbd></button>
+        </div>
+      </div>
       <div id="topRight">
         <button id="phoneChip" class="chip" aria-label="Phone controller">📱</button>
-        <button id="helpBtn" class="chip" aria-label="Controls">?</button>
+        <button id="helpBtn" class="chip" aria-label="Menu (Esc)" title="Menu (Esc)">☰ Menu</button>
       </div>
     </div>
 
@@ -54,77 +61,93 @@
 
     <div id="rotate">Turn your phone sideways to fly ↻</div>
 
-    <div id="menu" class="overlay">
-      <div class="card">
-        <h1><span class="brick r"></span><span class="brick y"></span><span class="brick b"></span> Lego Sky</h1>
-        <p class="sub" id="subtitle">Fly a Lego airplane over Spartanburg, South Carolina</p>
-        <div id="choices">
-          <div class="choice">
-            <span class="choice-label">City</span>
-            <div class="seg" id="segCity" role="group" aria-label="City">
-              <button data-v="spartanburg">Spartanburg, SC</button>
-              <button data-v="fortcollins">Fort Collins, CO</button>
-            </div>
+    <div id="menu">
+      <aside id="menuPanel" aria-label="Game menu">
+        <header class="menu-head">
+          <h1><span class="brick r"></span><span class="brick y"></span><span class="brick b"></span>Lego Sky</h1>
+          <p class="sub" id="subtitle">Loading…</p>
+        </header>
+
+        <section class="opt" aria-labelledby="optCity">
+          <h2 id="optCity">Where</h2>
+          <div class="cards two" id="segCity" role="group" aria-labelledby="optCity">
+            <button data-v="spartanburg"><b>Spartanburg</b><span>South Carolina</span></button>
+            <button data-v="fortcollins"><b>Fort Collins</b><span>Colorado</span></button>
           </div>
-          <div class="choice">
-            <span class="choice-label">Fly</span>
-            <div class="seg" id="segVehicle" role="group" aria-label="Vehicle">
-              <button data-v="plane">✈️ Bush Plane</button>
-              <button data-v="heli">🕷️ Ghost-Spider Copter</button>
-            </div>
+        </section>
+
+        <section class="opt" aria-labelledby="optVehicle">
+          <h2 id="optVehicle">Fly</h2>
+          <div class="cards two" id="segVehicle" role="group" aria-labelledby="optVehicle">
+            <button data-v="plane"><b>✈️ Bush Plane</b><span>LEGO Technic 42198</span></button>
+            <button data-v="heli"><b>🕷️ Ghost-Spider</b><span>Copter · hover &amp; land anywhere</span></button>
           </div>
-          <div class="choice">
-            <span class="choice-label">Look</span>
-            <div class="seg seg3" id="segLook" role="group" aria-label="Look">
-              <button data-v="lego">🧱 Lego</button>
-              <button data-v="real">🛰️ Realistic</button>
-              <button data-v="google">🌎 Google 3D</button>
-            </div>
+        </section>
+
+        <section class="opt" aria-labelledby="optLook">
+          <h2 id="optLook">Look</h2>
+          <div class="cards three" id="segLook" role="group" aria-labelledby="optLook">
+            <button data-v="lego"><b>🧱 Lego</b><span>Bricks &amp; studs</span></button>
+            <button data-v="real"><b>🛰️ Realistic</b><span>Satellite photo</span></button>
+            <button data-v="google"><b>🌎 Google 3D</b><span>Real 3D city</span></button>
           </div>
-          <p class="look-note" id="lookNote" hidden></p>
+          <p class="look-note" id="lookNote" hidden>Google 3D isn't set up on this server yet.</p>
+        </section>
+
+        <div id="phoneControls" class="opt" hidden>
+          <h2>Steer this phone by</h2>
+          <div class="cards two" role="group" aria-label="Steering on this phone">
+            <button id="ctlTilt" class="on" aria-pressed="true"><b>📱 Tilting</b><span>Like a steering wheel</span></button>
+            <button id="ctlStick" aria-pressed="false"><b>🕹️ Touch stick</b><span>On-screen joystick</span></button>
+          </div>
         </div>
+
         <div id="loading">
           <div class="bar"><div id="loadBar"></div></div>
-          <p id="loadText">Loading Spartanburg…</p>
+          <p id="loadText">Loading…</p>
         </div>
-        <div id="startButtons" hidden>
-          <div id="phoneControls" hidden>
-            <p class="seg-label">Flying on this phone? Turn it sideways, then pick how to steer:</p>
-            <div class="seg" role="group" aria-label="Steering on this phone">
-              <button id="ctlTilt" class="on" aria-pressed="true">📱 Tilt the phone</button>
-              <button id="ctlStick" aria-pressed="false">🕹️ Touch stick</button>
-            </div>
-          </div>
-          <button class="big" id="startRunway">Take off from Downtown Memorial Airport</button>
+
+        <div class="actions" id="startButtons" hidden>
+          <button class="big go" id="resumeBtn" hidden>▶ Resume flight</button>
+          <button class="big" id="startRunway">Take off</button>
           <button class="big alt" id="startAir">Start in the air over downtown</button>
-          <button class="big phone-btn" id="phoneBtn">📱 Use my phone as the controller</button>
+          <button class="link-btn" id="phoneBtn">📱 Use my phone as the controller</button>
         </div>
-        <div class="controls heli-only">
-          <div><kbd>A</kbd><kbd>D</kbd> / <kbd>←</kbd><kbd>→</kbd> / joystick: steer</div>
-          <div><kbd>Shift</kbd> / <kbd>Ctrl</kbd> throttle: forward speed (stays set)</div>
-          <div><kbd>W</kbd><kbd>S</kbd> / <kbd>↑</kbd><kbd>↓</kbd> lift: up / down (let go to hold height)</div>
-          <div><kbd>Q</kbd><kbd>E</kbd> slide sideways &nbsp; <kbd>Space</kbd> slow to a stop</div>
-          <div><kbd>B</kbd> floats (land on water) &nbsp; <kbd>T</kbd> turbo</div>
-          <div><kbd>C</kbd> camera &nbsp; <kbd>N</kbd> big map &nbsp; <kbd>R</kbd> restart</div>
-        </div>
-        <div class="controls plane-only">
-          <div><kbd>W</kbd><kbd>S</kbd> / <kbd>↑</kbd><kbd>↓</kbd> climb / dive</div>
-          <div><kbd>A</kbd><kbd>D</kbd> / <kbd>←</kbd><kbd>→</kbd> bank left / right</div>
-          <div><kbd>Q</kbd><kbd>E</kbd> rudder</div>
-          <div><kbd>Shift</kbd> / <kbd>Ctrl</kbd> throttle up / down</div>
-          <div><kbd>B</kbd> boat floats (land on water) &nbsp; <kbd>Space</kbd> brakes</div>
-          <div><kbd>T</kbd> turbo (1X → T2X → T3X) &nbsp; <kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> pick turbo</div>
-          <div><kbd>C</kbd> camera &nbsp; <kbd>N</kbd> big map &nbsp; <kbd>R</kbd> restart</div>
-          <div><kbd>I</kbd> invert pitch &nbsp; <kbd>M</kbd> sound</div>
-        </div>
-        <p class="tip heli-only">Helicopter: the joystick steers, the throttle sets your speed, and LIFT takes you
-          up and down (middle = hold height). To take off, push LIFT up (or hold W); to land, stop, then bring
-          LIFT down. Xbox controller: left stick steers, triggers set the throttle, right stick is lift.</p>
-        <p class="tip plane-only">Takeoff: full throttle, gently pull up at about 55 kt. Landing: line up with the
-          runway, ease the throttle back and descend gently. The plane cushions itself near the ground.
-          <span class="menu-tip-keys">Xbox controller: left stick to fly, triggers for throttle, A brakes, B floats, Y camera, RB turbo.</span></p>
-        <p class="credit">Map data © OpenStreetMap contributors, Overture Maps Foundation. Elevation: Mapzen Terrain Tiles.
-          Satellite imagery contains modified Copernicus Sentinel data. Google 3D: © Google.</p>
+
+        <details class="help">
+          <summary>Controls &amp; tips</summary>
+          <div class="controls heli-only">
+            <div><kbd>A</kbd><kbd>D</kbd> / joystick: steer</div>
+            <div><kbd>Shift</kbd> / <kbd>Ctrl</kbd> speed (stays set)</div>
+            <div><kbd>W</kbd><kbd>S</kbd> up / down (let go to hold height)</div>
+            <div><kbd>Q</kbd><kbd>E</kbd> slide sideways &nbsp; <kbd>Space</kbd> slow to a stop</div>
+          </div>
+          <div class="controls plane-only">
+            <div><kbd>W</kbd><kbd>S</kbd> / <kbd>↑</kbd><kbd>↓</kbd> climb / dive</div>
+            <div><kbd>A</kbd><kbd>D</kbd> / <kbd>←</kbd><kbd>→</kbd> bank left / right</div>
+            <div><kbd>Q</kbd><kbd>E</kbd> rudder &nbsp; <kbd>Space</kbd> brakes</div>
+            <div><kbd>Shift</kbd> / <kbd>Ctrl</kbd> throttle up / down</div>
+          </div>
+          <div class="controls">
+            <div><kbd>B</kbd> floats (land on water) &nbsp; <kbd>T</kbd> turbo (or <kbd>1</kbd><kbd>2</kbd><kbd>3</kbd>)</div>
+            <div><kbd>C</kbd> camera &nbsp; <kbd>N</kbd> big map &nbsp; <kbd>R</kbd> restart &nbsp; <kbd>Esc</kbd> menu</div>
+            <div><kbd>I</kbd> invert pitch &nbsp; <kbd>M</kbd> sound</div>
+          </div>
+          <p class="tip heli-only">Push LIFT up (or hold W) to take off, then raise SPEED to fly. To land, stop and
+            bring LIFT down; the copter cushions the touchdown.</p>
+          <p class="tip plane-only">Takeoff: full throttle, gently pull up at about 55 kt. Landing: line up with the
+            runway, ease the throttle back and descend gently; the plane cushions itself near the ground.</p>
+          <p class="tip menu-tip-keys">Xbox controller: left stick to fly, triggers for throttle, A brakes, B floats,
+            Y camera, RB turbo<span class="heli-only">, right stick lift</span>.</p>
+        </details>
+
+        <p class="credit">Map data © OpenStreetMap contributors, Overture Maps Foundation. Elevation: Mapzen
+          Terrain Tiles. Satellite imagery contains modified Copernicus Sentinel data. Google 3D: © Google.</p>
+      </aside>
+
+      <div id="previewTag" aria-live="polite">
+        <span class="dot"></span><span id="previewText">Preview</span>
+        <span id="previewBusy" hidden>· building…</span>
       </div>
     </div>
 

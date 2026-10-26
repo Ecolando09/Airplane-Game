@@ -17,7 +17,7 @@ export class Input {
 
     const actions = {
       KeyC: 'cam', KeyR: 'reset', KeyM: 'mute', KeyI: 'invert', KeyB: 'floats', KeyN: 'map',
-      KeyT: 'turbo', Digit1: 'turbo1', Digit2: 'turbo2', Digit3: 'turbo3',
+      KeyT: 'turbo', Digit1: 'turbo1', Digit2: 'turbo2', Digit3: 'turbo3', Escape: 'pause',
     };
     addEventListener('keydown', (e) => {
       if (e.repeat) return;

@@ -141,6 +141,11 @@ out['locators'] = [{'name': n, 'x': xy(lon, lat)[0], 'z': xy(lon, lat)[1], 'kind
 # Runways aren't in the source data, so each config places one by hand.
 rwc = CFG['runway']
 cx, cz = xy(rwc['lon'], rwc['lat'])
+# Helicopters start from a hospital helipad (spotted on aerial imagery).
+hp = CFG.get('helipad')
+if hp:
+    hx, hz = xy(hp['lon'], hp['lat'])
+    out['helipad'] = {'name': hp['name'], 'x': hx, 'z': hz}
 out['runway'] = {'x': cx, 'z': cz, 'heading': rwc['heading'], 'length': rwc['length'], 'width': rwc['width'], 'names': rwc['names']}
 
 # --- trees: scatter on open ground, avoiding roads/buildings/water/runway ----
@@ -181,6 +186,9 @@ L2, W2 = rw['length'] / 2 + 250, rw['width'] / 2 + 120
 for L2_, W2_ in ((L2, W2), (rw['length'] / 2 + 1200, rw['width'] / 2 + 60)):  # airfield + approach corridors
     bd.polygon([mp(rw['x'] + fx * a * L2_ + sx * b * W2_, rw['z'] + fz * a * L2_ + sz * b * W2_)
                 for a, b in ((1, 1), (1, -1), (-1, -1), (-1, 1))], fill=255)
+if hp:  # keep trees off the helipad
+    px_, pz_ = mp(hx, hz)
+    bd.ellipse([px_ - 40 / RES, pz_ - 40 / RES, px_ + 40 / RES, pz_ + 40 / RES], fill=255)
 block = np.array(block); kind = np.array(kind)
 # Tree odds per ground type (open, residential, park, forest); configurable per
 # city, e.g. Colorado's open prairie has far fewer trees than the Carolina woods.

@@ -111,5 +111,10 @@
       "height": 72
     }
   ],
-  "geoid": -32
+  "geoid": -32,
+  "helipad": {
+    "name": "Spartanburg Regional helipad",
+    "lat": 34.965325,
+    "lon": -81.93936
+  }
 }

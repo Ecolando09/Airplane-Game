@@ -131,6 +131,7 @@ export function createLegoPlane() {
   const zSide = mat(LEGO.white, { map: zebraSide });
 
   let glass, head, cap;
+  const posts = []; // cabin window posts, hidden in the cockpit view
   if (!real) {
     // ---------------------------------------------------------------- fuselage
     // Cabin/forward body: white zebra sides, black top frame.
@@ -174,7 +175,7 @@ export function createLegoPlane() {
     glass.position.set(0, 0.93, -2.05);
     plane.add(glass);
     for (const sx of [-1, 1]) {
-      for (const z of [-3.35, -2.05, -0.75]) box(0.16, 1.05, 0.16, sx * 0.9, 0.93, z, LEGO.black);
+      for (const z of [-3.35, -2.05, -0.75]) posts.push(box(0.16, 1.05, 0.16, sx * 0.9, 0.93, z, LEGO.black));
     }
     // Pilot
     head = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.4, 16), mat(LEGO.yellow));
@@ -463,8 +464,8 @@ export function createLegoPlane() {
     propDisc: disc,
     controls: { ailerons, elevator, rudder },
     parts,
-    cockpitHidden: [glass, head, cap], // hidden in cockpit view so they don't block the camera
-    cockpitEye: new THREE.Vector3(-0.4, 1.05, -2.2),
+    cockpitHidden: [glass, head, cap, ...posts], // hidden in cockpit view so they don't block the camera
+    cockpitEye: new THREE.Vector3(0, 2.3, -3.4),
     gearHeight: GEAR_HEIGHT,
     radius: 3.5, // collision radius
   };

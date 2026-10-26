@@ -56,6 +56,7 @@ export class World {
     this._buildBuildings();
     this._buildTrees();
     this._buildCustom();
+    this._buildHelipad();
     this._buildClouds();
     this._buildWaterMask();
     this.landmarks = data.landmarks.map((l) => ({ ...l, y: this.heightAt(l.x, l.z) }));
@@ -592,6 +593,36 @@ export class World {
     list.forEach((mm, i) => im.setMatrixAt(i, mm));
     im.computeBoundingSphere();
     this.scene.add(im);
+  }
+
+  /** Hospital helipad where the helicopter starts: a painted pad with a big H. */
+  _buildHelipad() {
+    const hp = this.data.helipad;
+    if (!hp) return;
+    hp.y = this.heightAt(hp.x, hp.z);
+    const tex = canvasTex(256, 256, (g) => {
+      g.fillStyle = '#5a5d61';
+      g.fillRect(0, 0, 256, 256);
+      g.strokeStyle = '#f4f4f4';
+      g.lineWidth = 12;
+      g.beginPath();
+      g.arc(128, 128, 104, 0, Math.PI * 2);
+      g.stroke();
+      g.fillStyle = '#f4f4f4';
+      g.font = 'bold 150px Arial, sans-serif';
+      g.textAlign = 'center';
+      g.textBaseline = 'middle';
+      g.fillText('H', 128, 136);
+      g.strokeStyle = '#f2cd37';
+      g.lineWidth = 8;
+      g.strokeRect(6, 6, 244, 244);
+    });
+    const pad = new THREE.Mesh(new THREE.PlaneGeometry(22, 22).rotateX(-Math.PI / 2),
+      new THREE.MeshLambertMaterial({ map: tex, polygonOffset: true, polygonOffsetFactor: -2 }));
+    pad.position.set(hp.x, hp.y + 0.25, hp.z);
+    pad.receiveShadow = true;
+    this.scene.add(pad);
+    this.meshes.push(pad);
   }
 
   // ------------------------------------------------------- custom buildings

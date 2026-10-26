@@ -141,7 +141,7 @@ export function createGhostSpiderHeli() {
     const spin = 18 + flight.throttle * 20;
     rotor.rotation.y += spin * dt;
     tailRotor.rotation.x += spin * 1.6 * dt;
-    disc.material.opacity = 0.18;
+    disc.material.opacity = flight.onGround ? 0.04 : 0.1;
   }
 
   return {
@@ -192,12 +192,20 @@ export class HeliFlight {
     this.reset();
   }
 
+  /** Start on the city's hospital helipad (or the runway if there isn't one), facing downtown. */
   reset() {
+    const hp = this.world.data.helipad;
     const rw = this.world.runway;
-    const back = rw.length / 2 - 70;
-    this.pos.set(rw.x - rw.fx * back, 0, rw.z - rw.fz * back);
+    if (hp) {
+      const sq = this.world.landmarks[0];
+      this.pos.set(hp.x, 0, hp.z);
+      this.yaw = Math.atan2(-(sq.x - hp.x), -(sq.z - hp.z));
+    } else {
+      const back = rw.length / 2 - 70;
+      this.pos.set(rw.x - rw.fx * back, 0, rw.z - rw.fz * back);
+      this.yaw = -THREE.MathUtils.degToRad(rw.heading);
+    }
     this.pos.y = this.world.heightAt(this.pos.x, this.pos.z) + this.plane.gearHeight;
-    this.yaw = -THREE.MathUtils.degToRad(rw.heading);
     this._commonReset();
     this.onGround = true;
   }

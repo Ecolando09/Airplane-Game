@@ -16,11 +16,12 @@ const SKY = 0x9fd0ff;
 
 // ------------------------------------------------------------------ settings
 // City, vehicle and look come from the URL (?city=&vehicle=&look=) or the last
-// choice on this device. Changing one reloads the page with the new choice.
+// choice on this device. Changing one in the menu rebuilds the preview in place.
 const CITIES = { spartanburg: 'Spartanburg, SC', fortcollins: 'Fort Collins, CO' };
-const VEHICLES = ['plane', 'heli'];
-const LOOKS = ['lego', 'real', 'google'];
+const VEHICLE_NAMES = { plane: 'Bush Plane', heli: 'Ghost-Spider Copter' };
+const LOOK_NAMES = { lego: 'Lego', real: 'Realistic', google: 'Google 3D' };
 const CONFIG = window.LEGOSKY_CONFIG || {};
+const HAS_GOOGLE = !!CONFIG.googleMapsKey;
 const settings = (() => {
   const q = new URLSearchParams(location.search);
   let saved = {};
@@ -30,24 +31,18 @@ const settings = (() => {
   const pick = (k, ok, def) => (ok(q.get(k)) ? q.get(k) : ok(saved[k]) ? saved[k] : def);
   return {
     city: pick('city', (v) => v in CITIES, 'spartanburg'),
-    vehicle: pick('vehicle', (v) => VEHICLES.includes(v), 'plane'),
-    look: pick('look', (v) => LOOKS.includes(v), 'lego'),
+    vehicle: pick('vehicle', (v) => v in VEHICLE_NAMES, 'plane'),
+    look: pick('look', (v) => v in LOOK_NAMES && (v !== 'google' || HAS_GOOGLE), 'lego'),
   };
 })();
-// Google 3D needs an API key (set on the server in config.js); without one, use the satellite look.
-const lookWanted = settings.look;
-if (settings.look === 'google' && !CONFIG.googleMapsKey) settings.look = 'real';
-setLook(settings.look);
-function changeSetting(key, value) {
-  const next = { ...settings, look: lookWanted, [key]: value };
+function saveSettings() {
   try {
-    localStorage.setItem('legosky.settings', JSON.stringify(next));
+    localStorage.setItem('legosky.settings', JSON.stringify(settings));
   } catch {}
   const q = new URLSearchParams(location.search);
-  for (const k of ['city', 'vehicle', 'look']) q.set(k, next[k]);
-  location.search = q.toString();
+  for (const k of ['city', 'vehicle', 'look']) q.set(k, settings[k]);
+  history.replaceState(null, '', `?${q}`);
 }
-$('loadText').textContent = `Loading ${CITIES[settings.city]}…`;
 
 // ------------------------------------------------------------------ renderer
 const renderer = new THREE.WebGLRenderer({ canvas: $('game'), antialias: true, logarithmicDepthBuffer: true });
@@ -80,10 +75,28 @@ addEventListener('resize', () => {
   renderer.setSize(innerWidth, innerHeight);
 });
 
-// ------------------------------------------------------------------ loading
-async function loadCity() {
-  const res = await fetch(`./cities/${settings.city}.json`);
-  const total = Number(res.headers.get('content-length')) || 8.7e6;
+// ------------------------------------------------------------------ city, look and vehicle
+// Everything that depends on the menu choices lives in these variables and is
+// rebuilt in place when a choice changes, so the menu shows a live preview.
+let data;
+let world;
+let traffic;
+let google = null;
+let isHeli;
+let plane;
+let flight;
+let labelEls = [];
+let pinEls = [];
+let worldObjects = [];
+const input = new Input();
+const sound = new EngineSound();
+const cityCache = new Map();
+const satCache = new Map();
+
+async function fetchCity(city) {
+  if (cityCache.has(city)) return cityCache.get(city);
+  const res = await fetch(`./cities/${city}.json`);
+  const total = Number(res.headers.get('content-length')) || 9e6;
   const reader = res.body.getReader();
   const chunks = [];
   let got = 0;
@@ -94,68 +107,112 @@ async function loadCity() {
     got += value.length;
     $('loadBar').style.width = `${Math.min(90, (got / total) * 90)}%`;
   }
-  const blob = new Blob(chunks);
-  return JSON.parse(await blob.text());
+  const json = JSON.parse(await new Blob(chunks).text());
+  cityCache.set(city, json);
+  return json;
 }
 
-const loadImage = (src) => new Promise((resolve) => {
-  const img = new Image();
-  img.onload = () => resolve(img);
-  img.onerror = () => resolve(null);
-  img.src = src;
-});
-const [data, satImage] = await Promise.all([
-  loadCity(),
-  settings.look === 'real' ? loadImage(`./cities/${settings.city}-sat.jpg`) : null,
-]);
-$('loadText').textContent = settings.look === 'lego' ? 'Building the city out of bricks…' : 'Building the city…';
-await new Promise((r) => setTimeout(r, 30));
-const world = new World(scene, data, { satImage });
-$('loadBar').style.width = '100%';
+function fetchSat(city) {
+  if (!satCache.has(city)) {
+    satCache.set(city, new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = () => resolve(null);
+      img.src = `./cities/${city}-sat.jpg`;
+    }));
+  }
+  return satCache.get(city);
+}
 
-const traffic = new Traffic(scene, world, IS_TOUCH ? 900 : 2500);
+/** Remove objects from the scene and free their GPU memory. */
+function disposeObjects(list) {
+  for (const obj of list) {
+    scene.remove(obj);
+    obj.traverse((o) => {
+      o.geometry?.dispose();
+      for (const m of [].concat(o.material || [])) {
+        m.map?.dispose();
+        m.dispose();
+      }
+    });
+  }
+}
 
-// Google Photorealistic 3D Tiles replace the built city: real buildings and terrain.
-let google = null;
-if (settings.look === 'google') {
-  google = new GoogleWorld({
-    scene, camera, renderer, apiKey: CONFIG.googleMapsKey,
-    lat: data.origin[1], lon: data.origin[0], height: world.baseElevation + (data.geoid || 0),
-  });
-  for (const m of world.meshes) m.visible = false;
-  for (const m of [traffic.body, traffic.cabin, traffic.wheels]) m.visible = false;
-  // Fly over the real surface where it has loaded, the elevation grid elsewhere.
-  const gridHeight = world.heightAt.bind(world);
-  world.heightAt = (x, z) => google.heightAt(x, z) ?? gridHeight(x, z);
-  camera.far = 60000;
+async function buildWorld() {
+  const [cityData, satImage] = await Promise.all([
+    fetchCity(settings.city),
+    settings.look === 'real' ? fetchSat(settings.city) : null,
+  ]);
+  $('loadText').textContent = settings.look === 'lego' ? 'Building the city out of bricks…' : 'Building the city…';
+  await new Promise((r) => setTimeout(r, 30));
+
+  // Tear down the previous city.
+  disposeObjects(worldObjects);
+  if (google) {
+    google.tiles.dispose();
+    scene.remove(google.tiles.group);
+    google = null;
+  }
+  for (const el of [...labelEls, ...pinEls]) el.remove();
+
+  setLook(settings.look);
+  data = cityData;
+  const before = new Set(scene.children);
+  world = new World(scene, data, { satImage });
+  traffic = new Traffic(scene, world, IS_TOUCH ? 900 : 2500);
+
+  // Google Photorealistic 3D Tiles replace the built city: real buildings and terrain.
+  if (settings.look === 'google') {
+    google = new GoogleWorld({
+      scene, camera, renderer, apiKey: CONFIG.googleMapsKey,
+      lat: data.origin[1], lon: data.origin[0], height: world.baseElevation + (data.geoid || 0),
+    });
+    for (const m of world.meshes) m.visible = false;
+    for (const m of [traffic.body, traffic.cabin, traffic.wheels]) m.visible = false;
+    // Fly over the real surface where it has loaded, the elevation grid elsewhere.
+    const gridHeight = world.heightAt.bind(world);
+    world.heightAt = (x, z) => google.heightAt(x, z) ?? gridHeight(x, z);
+  }
+  camera.far = google ? 60000 : 40000;
   camera.updateProjectionMatrix();
-  scene.fog.near = 6000;
-  scene.fog.far = 30000;
+  scene.fog.near = google ? 6000 : 2500;
+  scene.fog.far = google ? 30000 : 11000;
+  worldObjects = scene.children.filter((o) => !before.has(o) && o !== google?.tiles.group);
+
+  labelEls = world.landmarks.map((l) => {
+    const el = document.createElement('div');
+    el.className = 'label';
+    el.textContent = l.name;
+    $('labels').appendChild(el);
+    return el;
+  });
+  pinEls = world.locators.map((l) => {
+    const el = document.createElement('div');
+    el.className = 'label pin';
+    el.style.setProperty('--pin', '#' + l.color.toString(16).padStart(6, '0'));
+    $('labels').appendChild(el);
+    return el;
+  });
+  majorRoads = computeMajorRoads();
+  $('loadBar').style.width = '100%';
 }
 
-const isHeli = settings.vehicle === 'heli';
-const plane = isHeli ? createGhostSpiderHeli() : createLegoPlane();
-scene.add(plane.group);
-const flight = isHeli ? new HeliFlight(world, plane) : new Flight(world, plane);
-const input = new Input();
-const sound = new EngineSound();
-
-// ------------------------------------------------------------------ labels
-const labelEls = world.landmarks.map((l) => {
-  const el = document.createElement('div');
-  el.className = 'label';
-  el.textContent = l.name;
-  $('labels').appendChild(el);
-  return el;
-});
-
-const pinEls = world.locators.map((l) => {
-  const el = document.createElement('div');
-  el.className = 'label pin';
-  el.style.setProperty('--pin', '#' + l.color.toString(16).padStart(6, '0'));
-  $('labels').appendChild(el);
-  return el;
-});
+function buildVehicle() {
+  if (plane) disposeObjects([plane.group]);
+  clearDebris();
+  isHeli = settings.vehicle === 'heli';
+  plane = isHeli ? createGhostSpiderHeli() : createLegoPlane();
+  scene.add(plane.group);
+  flight = isHeli ? new HeliFlight(world, plane) : new Flight(world, plane);
+  input.heliMode = isHeli;
+  document.body.classList.toggle('heli', isHeli);
+  $('throttleLabel').textContent = isHeli ? 'SPEED' : 'THROTTLE';
+  tilt = flight.onGround && !isHeli ? GROUND_TILT : 0;
+  floatsAnim = 0;
+  boosterLevel = 0;
+  camInit = false;
+  if (window.__game) Object.assign(window.__game, { world, flight, plane, google });
+}
 
 // ------------------------------------------------------------------ floats
 let floatsAnim = 0;
@@ -166,14 +223,14 @@ function toggleFloats() {
     return;
   }
   flight.floats = !flight.floats;
-  message(flight.floats ? 'Floats down 🛶 — you can land on water' : 'Floats up — wheels only', 2);
+  message(flight.floats ? 'Floats down 🛶 — you can land on water' : `Floats up — ${isHeli ? 'legs' : 'wheels'} only`, 2);
 }
 function updateFloats(dt) {
   floatsAnim += ((flight.floats ? 1 : 0) - floatsAnim) * (1 - Math.exp(-dt * 4));
   plane.floats.visible = floatsAnim > 0.02;
   plane.floats.scale.setScalar(Math.max(0.001, floatsAnim));
   for (const w of plane.wheels) w.visible = floatsAnim < 0.6;
-  $('gear').textContent = flight.floats ? 'FLOATS' : 'WHEELS';
+  $('gear').textContent = flight.floats ? 'FLOATS' : isHeli ? 'LEGS' : 'WHEELS';
   $('gear').classList.toggle('floats', flight.floats);
 }
 
@@ -231,7 +288,7 @@ function clearDebris() {
     d.mesh.geometry.dispose();
   }
   debris = [];
-  plane.group.visible = true;
+  if (plane) plane.group.visible = true;
 }
 
 // ------------------------------------------------------------------ camera
@@ -256,6 +313,8 @@ function updateCamera(dt) {
     return;
   }
   for (const m of plane.cockpitHidden) m.visible = mode !== 'cockpit';
+  // From the cockpit only the spinning-prop blur shows, not the solid blades.
+  if (!isHeli) for (const c of plane.propeller.children) if (c !== plane.propDisc) c.visible = mode !== 'cockpit';
   if (mode === 'cockpit') {
     plane.group.updateMatrixWorld();
     camera.position.copy(plane.cockpitEye).applyMatrix4(plane.group.matrixWorld);
@@ -272,8 +331,11 @@ function updateCamera(dt) {
     look = p.clone().addScaledVector(f, 25);
   }
   if (flight.crashed) {
-    want = camPos.clone();
+    // Pull back and up so the whole wreck is in view.
     look = debris.length ? debris[0].mesh.position.clone() : p.clone();
+    const away = camPos.clone().sub(look).setY(0);
+    if (away.lengthSq() < 1) away.set(0, 0, 1);
+    want = look.clone().addScaledVector(away.normalize(), 45).add(new THREE.Vector3(0, 22, 0));
   }
   const ground = world.heightAt(want.x, want.z) + 3;
   want.y = Math.max(want.y, ground);
@@ -315,18 +377,21 @@ const ROAD_STYLE = {
   secondary: { color: '#ffffff', w: 4, rank: 3 },
   tertiary: { color: '#ffffff', w: 2.5, rank: 4 },
 };
-const majorRoads = world.data.lines
-  .filter((l) => ROAD_STYLE[l.k])
-  .map((l) => {
-    let minx = Infinity, minz = Infinity, maxx = -Infinity, maxz = -Infinity, len = 0;
-    for (let i = 0; i < l.p.length; i += 2) {
-      minx = Math.min(minx, l.p[i]); maxx = Math.max(maxx, l.p[i]);
-      minz = Math.min(minz, l.p[i + 1]); maxz = Math.max(maxz, l.p[i + 1]);
-      if (i) len += Math.hypot(l.p[i] - l.p[i - 2], l.p[i + 1] - l.p[i - 1]);
-    }
-    return { ...l, style: ROAD_STYLE[l.k], minx, minz, maxx, maxz, len };
-  })
-  .sort((a, b) => b.style.rank - a.style.rank); // draw big roads last (on top)
+let majorRoads = [];
+function computeMajorRoads() {
+  return world.data.lines
+    .filter((l) => ROAD_STYLE[l.k])
+    .map((l) => {
+      let minx = Infinity, minz = Infinity, maxx = -Infinity, maxz = -Infinity, len = 0;
+      for (let i = 0; i < l.p.length; i += 2) {
+        minx = Math.min(minx, l.p[i]); maxx = Math.max(maxx, l.p[i]);
+        minz = Math.min(minz, l.p[i + 1]); maxz = Math.max(maxz, l.p[i + 1]);
+        if (i) len += Math.hypot(l.p[i] - l.p[i - 2], l.p[i + 1] - l.p[i - 1]);
+      }
+      return { ...l, style: ROAD_STYLE[l.k], minx, minz, maxx, maxz, len };
+    })
+    .sort((a, b) => b.style.rank - a.style.rank); // draw big roads last (on top)
+}
 
 function drawMinimap() {
   const W = mm.width;
@@ -530,7 +595,9 @@ function updateHud(dt) {
     const agl = p.y - plane.gearHeight - world.heightAt(p.x, p.z);
     if (wasOnGround.v && !flight.onGround && agl > 1) message('Airborne! 🛫', 2);
     if (!wasOnGround.v && flight.onGround) {
-      message(flight.onWater ? 'Splashdown! 🌊 Nice water landing!'
+      const hp = data.helipad;
+      const onPad = isHeli && hp && Math.hypot(p.x - hp.x, p.z - hp.z) < 14;
+      message(onPad ? 'Right on the helipad! 🚁' : flight.onWater ? 'Splashdown! 🌊 Nice water landing!'
         : world.isOnRunway(p.x, p.z) ? 'Nice landing! 🛬' : 'Landed in a field!', 3);
     }
     if (flight.canStall !== false && !flight.onGround && flight.speed < 26 && flight.forward.y > -0.3) {
@@ -546,39 +613,63 @@ function updateHud(dt) {
     if (msgTimer <= 0) $('message').innerHTML = '';
   }
 
-  // Landmark labels
-  const v = new THREE.Vector3();
-  world.landmarks.forEach((l, i) => {
-    const el = labelEls[i];
-    const d = Math.hypot(l.x - p.x, l.z - p.z);
-    v.set(l.x, l.y + 40 + d * 0.01, l.z).project(camera);
-    if (d > (innerHeight < 500 ? 2500 : 5000) || v.z > 1 || Math.abs(v.x) > 1.1 || Math.abs(v.y) > 1.1) {
-      el.style.display = 'none';
-      return;
-    }
-    el.style.display = '';
-    el.style.left = `${(v.x * 0.5 + 0.5) * innerWidth}px`;
-    el.style.top = `${(-v.y * 0.5 + 0.5) * innerHeight}px`;
-    el.style.opacity = String(THREE.MathUtils.clamp(1.4 - d / 4000, 0.25, 1));
-  });
 }
 
-function updatePinLabels() {
+// ------------------------------------------------------------------ labels
+// Landmark labels and map pins, placed over the 3D view. They never cover the
+// vehicle (they fade out where it is) and never stack on top of each other:
+// map pins win, then the nearest landmarks.
+const _v = new THREE.Vector3();
+function vehicleScreenRect() {
   const p = plane.group.position;
-  const v = new THREE.Vector3();
+  _v.copy(p).project(camera);
+  if (_v.z > 1) return null;
+  const dist = camera.position.distanceTo(p);
+  const focal = innerHeight / 2 / Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
+  const r = (8 / Math.max(dist, 1)) * focal + 12; // vehicle radius in pixels, plus a margin
+  const x = (_v.x * 0.5 + 0.5) * innerWidth;
+  const y = (-_v.y * 0.5 + 0.5) * innerHeight;
+  return [x - r, y - r, x + r, y + r];
+}
+function updateLabels() {
+  const p = plane.group.position;
+  const maxDist = innerHeight < 500 ? 2500 : 5000;
+  const items = [];
   world.locators.forEach((l, i) => {
-    const el = pinEls[i];
     const d = Math.hypot(l.x - p.x, l.z - p.z);
-    v.set(l.x, l.y + 170, l.z).project(camera);
-    if (v.z > 1 || Math.abs(v.x) > 1.2 || Math.abs(v.y) > 1.2) {
-      el.style.display = 'none';
-      return;
-    }
-    el.style.display = '';
-    el.textContent = `📍 ${l.name} · ${d < 1000 ? Math.round(d) + ' m' : (d / 1609).toFixed(1) + ' mi'}`;
-    el.style.left = `${(v.x * 0.5 + 0.5) * innerWidth}px`;
-    el.style.top = `${(-v.y * 0.5 + 0.5) * innerHeight}px`;
+    pinEls[i].textContent = `📍 ${l.name} · ${d < 1000 ? Math.round(d) + ' m' : (d / 1609).toFixed(1) + ' mi'}`;
+    items.push({ el: pinEls[i], x: l.x, y: l.y + 170, z: l.z, d, pin: true });
   });
+  world.landmarks.forEach((l, i) => {
+    const d = Math.hypot(l.x - p.x, l.z - p.z);
+    items.push({ el: labelEls[i], x: l.x, y: l.y + 40 + d * 0.01, z: l.z, d, pin: false, hide: d > maxDist });
+  });
+  items.sort((a, b) => (b.pin - a.pin) || a.d - b.d);
+  const placed = [];
+  const veh = running && CAMS[camMode] !== 'cockpit' ? vehicleScreenRect() : null;
+  const hit = (r, q) => r[0] < q[2] && r[2] > q[0] && r[1] < q[3] && r[3] > q[1];
+  for (const it of items) {
+    _v.set(it.x, it.y, it.z).project(camera);
+    if (it.hide || _v.z > 1 || Math.abs(_v.x) > 1.15 || Math.abs(_v.y) > 1.15) {
+      it.el.style.display = 'none';
+      continue;
+    }
+    const x = (_v.x * 0.5 + 0.5) * innerWidth;
+    const y = (-_v.y * 0.5 + 0.5) * innerHeight;
+    it.el.style.display = '';
+    const w = it.el.offsetWidth;
+    const h = it.el.offsetHeight + 6;
+    const rect = [x - w / 2, y - h, x + w / 2, y]; // labels sit above their point
+    if (placed.some((q) => hit(rect, q))) {
+      it.el.style.display = 'none';
+      continue;
+    }
+    placed.push(rect);
+    it.el.style.left = `${x}px`;
+    it.el.style.top = `${y}px`;
+    const fade = it.pin ? 1 : THREE.MathUtils.clamp(1.4 - it.d / 4000, 0.3, 1);
+    it.el.style.opacity = String(veh && hit(rect, veh) ? 0.08 : fade);
+  }
 }
 
 // ------------------------------------------------------------------ game flow
@@ -619,9 +710,12 @@ function start(airborne) {
   wasOnGround.v = flight.onGround;
   crashTimer = 0;
   camInit = false;
+  pausedFlight = false;
+  camera.clearViewOffset();
   $('menu').hidden = true;
-  $('hud').hidden = false;
+  $('hud').hidden = $('labels').hidden = false;
   $('touch').hidden = !input.isTouch;
+  $('crashBox').hidden = true;
   input.syncThrottle(flight.throttle); // again now that the slider is visible and has a size
   // Helicopter on a touch screen: the stick only steers; LIFT starts at hold height.
   if (isHeli && input.isTouch) input.touchLift = 0;
@@ -639,42 +733,82 @@ function start(airborne) {
     : isHeli ? (input.isTouch ? 'Push LIFT up to take off!' : 'Hold W to lift off, Shift for speed!')
       : `Runway ${world.runway.names?.[0] ?? ''} — full throttle to take off!`, 3);
 }
-// Menu: choices and labels for this city and vehicle.
-document.title = `Lego Sky · ${data.name}`;
-$('subtitle').textContent = `Fly a ${isHeli ? 'Ghost-Spider helicopter' : 'Lego airplane'} over ${data.name}`;
-$('startRunway').textContent = `${isHeli ? 'Lift off from' : 'Take off from'} ${data.airport}`;
-$('startAir').textContent = 'Start in the air over downtown';
-document.body.classList.toggle('heli', isHeli);
-if (isHeli) $('throttleLabel').textContent = 'SPEED';
-input.heliMode = isHeli;
-for (const [id, key, val] of [['segCity', 'city', settings.city], ['segVehicle', 'vehicle', settings.vehicle], ['segLook', 'look', lookWanted]]) {
-  for (const b of $(id).querySelectorAll('button')) {
-    const on = b.dataset.v === val;
-    b.classList.toggle('on', on);
-    b.setAttribute('aria-pressed', String(on));
-    b.onclick = () => !on && changeSetting(key, b.dataset.v);
+// ------------------------------------------------------------------ menu
+// The menu sits on the left; the rest of the screen is a live preview of the
+// chosen vehicle, look and city. Choices apply right away (no page reload).
+let building = false;
+let pausedFlight = false; // a flight is waiting behind the menu (Resume)
+const SEGS = [['segCity', 'city'], ['segVehicle', 'vehicle'], ['segLook', 'look']];
+function updateMenu() {
+  document.title = `Lego Sky · ${data.name}`;
+  $('subtitle').textContent = `${VEHICLE_NAMES[settings.vehicle]} over ${data.name}`;
+  const base = isHeli && data.helipad ? data.helipad.name : data.airport;
+  $('startRunway').textContent = pausedFlight
+    ? `Restart at the ${isHeli && data.helipad ? 'helipad' : 'runway'}`
+    : `${isHeli ? 'Lift off from' : 'Take off from'} ${base}`;
+  $('startAir').textContent = pausedFlight ? 'Restart in the air' : 'Start in the air over downtown';
+  $('resumeBtn').hidden = !pausedFlight;
+  for (const [id, key] of SEGS) {
+    for (const b of $(id).querySelectorAll('button')) {
+      const on = b.dataset.v === settings[key];
+      b.classList.toggle('on', on);
+      b.setAttribute('aria-pressed', String(on));
+      b.disabled = building || (b.dataset.v === 'google' && !HAS_GOOGLE);
+    }
+  }
+  $('previewText').textContent = `${VEHICLE_NAMES[settings.vehicle]} · ${LOOK_NAMES[settings.look]} · ${CITIES[settings.city]}`;
+  $('previewBusy').hidden = !building;
+  $('startRunway').disabled = $('startAir').disabled = building;
+  $('attrib').hidden = !google;
+}
+async function applySetting(key, value) {
+  if (building || settings[key] === value) return;
+  settings[key] = value;
+  saveSettings();
+  building = true;
+  pausedFlight = false;
+  updateMenu();
+  if (key !== 'vehicle') {
+    $('loadBar').style.width = '0%';
+    $('loadText').textContent = `Loading ${CITIES[settings.city]}…`;
+    $('loading').hidden = false;
+  }
+  try {
+    if (key !== 'vehicle') await buildWorld();
+    buildVehicle();
+  } finally {
+    building = false;
+    $('loading').hidden = true;
+    updateMenu();
   }
 }
-if (lookWanted === 'google' && !CONFIG.googleMapsKey) {
-  $('lookNote').hidden = false;
-  $('lookNote').textContent = 'Google 3D needs a Google Maps API key on the server, so the satellite look is shown instead.';
+for (const [id, key] of SEGS) {
+  for (const b of $(id).querySelectorAll('button')) b.onclick = () => applySetting(key, b.dataset.v);
 }
-if (google) {
-  $('attrib').hidden = false;
-  setInterval(() => {
-    const a = google.tiles.getAttributions?.() || [];
-    $('attribText').textContent = a.filter((x) => x.type === 'string').map((x) => x.value).join(' · ');
-  }, 2000);
-}
-$('loading').hidden = true;
-$('startButtons').hidden = false;
+if (!HAS_GOOGLE) $('lookNote').hidden = false;
+setInterval(() => {
+  if (!google) return;
+  const a = google.tiles.getAttributions?.() || [];
+  $('attribText').textContent = a.filter((x) => x.type === 'string').map((x) => x.value).join(' · ');
+}, 2000);
+$('crashRetry').onclick = () => start(false);
+$('crashMenu').onclick = () => $('helpBtn').onclick();
+$('resumeBtn').onclick = () => {
+  pausedFlight = false;
+  $('menu').hidden = true;
+  $('hud').hidden = $('labels').hidden = false;
+  $('touch').hidden = !input.isTouch;
+  camera.clearViewOffset();
+  running = true;
+};
 $('startRunway').onclick = () => start(false);
 $('startAir').onclick = () => start(true);
 $('helpBtn').onclick = () => {
   running = false;
+  pausedFlight = !flight.crashed;
   $('menu').hidden = false;
-  $('startRunway').textContent = 'Restart on the runway';
-  $('startAir').textContent = 'Restart in the air';
+  $('hud').hidden = $('touch').hidden = $('labels').hidden = true;
+  updateMenu();
 };
 
 // ------------------------------------------------------------------ phone controller
@@ -703,12 +837,13 @@ $('phoneBtn').onclick = showPhonePanel;
 $('phoneChip').onclick = showPhonePanel;
 $('phoneDone').onclick = () => ($('phonePanel').hidden = true);
 setInterval(() => {
+  if (!plane) return;
   const p = plane.group.position;
   remote.sendTelemetry({
     menu: !running,
     spd: Math.round(flight.speed * 1.944),
     alt: Math.round((p.y - plane.gearHeight + world.baseElevation) * 3.281),
-    gear: flight.floats ? 'FLOATS' : 'WHEELS',
+    gear: flight.floats ? 'FLOATS' : isHeli ? 'LEGS' : 'WHEELS',
     turbo: flight.turbo,
     vehicle: isHeli ? 'heli' : 'plane',
     crashed: flight.crashed,
@@ -739,6 +874,7 @@ input.on('menuAir', () => !running && start(true));
 input.on('reset', () => running && start(false));
 input.on('air', () => running && start(true));
 input.on('mute', () => sound.toggle());
+input.on('pause', () => (running ? $('helpBtn').onclick() : pausedFlight && $('resumeBtn').onclick()));
 input.on('invert', () => message(input.invertPitch ? 'Pitch inverted (flight-sim style)' : 'Pitch normal', 1.5));
 
 // ------------------------------------------------------------------ airplane pose
@@ -786,7 +922,9 @@ function frame() {
       if (flight.crashed) {
         explode();
         crashTimer = 0;
-        message(`💥 ${flight.crashReason}<small>${input.isTouch ? 'Tap RESET' : 'Press R'} to try again</small>`, 999);
+        $('crashReason').textContent = `💥 ${flight.crashReason}`;
+        $('crashBox').hidden = false;
+        message('', 0.01);
       }
     } else {
       crashTimer += dt;
@@ -803,20 +941,42 @@ function frame() {
     sound.update(flight.crashed ? 0 : flight.throttle, flight.speed);
     updateCamera(dt);
     updateHud(dt);
-    updatePinLabels();
+    updateLabels();
     drawMinimap();
   } else {
-    // Slow orbit over downtown behind the menu.
-    const t = timer.getElapsed() * 0.05;
-    const c = world.landmarks[0];
-    camera.position.set(c.x + Math.cos(t) * 1400, c.y + 380, c.z + Math.sin(t) * 1400);
-    camera.up.set(0, 1, 0);
-    camera.lookAt(c.x, c.y + 20, c.z);
+    // Live preview behind the menu: the vehicle parked where it is, with the
+    // camera slowly circling it. The view is shifted right, clear of the menu.
+    if (!building && plane) {
+      poseAirplane(dt);
+      if (!isHeli) plane.propeller.rotation.z += 10 * dt;
+      const t = timer.getElapsed() * 0.18;
+      const p = plane.group.position;
+      const r = isHeli ? 22 : 26;
+      camera.position.set(p.x + Math.cos(t) * r, p.y + 7, p.z + Math.sin(t) * r);
+      const ground = world.heightAt(camera.position.x, camera.position.z) + 2;
+      camera.position.y = Math.max(camera.position.y, ground);
+      camera.up.set(0, 1, 0);
+      camera.lookAt(p.x, p.y + 1, p.z);
+      const side = $('menuPanel').getBoundingClientRect().width;
+      const wide = innerWidth > side * 1.6;
+      if (wide) camera.setViewOffset(innerWidth, innerHeight, -side / 2, 0, innerWidth, innerHeight);
+      else camera.clearViewOffset();
+    }
   }
   sun.target.position.copy(running ? plane.group.position : camera.position);
   sun.position.copy(sun.target.position).addScaledVector(SUN_DIR, 800);
   renderer.render(scene, camera);
 }
+
+// ------------------------------------------------------------------ start up
+$('loadText').textContent = `Loading ${CITIES[settings.city]}…`;
+building = true;
+await buildWorld();
+buildVehicle();
+building = false;
+$('loading').hidden = true;
+$('startButtons').hidden = false;
+updateMenu();
 frame();
 
 // Test hook: ?debug exposes the simulation for automated checks.
