@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { LEGO, legoMaterial } from './lego.js';
+import { LEGO, legoMaterial, isLego } from './lego.js';
 
 /**
  * LEGO Technic 42198 Bush Plane, at roughly 40x scale.
@@ -73,10 +73,14 @@ function holesTexture(base, hole, rim) {
 export function createLegoPlane() {
   const plane = new THREE.Group();
   const parts = [];
+  // Realistic look: same plane and paint scheme, but smooth painted surfaces
+  // instead of Lego bricks and Technic beams.
+  const real = !isLego();
   const cache = new Map();
+  const make = (params) => (real ? new THREE.MeshStandardMaterial({ roughness: 0.42, metalness: 0.08, ...params }) : legoMaterial(params));
   const mat = (color, opts) => {
-    if (opts) return legoMaterial({ color, ...opts });
-    if (!cache.has(color)) cache.set(color, legoMaterial({ color }));
+    if (opts) return make({ color, ...opts });
+    if (!cache.has(color)) cache.set(color, make({ color }));
     return cache.get(color);
   };
   const glassMat = new THREE.MeshPhongMaterial({
@@ -87,6 +91,7 @@ export function createLegoPlane() {
   const blackHoles = holesTexture('#1f1f1f', '#050505', '#2c2c2c');
   const yellowHoles = holesTexture('#f2cd37', '#a88a1c', '#dcb52c');
   const holed = (tex, len) => {
+    if (real) return null;
     const t = tex.clone();
     t.wrapS = THREE.RepeatWrapping;
     t.repeat.set(Math.max(1, Math.round(len / 0.45)), 1);
@@ -125,92 +130,153 @@ export function createLegoPlane() {
   const zebraTail = zebraTexture([[0.1, 0.4], [0.6, 0.9]], 11);
   const zSide = mat(LEGO.white, { map: zebraSide });
 
-  // ---------------------------------------------------------------- fuselage
-  // Cabin/forward body: white zebra sides, black top frame.
-  box(2.0, 1.4, 5.1, 0, -0.3, -1.05, LEGO.white, { px: zSide, nx: zSide, py: mat(LEGO.black) });
-  // Tapered tail boom
-  const boomGeo = new THREE.BoxGeometry(2.0, 1.4, 5.1);
-  const bp = boomGeo.attributes.position;
-  for (let i = 0; i < bp.count; i++) {
-    if (bp.getZ(i) > 0) {
-      bp.setX(i, bp.getX(i) * 0.3);
-      bp.setY(i, bp.getY(i) * 0.36 + 0.75);
+  let glass, head, cap;
+  if (!real) {
+    // ---------------------------------------------------------------- fuselage
+    // Cabin/forward body: white zebra sides, black top frame.
+    box(2.0, 1.4, 5.1, 0, -0.3, -1.05, LEGO.white, { px: zSide, nx: zSide, py: mat(LEGO.black) });
+    // Tapered tail boom
+    const boomGeo = new THREE.BoxGeometry(2.0, 1.4, 5.1);
+    const bp = boomGeo.attributes.position;
+    for (let i = 0; i < bp.count; i++) {
+      if (bp.getZ(i) > 0) {
+        bp.setX(i, bp.getX(i) * 0.3);
+        bp.setY(i, bp.getY(i) * 0.36 + 0.75);
+      }
     }
-  }
-  boomGeo.computeVertexNormals();
-  const boom = new THREE.Mesh(boomGeo, [zSide, zSide, mat(LEGO.white), mat(LEGO.white), mat(LEGO.white), mat(LEGO.white)]);
-  boom.position.set(0, -0.3, 4.05);
-  boom.castShadow = true;
-  plane.add(boom);
-  parts.push({ color: LEGO.white, size: new THREE.Vector3(1.4, 1, 4), pos: boom.position.clone() });
-  // Yellow beams along the boom's top edges, converging at the tail
-  for (const sx of [-1, 1]) {
-    beam(new THREE.Vector3(sx * 0.95, 0.48, 1.2), new THREE.Vector3(sx * 0.32, 0.72, 6.5), 0.22, 0.2, LEGO.yellow, yellowHoles);
-    // Long yellow stringer down the side
-    beam(new THREE.Vector3(sx * 1.02, 0.25, -3.4), new THREE.Vector3(sx * 1.02, 0.25, 1.4), 0.22, 0.1, LEGO.yellow, yellowHoles);
-  }
-  // Black top frame behind the cabin with the gearbox showing through
-  for (const sx of [-1, 1]) box(0.32, 0.3, 2.4, sx * 0.84, 0.55, 0.4, LEGO.black);
-  box(1.36, 0.3, 0.3, 0, 0.55, 1.45, LEGO.black);
-  const gear = (r, color, x, y, z) => {
-    const g = new THREE.Mesh(new THREE.CylinderGeometry(r, r, 0.12, 16), mat(color));
-    g.rotation.z = Math.PI / 2;
-    g.position.set(x, y, z);
-    plane.add(g);
-  };
-  gear(0.32, LEGO.lightGray, -0.2, 0.55, 0.2);
-  gear(0.22, LEGO.blue, 0.25, 0.55, 0.8);
-  gear(0.16, LEGO.yellow, 0, 0.55, -0.4);
-
-  // Cabin windows (trans-clear) with black posts, under the wing
-  const glass = new THREE.Mesh(new THREE.BoxGeometry(1.9, 1.05, 2.7), glassMat);
-  glass.position.set(0, 0.93, -2.05);
-  plane.add(glass);
-  for (const sx of [-1, 1]) {
-    for (const z of [-3.35, -2.05, -0.75]) box(0.16, 1.05, 0.16, sx * 0.9, 0.93, z, LEGO.black);
-  }
-  // Pilot
-  const head = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.4, 16), mat(LEGO.yellow));
-  head.position.set(-0.4, 0.75, -2.3);
-  plane.add(head);
-  const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.25, 0.12, 16), mat(LEGO.darkTan));
-  cap.position.set(-0.4, 1.0, -2.3);
-  plane.add(cap);
-
-  // ---------------------------------------------------------------- engine
-  box(2.0, 1.3, 1.3, 0, 0.0, -4.25, LEGO.yellow);
-  box(1.6, 0.9, 0.5, 0, -0.1, -4.95, LEGO.yellow);
-  for (const sx of [-1, 1]) {
-    for (const z of [-3.95, -4.55]) {
-      const cyl = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.26, 0.55, 12).rotateZ(Math.PI / 2), mat(LEGO.lightGray));
-      cyl.position.set(sx * 1.25, 0.15, z);
-      cyl.castShadow = true;
-      plane.add(cyl);
-      const fin = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 0.08, 12).rotateZ(Math.PI / 2), mat(LEGO.yellow));
-      fin.position.set(sx * 1.45, 0.15, z);
-      plane.add(fin);
+    boomGeo.computeVertexNormals();
+    const boom = new THREE.Mesh(boomGeo, [zSide, zSide, mat(LEGO.white), mat(LEGO.white), mat(LEGO.white), mat(LEGO.white)]);
+    boom.position.set(0, -0.3, 4.05);
+    boom.castShadow = true;
+    plane.add(boom);
+    parts.push({ color: LEGO.white, size: new THREE.Vector3(1.4, 1, 4), pos: boom.position.clone() });
+    // Yellow beams along the boom's top edges, converging at the tail
+    for (const sx of [-1, 1]) {
+      beam(new THREE.Vector3(sx * 0.95, 0.48, 1.2), new THREE.Vector3(sx * 0.32, 0.72, 6.5), 0.22, 0.2, LEGO.yellow, yellowHoles);
+      // Long yellow stringer down the side
+      beam(new THREE.Vector3(sx * 1.02, 0.25, -3.4), new THREE.Vector3(sx * 1.02, 0.25, 1.4), 0.22, 0.1, LEGO.yellow, yellowHoles);
     }
+    // Black top frame behind the cabin with the gearbox showing through
+    for (const sx of [-1, 1]) box(0.32, 0.3, 2.4, sx * 0.84, 0.55, 0.4, LEGO.black);
+    box(1.36, 0.3, 0.3, 0, 0.55, 1.45, LEGO.black);
+    const gear = (r, color, x, y, z) => {
+      const g = new THREE.Mesh(new THREE.CylinderGeometry(r, r, 0.12, 16), mat(color));
+      g.rotation.z = Math.PI / 2;
+      g.position.set(x, y, z);
+      plane.add(g);
+    };
+    gear(0.32, LEGO.lightGray, -0.2, 0.55, 0.2);
+    gear(0.22, LEGO.blue, 0.25, 0.55, 0.8);
+    gear(0.16, LEGO.yellow, 0, 0.55, -0.4);
+
+    // Cabin windows (trans-clear) with black posts, under the wing
+    glass = new THREE.Mesh(new THREE.BoxGeometry(1.9, 1.05, 2.7), glassMat);
+    glass.position.set(0, 0.93, -2.05);
+    plane.add(glass);
+    for (const sx of [-1, 1]) {
+      for (const z of [-3.35, -2.05, -0.75]) box(0.16, 1.05, 0.16, sx * 0.9, 0.93, z, LEGO.black);
+    }
+    // Pilot
+    head = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.4, 16), mat(LEGO.yellow));
+    head.position.set(-0.4, 0.75, -2.3);
+    plane.add(head);
+    cap = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.25, 0.12, 16), mat(LEGO.darkTan));
+    cap.position.set(-0.4, 1.0, -2.3);
+    plane.add(cap);
+
+    // ---------------------------------------------------------------- engine
+    box(2.0, 1.3, 1.3, 0, 0.0, -4.25, LEGO.yellow);
+    box(1.6, 0.9, 0.5, 0, -0.1, -4.95, LEGO.yellow);
+    for (const sx of [-1, 1]) {
+      for (const z of [-3.95, -4.55]) {
+        const cyl = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.26, 0.55, 12).rotateZ(Math.PI / 2), mat(LEGO.lightGray));
+        cyl.position.set(sx * 1.25, 0.15, z);
+        cyl.castShadow = true;
+        plane.add(cyl);
+        const fin = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 0.08, 12).rotateZ(Math.PI / 2), mat(LEGO.yellow));
+        fin.position.set(sx * 1.45, 0.15, z);
+        plane.add(fin);
+      }
+    }
+    // Yellow bent intake pipe arching over the propeller shaft
+    const pipe = new THREE.Mesh(new THREE.TorusGeometry(0.62, 0.15, 10, 20, Math.PI), mat(LEGO.yellow));
+    pipe.position.set(0, 0.05, -5.25);
+    plane.add(pipe);
+    for (const sx of [-1, 1]) {
+      const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 0.6, 10).rotateX(Math.PI / 2), mat(LEGO.yellow));
+      leg.position.set(sx * 0.62, 0.05, -4.95);
+      plane.add(leg);
+    }
+    const backplate = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.6, 0.16, 20).rotateX(Math.PI / 2), mat(LEGO.black));
+    backplate.position.set(0, 0.05, -5.25);
+    plane.add(backplate);
+  } else {
+    // ---------------------------------------------------------------- fuselage (realistic)
+    // One smooth body from firewall to tail: round cabin tapering to a slim tail,
+    // with the zebra livery wrapped around it and a yellow cowling.
+    const L0 = -4.6;
+    const L1 = 6.7;
+    const body = new THREE.CylinderGeometry(1, 1, L1 - L0, 28, 30, true).rotateX(Math.PI / 2).translate(0, 0, (L0 + L1) / 2);
+    const bpos = body.attributes.position;
+    const buv = body.attributes.uv;
+    for (let i = 0; i < bpos.count; i++) {
+      const z = bpos.getZ(i);
+      const t = Math.max(0, (z + 0.6) / (L1 + 0.6)); // 0 at the cabin, 1 at the tail
+      const r = 1.02 * (1 - 0.74 * t * t * (1.6 - 0.6 * t));
+      bpos.setX(i, bpos.getX(i) * r);
+      bpos.setY(i, bpos.getY(i) * r * 1.12 - 0.25 + 0.75 * t);
+      buv.setXY(i, buv.getY(i), buv.getX(i)); // stripes run around the body
+    }
+    body.computeVertexNormals();
+    const bodyMesh = new THREE.Mesh(body, zSide);
+    bodyMesh.castShadow = true;
+    plane.add(bodyMesh);
+    parts.push({ color: LEGO.white, size: new THREE.Vector3(2, 2, 5), pos: new THREE.Vector3(0, 0, 0) });
+    // Yellow cheat line along each side
+    for (const sx of [-1, 1]) {
+      const line = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.16, 6.4), mat(LEGO.yellow));
+      line.position.set(sx * 1.02, -0.05, -1.2);
+      plane.add(line);
+    }
+    // Tinted cabin windows and windshield
+    glass = new THREE.Group();
+    const tint = new THREE.MeshStandardMaterial({ color: 0x1d2a33, roughness: 0.08, metalness: 0.5 });
+    const sideWin = new THREE.Mesh(new THREE.BoxGeometry(2.1, 0.62, 2.3), tint);
+    sideWin.position.set(0, 0.5, -2.1);
+    const shield = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.08, 1.15), tint);
+    shield.position.set(0, 1.05, -3.55);
+    shield.rotation.x = 0.55;
+    glass.add(sideWin, shield);
+    plane.add(glass);
+    // Pilot
+    head = new THREE.Mesh(new THREE.SphereGeometry(0.2, 14, 10), mat(0xe0b48c));
+    head.position.set(-0.4, 0.75, -2.3);
+    plane.add(head);
+    cap = new THREE.Mesh(new THREE.SphereGeometry(0.22, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2), mat(0x2b3a55));
+    cap.position.set(-0.4, 0.82, -2.3);
+    plane.add(cap);
+    // Cowling and spinner
+    const cowl = new THREE.Mesh(new THREE.CylinderGeometry(0.72, 1.0, 0.95, 28).rotateX(-Math.PI / 2), mat(LEGO.yellow));
+    cowl.position.set(0, -0.25, -5.05);
+    cowl.castShadow = true;
+    plane.add(cowl);
+    for (const sx of [-1, 1]) {
+      const exhaust = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.5, 8), mat(0x555555));
+      exhaust.position.set(sx * 0.55, -0.95, -4.7);
+      plane.add(exhaust);
+    }
+
   }
-  // Yellow bent intake pipe arching over the propeller shaft
-  const pipe = new THREE.Mesh(new THREE.TorusGeometry(0.62, 0.15, 10, 20, Math.PI), mat(LEGO.yellow));
-  pipe.position.set(0, 0.05, -5.25);
-  plane.add(pipe);
-  for (const sx of [-1, 1]) {
-    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 0.6, 10).rotateX(Math.PI / 2), mat(LEGO.yellow));
-    leg.position.set(sx * 0.62, 0.05, -4.95);
-    plane.add(leg);
-  }
-  const backplate = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.6, 0.16, 20).rotateX(Math.PI / 2), mat(LEGO.black));
-  backplate.position.set(0, 0.05, -5.25);
-  plane.add(backplate);
 
   // Propeller (3 blades, dark gray, yellow axle pin)
   const propeller = new THREE.Group();
   propeller.position.set(0, 0.05, -5.5);
   const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.34, 0.3, 16).rotateX(Math.PI / 2), mat(LEGO.darkGray));
   propeller.add(hub);
-  const pin = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.13, 0.3, 12).rotateX(Math.PI / 2), mat(LEGO.yellow));
-  pin.position.z = -0.25;
+  const pin = real
+    ? new THREE.Mesh(new THREE.ConeGeometry(0.42, 0.9, 20).rotateX(-Math.PI / 2), mat(LEGO.yellow))
+    : new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.13, 0.3, 12).rotateX(Math.PI / 2), mat(LEGO.yellow));
+  pin.position.z = real ? -0.45 : -0.25;
   propeller.add(pin);
   for (let i = 0; i < 3; i++) {
     const arm = new THREE.Group();
@@ -346,7 +412,9 @@ export function createLegoPlane() {
   const flameGeo = new THREE.ConeGeometry(1, 1, 14, 1, true).rotateX(Math.PI / 2).translate(0, 0, 0.5);
   for (const sx of [-1, 1]) {
     const b = new THREE.Group();
-    b.position.set(sx * 1.45, -0.35, 2.2);
+    // Big boosters: everything below is modeled at 1x and the group is scaled up.
+    b.position.set(sx * 1.86, -0.3, 2.0);
+    b.scale.setScalar(1.8);
     boosters.add(b);
     const body = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.42, 3.2, 16).rotateX(Math.PI / 2), mat(LEGO.lightGray));
     body.castShadow = true;

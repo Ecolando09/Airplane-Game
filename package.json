@@ -11,6 +11,7 @@
     "build:play": "vite build --outDir play-dist/legoplane --emptyOutDir && cp -r homepage/. play-dist/"
   },
   "dependencies": {
+    "3d-tiles-renderer": "^0.5.3",
     "qrcode": "^1.5.4",
     "three": "^0.186.1",
     "ws": "^8.22.0"

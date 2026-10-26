@@ -66,6 +66,19 @@ fi
 mkdir -p "$WEB"
 rsync -a --delete play-dist/ "$WEB/"
 
+# Google Maps API key for the "Google 3D" look: pass GOOGLE_MAPS_KEY=... once and it
+# is kept in /etc/latlas-play/google-maps-key (never in the repository).
+KEY_FILE=/etc/latlas-play/google-maps-key
+if [ -n "${GOOGLE_MAPS_KEY:-}" ]; then
+  mkdir -p /etc/latlas-play
+  printf '%s' "$GOOGLE_MAPS_KEY" > "$KEY_FILE"
+  chmod 600 "$KEY_FILE"
+fi
+if [ -s "$KEY_FILE" ]; then
+  say "Adding the Google Maps key to the game"
+  printf "window.LEGOSKY_CONFIG = { googleMapsKey: '%s' };\n" "$(tr -dc 'A-Za-z0-9_-' < "$KEY_FILE")" > "$WEB/legoplane/config.js"
+fi
+
 say "Starting the phone-controller relay"
 sed "s#^WorkingDirectory=.*#WorkingDirectory=$APP#" deploy/lego-sky-relay.service > /etc/systemd/system/lego-sky-relay.service
 systemctl daemon-reload

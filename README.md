@@ -1,6 +1,9 @@
-# Lego Sky: Spartanburg
+# Lego Sky
 
-A browser flying game: the LEGO Technic 42198 Bush Plane over a Lego-brick version of Spartanburg, SC, built from real map data.
+A browser flying game over Spartanburg, SC and Fort Collins, CO, built from real map data.
+
+- **Vehicles:** the LEGO Technic 42198 Bush Plane, or Ghost-Spider's helicopter (helicopter controls: W/S forward/back, A/D turn, Shift/Ctrl up/down, let go to hover).
+- **Looks:** Lego bricks; realistic (Sentinel-2 satellite ground, natural colors, a painted version of the plane); or Google Photorealistic 3D Tiles (needs a Google Maps API key on the server).
 
 - **Real city layout.** Roads, rail, rivers, parks and ~45,000 building footprints come from OpenStreetMap (via Overture Maps), on real terrain elevation.
 - **Lego style.** Studded baseplate ground, brick buildings with windows, gable roofs, Lego trees, brick clouds and Lego cars driving the real streets.
@@ -54,6 +57,12 @@ On the server (Ubuntu/Debian, as root), one command installs or updates everythi
 curl -fsSL https://raw.githubusercontent.com/Ecolando09/Airplane-Game/claude/lego-airplane-game-ttd82x/deploy/install-play.sh | sudo bash
 ```
 
+For the **Google 3D** look, pass your Google Maps API key once (it's saved in `/etc/latlas-play/google-maps-key` and written into the site's `config.js`; it never goes in the repository):
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/Ecolando09/Airplane-Game/claude/lego-airplane-game-ttd82x/deploy/install-play.sh | sudo GOOGLE_MAPS_KEY=your-key bash
+```
+
 Before the first run, add an **A** record for `play` in Porkbun pointing to the server's IP. Run the same command again to deploy updates.
 
 ## Rebuilding the map data
@@ -62,11 +71,13 @@ Before the first run, add an **A** record for `play` in Porkbun pointing to the 
 
 ```sh
 pip install pyarrow shapely pillow numpy
-python tools/fetch_data.py tools/data        # Overture Maps + terrain tiles
-python tools/build_city.py tools/data public/city.json
+pip install rasterio                         # for the satellite imagery
+python tools/fetch_data.py spartanburg       # Overture Maps + terrain tiles
+python tools/fetch_imagery.py spartanburg    # Sentinel-2 satellite photo
+python tools/build_city.py spartanburg       # -> public/cities/spartanburg.json
 ```
 
-The map area is set by `W, S, E, N` in `tools/fetch_data.py`. The runway isn't in the source data, so its position is set by hand in `tools/build_city.py`.
+Each city is configured in `tools/cities/<city>.json`: map area, runway (set by hand, since runways aren't in the source data), landmarks, map pins, custom buildings (Denny's Tower) and satellite scenes.
 
 ## Code layout
 
@@ -76,7 +87,9 @@ The map area is set by `W, S, E, N` in `tools/fetch_data.py`. The runway isn't i
 - `src/main.js`: rendering, cameras, HUD, minimap, game flow
 - `src/lego.js`: Lego colors and the stud/window shader
 - `src/traffic.js`: cars driving the streets
+- `src/heli.js`: Ghost-Spider helicopter model and flight
+- `src/google3d.js`: Google Photorealistic 3D Tiles world
 - `src/remote.js`, `remote.html`, `src/remote-pad.js`: phone controller (game side and phone page)
 - `server/relay.js`: WebSocket relay between phones and the game screen
 
-Map data © OpenStreetMap contributors (ODbL), Overture Maps Foundation. Elevation: Mapzen Terrain Tiles (AWS Open Data).
+Map data © OpenStreetMap contributors (ODbL), Overture Maps Foundation. Elevation: Mapzen Terrain Tiles (AWS Open Data). Satellite imagery contains modified Copernicus Sentinel data. Google 3D: © Google.

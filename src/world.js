@@ -1,9 +1,20 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { LEGO, legoMaterial } from './lego.js';
+import { LEGO, legoMaterial, isLego } from './lego.js';
 
 const CHUNK = 1600; // meters per culling chunk
 const GRID = 200; // meters per collision cell
+
+const canvasTex = (w, h, draw) => {
+  const cv = document.createElement('canvas');
+  cv.width = w;
+  cv.height = h;
+  draw(cv.getContext('2d'));
+  const t = new THREE.CanvasTexture(cv);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = 4;
+  return t;
+};
 
 const smoothstep = (a, b, x) => {
   const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
@@ -24,9 +35,14 @@ function rng(seed) {
 }
 
 export class World {
-  constructor(scene, data) {
+  /**
+   * @param {object} opts.satImage  satellite photo of the map area (realistic look)
+   */
+  constructor(scene, data, { satImage = null } = {}) {
     this.scene = scene;
     this.data = data;
+    this.satImage = satImage;
+    this.meshes = []; // everything a Google 3D-tiles world replaces
     [this.sizeX, this.sizeZ] = data.size;
     this.halfX = this.sizeX / 2;
     this.halfZ = this.sizeZ / 2;
@@ -39,6 +55,7 @@ export class World {
     this._buildRunway();
     this._buildBuildings();
     this._buildTrees();
+    this._buildCustom();
     this._buildClouds();
     this._buildWaterMask();
     this.landmarks = data.landmarks.map((l) => ({ ...l, y: this.heightAt(l.x, l.z) }));
@@ -218,7 +235,7 @@ export class World {
     };
     const hex = (c) => '#' + c.toString(16).padStart(6, '0');
 
-    g.fillStyle = '#58ab41';
+    g.fillStyle = this.data.ground || '#58ab41';
     g.fillRect(0, 0, S, S);
     const LAND = {
       campus: '#8fc27a', paved: '#b5b8b6', park: '#6cbf55', forest: '#2f8a45',
@@ -282,24 +299,31 @@ export class World {
     for (let k = 0; k < pos.count; k++) pos.setY(k, this.h[k]);
     geo.computeVertexNormals();
 
-    const tex = new THREE.CanvasTexture(this.mapCanvas);
+    // Lego look: the drawn map; realistic look: the satellite photo.
+    const tex = this.satImage ? new THREE.Texture(this.satImage) : new THREE.CanvasTexture(this.mapCanvas);
+    tex.needsUpdate = true;
     tex.colorSpace = THREE.SRGBColorSpace;
     tex.anisotropy = 8;
     const ground = new THREE.Mesh(geo, legoMaterial({ map: tex, studs: 6 }));
     ground.receiveShadow = true;
     this.scene.add(ground);
+    this.meshes.push(ground);
 
-    // Endless baseplate beyond the mapped area, faded into the fog.
-    let edge = 0;
-    for (let i = 0; i < n; i++) edge += this.h[i] + this.h[(n - 1) * n + i] + this.h[i * n] + this.h[i * n + n - 1];
-    edge /= 4 * n;
-    const outer = new THREE.Mesh(
-      new THREE.PlaneGeometry(200000, 200000).rotateX(-Math.PI / 2),
-      legoMaterial({ color: 0x58ab41, studs: 6 })
-    );
-    outer.position.y = Math.min(edge - 8, 0);
+    // Ground beyond the mapped area: continues the edge heights outward (so hills
+    // at the edge don't end in a cliff) and fades into the fog. It sits a little
+    // below the map so the detailed terrain always wins where they overlap.
+    const og = new THREE.PlaneGeometry(120000, 120000, 240, 240).rotateX(-Math.PI / 2);
+    const op = og.attributes.position;
+    for (let k = 0; k < op.count; k++) {
+      const x = op.getX(k);
+      const z = op.getZ(k);
+      const inside = Math.abs(x) < this.halfX - 10 && Math.abs(z) < this.halfZ - 10;
+      op.setY(k, this._rawHeight(x, z) - (inside ? 60 : 6));
+    }
+    og.computeVertexNormals();
+    const outer = new THREE.Mesh(og, legoMaterial({ color: isLego() ? (this.data.ground || 0x58ab41) : 0x6f7f4f, studs: 6 }));
     this.scene.add(outer);
-    this.outerHeight = outer.position.y;
+    this.meshes.push(outer);
   }
 
   _buildRunway() {
@@ -325,12 +349,12 @@ export class World {
     g.textAlign = 'center';
     g.save();
     g.translate(128, 8192 - 40 * ky);
-    g.fillText('5', 0, 0);
+    g.fillText(rw.names?.[0] ?? '', 0, 0);
     g.restore();
     g.save();
     g.translate(128, 40 * ky);
     g.rotate(Math.PI);
-    g.fillText('23', 0, 0);
+    g.fillText(rw.names?.[1] ?? '', 0, 0);
     g.restore();
     const tex = new THREE.CanvasTexture(cv);
     tex.colorSpace = THREE.SRGBColorSpace;
@@ -343,6 +367,7 @@ export class World {
     mesh.rotation.y = -THREE.MathUtils.degToRad(rw.heading);
     mesh.receiveShadow = true;
     this.scene.add(mesh);
+    this.meshes.push(mesh);
 
     // Hangar row and windsock-style beacon so the airport reads from the air.
     const beacon = new THREE.Mesh(
@@ -353,6 +378,7 @@ export class World {
     const bz = rw.z - rw.fx * -80;
     beacon.position.set(bx, this.heightAt(bx, bz) + 9, bz);
     this.scene.add(beacon);
+    this.meshes.push(beacon);
   }
 
   // -------------------------------------------------------------- buildings
@@ -373,11 +399,17 @@ export class World {
 
   _buildBuildings() {
     const r = this.rand;
-    const WALLS = [LEGO.white, LEGO.tan, LEGO.lightGray, LEGO.yellow, LEGO.lightBlue, LEGO.sandGreen,
-      LEGO.white, LEGO.tan, LEGO.medAzure];
-    const BIG = [LEGO.lightGray, LEGO.white, LEGO.tan, LEGO.darkTan, LEGO.red, LEGO.blue, LEGO.darkGray,
-      LEGO.lightGray, LEGO.sandGreen];
-    const ROOFS = [LEGO.red, LEGO.darkRed, LEGO.black, LEGO.darkGray, LEGO.reddishBrown, LEGO.blue];
+    const lego = isLego();
+    // Lego look: bright brick colors. Realistic look: siding, brick, concrete, shingles.
+    const WALLS = lego
+      ? [LEGO.white, LEGO.tan, LEGO.lightGray, LEGO.yellow, LEGO.lightBlue, LEGO.sandGreen, LEGO.white, LEGO.tan, LEGO.medAzure]
+      : [0xe8e2d4, 0xd9cfbb, 0xc9c3b6, 0xb8a58a, 0xe2dccf, 0x9c6b52, 0xcfd3d0, 0xa9b4b0];
+    const BIG = lego
+      ? [LEGO.lightGray, LEGO.white, LEGO.tan, LEGO.darkTan, LEGO.red, LEGO.blue, LEGO.darkGray, LEGO.lightGray, LEGO.sandGreen]
+      : [0xb9b6ae, 0xd3cec3, 0x8f8a80, 0xa0533f, 0xc4b59a, 0x9aa3a8, 0x7a7b78, 0xbfb8aa];
+    const ROOFS = lego
+      ? [LEGO.red, LEGO.darkRed, LEGO.black, LEGO.darkGray, LEGO.reddishBrown, LEGO.blue]
+      : [0x4a4a48, 0x5b4d44, 0x3d3f42, 0x6b5a4c, 0x55504a, 0x2f3236];
 
     const boxGeo = new THREE.BoxGeometry(1, 1, 1).translate(0, 0.5, 0);
     const roofGeo = prismGeometry();
@@ -473,18 +505,22 @@ export class World {
         im.computeBoundingSphere();
         im.castShadow = im.receiveShadow = true;
         this.scene.add(im);
+        this.meshes.push(im);
       }
       if (ch.polys.length) {
         const mesh = new THREE.Mesh(mergeGeometries(ch.polys), polyMat);
         mesh.castShadow = mesh.receiveShadow = true;
         this.scene.add(mesh);
+        this.meshes.push(mesh);
       }
     }
   }
 
   _buildTrees() {
     const r = this.rand;
-    const LEAVES = [LEGO.green, LEGO.brightGreen, LEGO.green, 0x2f6b3a, LEGO.sandGreen, 0x7fa83a];
+    const LEAVES = isLego()
+      ? [LEGO.green, LEGO.brightGreen, LEGO.green, 0x2f6b3a, LEGO.sandGreen, 0x7fa83a]
+      : [0x3f5e2c, 0x4a6b33, 0x355228, 0x56713a, 0x2f4a24];
     const trunkGeo = new THREE.CylinderGeometry(0.7, 0.9, 5, 6).translate(0, 2.5, 0);
     const roundGeo = new THREE.CylinderGeometry(4, 4, 7, 8).translate(0, 7.5, 0);
     const topGeo = new THREE.CylinderGeometry(2.6, 2.6, 2.4, 8).translate(0, 12.2, 0);
@@ -522,6 +558,7 @@ export class World {
         im.computeBoundingSphere();
         im.castShadow = true;
         this.scene.add(im);
+        this.meshes.push(im);
       }
     }
   }
@@ -546,14 +583,139 @@ export class World {
         list.push(m.clone());
       }
     }
+    // Lego look: brick clouds. Realistic look: soft puffs.
     const im = new THREE.InstancedMesh(
-      new THREE.BoxGeometry(1, 1, 1),
-      legoMaterial({ color: 0xffffff, studs: 8, emissive: 0x555555 }),
+      isLego() ? new THREE.BoxGeometry(1, 1, 1) : new THREE.SphereGeometry(0.75, 14, 10),
+      legoMaterial({ color: 0xffffff, studs: 8, emissive: isLego() ? 0x555555 : 0x8a8a8a }),
       list.length
     );
     list.forEach((mm, i) => im.setMatrixAt(i, mm));
     im.computeBoundingSphere();
     this.scene.add(im);
+  }
+
+  // ------------------------------------------------------- custom buildings
+  _buildCustom() {
+    for (const c of this.data.custom || []) {
+      if (c.kind === 'dennys') this._buildDennys(c);
+    }
+  }
+
+  /**
+   * Denny's Tower (203 E Main St): a tall tan slab with a deep window grid, a
+   * darker set-back section on one end, a rounded top with a round porthole,
+   * a recessed band of fins near the top and the yellow Denny's sign.
+   */
+  _buildDennys({ x, z, w, d, ang, h }) {
+    const g = new THREE.Group();
+    const base = Math.min(...[[1, 1], [1, -1], [-1, 1], [-1, -1]].map(([a, b]) =>
+      this.heightAt(x + (a * w * Math.cos(ang) - b * d * Math.sin(ang)) / 2, z + (a * w * Math.sin(ang) + b * d * Math.cos(ang)) / 2))) - 1;
+    g.position.set(x, base, z);
+    g.rotation.y = -ang; // local X runs along the long side
+    const tan = isLego() ? LEGO.tan : 0xd8c49a;
+    const tanDark = isLego() ? LEGO.darkTan : 0xb39f78;
+    const box = (sx, sy, sz, px, py, pz, color, windows = true) => {
+      const m = new THREE.Mesh(new THREE.BoxGeometry(sx, sy, sz), legoMaterial({ color, windows, studs: 2.4 }));
+      m.position.set(px, py + sy / 2, pz);
+      m.castShadow = m.receiveShadow = true;
+      g.add(m);
+      return m;
+    };
+    const left = w * 0.3; // darker, set-back section on the left end
+    const main = w - left;
+    box(main, h, d, left / 2, 0, 0, tan);
+    box(left, h - 3, d * 0.92, -main / 2, 0, -d * 0.02, tanDark);
+    // Rounded top over the left section with a round porthole in its face.
+    const r = left / 2;
+    const depth = d * 0.92;
+    const arch = new THREE.Shape();
+    arch.absarc(0, 0, r, 0, Math.PI, false);
+    arch.closePath();
+    const archGeo = new THREE.ExtrudeGeometry(arch, { depth, bevelEnabled: false, curveSegments: 24 }).translate(0, 0, -depth / 2);
+    const archMesh = new THREE.Mesh(archGeo, legoMaterial({ color: tanDark }));
+    archMesh.position.set(-w / 2 + r, h - 3, -d * 0.02);
+    archMesh.castShadow = true;
+    g.add(archMesh);
+    for (const sz of [-1, 1]) {
+      const hole = new THREE.Mesh(new THREE.CircleGeometry(r * 0.32, 24), new THREE.MeshBasicMaterial({ color: 0x1e1a14 }));
+      hole.position.set(-w / 2 + r, h - 3 + r * 0.42, sz * (depth / 2 + 0.05) - d * 0.02);
+      hole.rotation.y = sz > 0 ? 0 : Math.PI;
+      g.add(hole);
+    }
+    // Parapet along the top of the main section.
+    box(main, 2.5, d, left / 2, h, 0, tan, false);
+    // Recessed band of fins near the top on the right, on both broad faces.
+    for (const sz of [-1, 1]) {
+      const band = box(main * 0.62, 7, 1.2, left / 2 + main * 0.12, h - 15, sz * (d / 2 + 0.6), tanDark, false);
+      for (let i = 0; i < 14; i++) {
+        const fin = new THREE.Mesh(new THREE.BoxGeometry(0.6, 6, 0.8), legoMaterial({ color: tan }));
+        fin.position.set(band.position.x - main * 0.29 + i * (main * 0.58 / 13), h - 11.5, sz * (d / 2 + 1.3));
+        g.add(fin);
+      }
+    }
+    // Denny's signs: the yellow six-sided sign with an orange bottom edge and red
+    // outlined lettering, at the top of the tower and lower down above
+    // "CORPORATE HEADQUARTERS", on both broad faces.
+    const signTex = canvasTex(512, 200, (cx) => {
+      const hex = (inset) => {
+        cx.beginPath();
+        cx.moveTo(40 + inset, 14 + inset);
+        cx.lineTo(472 - inset, 14 + inset);
+        cx.lineTo(504 - inset, 96);
+        cx.lineTo(472 - inset, 186 - inset);
+        cx.lineTo(40 + inset, 186 - inset);
+        cx.lineTo(8 + inset, 96);
+        cx.closePath();
+      };
+      cx.fillStyle = '#f28c1c'; // orange edge (shows along the bottom)
+      hex(0);
+      cx.fill();
+      cx.save();
+      cx.translate(0, -12);
+      cx.fillStyle = '#f3d21f';
+      hex(6);
+      cx.fill();
+      cx.restore();
+      cx.font = 'italic 900 112px Georgia, "Times New Roman", serif';
+      cx.textAlign = 'center';
+      cx.textBaseline = 'middle';
+      cx.lineJoin = 'round';
+      cx.lineWidth = 10;
+      cx.strokeStyle = '#fff6e0';
+      cx.strokeText("Denny's", 256, 90);
+      cx.fillStyle = '#c0182f';
+      cx.fillText("Denny's", 256, 90);
+    });
+    const hqTex = canvasTex(1024, 96, (cx) => {
+      cx.font = '700 64px Helvetica, Arial, sans-serif';
+      cx.textAlign = 'center';
+      cx.textBaseline = 'middle';
+      cx.fillStyle = '#3a3c42';
+      cx.letterSpacing = '6px';
+      cx.fillText('CORPORATE HEADQUARTERS', 512, 50);
+    });
+    const signMat = new THREE.MeshBasicMaterial({ map: signTex, transparent: true });
+    const hqMat = new THREE.MeshBasicMaterial({ map: hqTex, transparent: true });
+    for (const sz of [-1, 1]) {
+      const place = (geo, material, px, py) => {
+        const m = new THREE.Mesh(geo, material);
+        m.position.set(px, py, sz * (d / 2 + 0.2));
+        m.rotation.y = sz > 0 ? 0 : Math.PI;
+        g.add(m);
+      };
+      place(new THREE.PlaneGeometry(10, 3.9), signMat, -w / 2 + left + 6.5, h - 4.5); // top of the tower
+      place(new THREE.PlaneGeometry(11, 4.3), signMat, left / 2, 16); // lower sign
+      place(new THREE.PlaneGeometry(22, 2.1), hqMat, left / 2, 12.6);
+    }
+    // Antenna mast.
+    const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.35, 12, 8), legoMaterial({ color: LEGO.lightGray }));
+    mast.position.set(left / 2 - main * 0.1, h + 2.5 + 6, 0);
+    g.add(mast);
+    this.scene.add(g);
+    this.meshes.push(g);
+    const R = Math.hypot(w, d) / 2;
+    this._addCollider({ t: 'box', x, z, c: Math.cos(ang), s: Math.sin(ang), hw: w / 2, hd: d / 2, top: base + h + 2.5 },
+      x - R + this.halfX, z - R + this.halfZ, x + R + this.halfX, z + R + this.halfZ);
   }
 
   // -------------------------------------------------------------- collision

@@ -1,15 +1,18 @@
 """Convert Overture Maps extracts + Terrarium elevation into compact game data.
 
-Inputs (from tools/fetch_data.py): tools/data/{buildings,segments,water,landuse,places}.parquet, data/elev.json
-Output: public/city.json
+Usage: python tools/build_city.py <city>   (config: tools/cities/<city>.json)
+Inputs (from tools/fetch_data.py): tools/data/<city>/{buildings,segments,water,landuse,places}.parquet, elev.json
+Output: public/cities/<city>.json
 Local coordinates are meters: x east, z south, origin at bbox center.
 """
 import json, math, sys, os, random
 import pyarrow.parquet as pq, shapely
 from shapely.geometry import Polygon
 
-D = sys.argv[1] if len(sys.argv) > 1 else "tools/data"
-OUT = sys.argv[2] if len(sys.argv) > 2 else 'public/city.json'
+CITY = sys.argv[1] if len(sys.argv) > 1 else 'spartanburg'
+CFG = json.load(open(os.path.join(os.path.dirname(__file__), 'cities', f'{CITY}.json')))
+D = f'tools/data/{CITY}'
+OUT = f'public/cities/{CITY}.json'
 elev = json.load(open(f'{D}/elev.json'))
 W, S, E, N = elev['bbox']
 LON0, LAT0 = (W + E) / 2, (S + N) / 2
@@ -29,9 +32,24 @@ out = {'origin': [LON0, LAT0], 'size': [round(HALF_X * 2), round(HALF_Z * 2)],
        'elev': {'n': elev['size'], 'h': elev['h']}}
 
 # --- buildings -----------------------------------------------------------
-boxes, polys = [], []
+boxes, polys, custom = [], [], []
+CUSTOM = {c['building']: c for c in CFG.get('custom', [])}  # hand-modeled buildings, by map name
 for r in pq.read_table(f'{D}/buildings.parquet').to_pylist():
     g = shapely.from_wkb(r['geometry'])
+    bname = (r['names'] or {}).get('primary')
+    if bname in CUSTOM:
+        # Swap the generic block for a custom model with this footprint.
+        fp = Polygon([xy(*c) for c in g.exterior.coords]).minimum_rotated_rectangle
+        cs = list(fp.exterior.coords)[:4]
+        w = math.hypot(cs[1][0] - cs[0][0], cs[1][1] - cs[0][1])
+        d = math.hypot(cs[2][0] - cs[1][0], cs[2][1] - cs[1][1])
+        ang = math.atan2(cs[1][1] - cs[0][1], cs[1][0] - cs[0][0])
+        if d > w:  # make w the long side
+            w, d, ang = d, w, ang + math.pi / 2
+        c = CUSTOM[bname]
+        custom.append({'kind': c['kind'], 'x': round(fp.centroid.x, 1), 'z': round(fp.centroid.y, 1),
+                       'w': round(w, 1), 'd': round(d, 1), 'ang': round(ang, 3), 'h': c['height']})
+        continue
     for p in getattr(g, 'geoms', [g]):
         if p.geom_type != 'Polygon' or p.is_empty:
             continue
@@ -60,6 +78,7 @@ for r in pq.read_table(f'{D}/buildings.parquet').to_pylist():
                 s = pts
             polys.append({'p': [v for c in list(s.exterior.coords)[:-1] for v in (round(c[0], 1), round(c[1], 1))], 'h': round(h, 1)})
 out['boxes'] = boxes
+out['custom'] = custom
 out['polys'] = polys
 
 # --- roads / rail / streams (polylines) ------------------------------------
@@ -112,33 +131,17 @@ order = ['campus', 'paved', 'park', 'forest', 'golf', 'pitch', 'track', 'sand']
 land.sort(key=lambda l: order.index(l['k']))
 out['land'] = land
 
-# --- landmarks & airport ---------------------------------------------------
-LANDMARKS = [
-    ('Morgan Square', 34.94971, -81.93217),
-    ('Wofford College', 34.95903, -81.93513),
-    ('Converse University', 34.95600, -81.91850),
-    ('Spartanburg Regional', 34.96521, -81.93865),
-    ('Duncan Park Stadium', 34.93643, -81.91274),
-    ('Cleveland Park', 34.96572, -81.95069),
-    ('Drayton Mills', 34.97283, -81.90713),
-    ('USC Upstate', 34.99685, -81.96956),
-    ('Hatcher Garden', 34.93009, -81.95835),
-    ('Chapman Cultural Center', 34.95325, -81.92978),
-    ('Hub City Railroad Museum', 34.95353, -81.93753),
-    ('Downtown Memorial Airport', 34.91857, -81.95728),
-]
-out['landmarks'] = [{'name': n, 'x': xy(lon, lat)[0], 'z': xy(lon, lat)[1]} for n, lat, lon in LANDMARKS]
-# Map pins the player asked for. Pineview Circle has no house-number data, so the
-# pin sits on the street itself (a short cul-de-sac, so within ~100 m).
-LOCATORS = [
-    ('2225 Pineview Cir', 34.93660, -81.88470, 'home'),
-    ("Denny's Building", 34.94985, -81.92824, 'pin'),
-    ('Lake Craig · Croft State Park', 34.87007, -81.83842, 'park'),
-]
-out['locators'] = [{'name': n, 'x': xy(lon, lat)[0], 'z': xy(lon, lat)[1], 'kind': k} for n, lat, lon, k in LOCATORS]
-# Runway 5/23, 1585 m x 46 m; centerline placed in the airfield gap in the map data.
-cx, cz = xy(-81.9567, 34.9155)
-out['runway'] = {'x': cx, 'z': cz, 'heading': 44, 'length': 1585, 'width': 46}
+# --- landmarks, map pins & airport (from the city config) --------------------
+out['name'] = CFG['name']
+out['ground'] = CFG.get('ground', '#58ab41')
+out['geoid'] = CFG.get('geoid', 0)  # ellipsoid minus sea level, for Google 3D tiles
+out['airport'] = CFG['airport']
+out['landmarks'] = [{'name': n, 'x': xy(lon, lat)[0], 'z': xy(lon, lat)[1]} for n, lat, lon in CFG['landmarks']]
+out['locators'] = [{'name': n, 'x': xy(lon, lat)[0], 'z': xy(lon, lat)[1], 'kind': k} for n, lat, lon, k in CFG['locators']]
+# Runways aren't in the source data, so each config places one by hand.
+rwc = CFG['runway']
+cx, cz = xy(rwc['lon'], rwc['lat'])
+out['runway'] = {'x': cx, 'z': cz, 'heading': rwc['heading'], 'length': rwc['length'], 'width': rwc['width'], 'names': rwc['names']}
 
 # --- trees: scatter on open ground, avoiding roads/buildings/water/runway ----
 import numpy as np
@@ -179,7 +182,9 @@ for L2_, W2_ in ((L2, W2), (rw['length'] / 2 + 1200, rw['width'] / 2 + 60)):  # 
     bd.polygon([mp(rw['x'] + fx * a * L2_ + sx * b * W2_, rw['z'] + fz * a * L2_ + sz * b * W2_)
                 for a, b in ((1, 1), (1, -1), (-1, -1), (-1, 1))], fill=255)
 block = np.array(block); kind = np.array(kind)
-PROB = {0: 0.55, 1: 0.18, 2: 0.25, 3: 0.95}
+# Tree odds per ground type (open, residential, park, forest); configurable per
+# city, e.g. Colorado's open prairie has far fewer trees than the Carolina woods.
+PROB = dict(enumerate(CFG.get('trees', [0.55, 0.18, 0.25, 0.95])))
 rng = np.random.default_rng(3)
 trees = []
 for _ in range(int(HALF_X * HALF_Z * 4 / 1e6 * 450)):  # ~450 candidates per km²

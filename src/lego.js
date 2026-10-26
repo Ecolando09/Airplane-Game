@@ -31,7 +31,14 @@ export const LEGO = {
  *  - window grid on vertical faces (`windows` = true)
  * Detail fades out with distance (via screen-space derivatives) to avoid shimmering.
  */
+// Visual style: 'lego' (studs everywhere) or a realistic look ('real' / 'google'),
+// which drops the studs. Set once at startup, before anything is built.
+let LOOK = 'lego';
+export const setLook = (look) => (LOOK = look);
+export const isLego = () => LOOK === 'lego';
+
 export function legoMaterial({ studs = 0, windows = false, ...params } = {}) {
+  if (!isLego()) studs = 0;
   const mat = new THREE.MeshLambertMaterial(params);
   mat.onBeforeCompile = (shader) => {
     shader.uniforms.uStud = { value: studs };

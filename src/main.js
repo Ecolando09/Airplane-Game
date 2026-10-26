@@ -1,6 +1,9 @@
 import * as THREE from 'three';
 import { World } from './world.js';
 import { createLegoPlane, GROUND_TILT, MAIN_CONTACT } from './airplane.js';
+import { createGhostSpiderHeli, HeliFlight } from './heli.js';
+import { GoogleWorld } from './google3d.js';
+import { setLook } from './lego.js';
 import { Flight } from './flight.js';
 import { Input } from './input.js';
 import { EngineSound } from './sound.js';
@@ -10,6 +13,41 @@ import { Traffic } from './traffic.js';
 
 const $ = (id) => document.getElementById(id);
 const SKY = 0x9fd0ff;
+
+// ------------------------------------------------------------------ settings
+// City, vehicle and look come from the URL (?city=&vehicle=&look=) or the last
+// choice on this device. Changing one reloads the page with the new choice.
+const CITIES = { spartanburg: 'Spartanburg, SC', fortcollins: 'Fort Collins, CO' };
+const VEHICLES = ['plane', 'heli'];
+const LOOKS = ['lego', 'real', 'google'];
+const CONFIG = window.LEGOSKY_CONFIG || {};
+const settings = (() => {
+  const q = new URLSearchParams(location.search);
+  let saved = {};
+  try {
+    saved = JSON.parse(localStorage.getItem('legosky.settings') || '{}');
+  } catch {}
+  const pick = (k, ok, def) => (ok(q.get(k)) ? q.get(k) : ok(saved[k]) ? saved[k] : def);
+  return {
+    city: pick('city', (v) => v in CITIES, 'spartanburg'),
+    vehicle: pick('vehicle', (v) => VEHICLES.includes(v), 'plane'),
+    look: pick('look', (v) => LOOKS.includes(v), 'lego'),
+  };
+})();
+// Google 3D needs an API key (set on the server in config.js); without one, use the satellite look.
+const lookWanted = settings.look;
+if (settings.look === 'google' && !CONFIG.googleMapsKey) settings.look = 'real';
+setLook(settings.look);
+function changeSetting(key, value) {
+  const next = { ...settings, look: lookWanted, [key]: value };
+  try {
+    localStorage.setItem('legosky.settings', JSON.stringify(next));
+  } catch {}
+  const q = new URLSearchParams(location.search);
+  for (const k of ['city', 'vehicle', 'look']) q.set(k, next[k]);
+  location.search = q.toString();
+}
+$('loadText').textContent = `Loading ${CITIES[settings.city]}…`;
 
 // ------------------------------------------------------------------ renderer
 const renderer = new THREE.WebGLRenderer({ canvas: $('game'), antialias: true, logarithmicDepthBuffer: true });
@@ -44,7 +82,7 @@ addEventListener('resize', () => {
 
 // ------------------------------------------------------------------ loading
 async function loadCity() {
-  const res = await fetch('./city.json');
+  const res = await fetch(`./cities/${settings.city}.json`);
   const total = Number(res.headers.get('content-length')) || 8.7e6;
   const reader = res.body.getReader();
   const chunks = [];
@@ -60,16 +98,45 @@ async function loadCity() {
   return JSON.parse(await blob.text());
 }
 
-const data = await loadCity();
-$('loadText').textContent = 'Building the city out of bricks…';
+const loadImage = (src) => new Promise((resolve) => {
+  const img = new Image();
+  img.onload = () => resolve(img);
+  img.onerror = () => resolve(null);
+  img.src = src;
+});
+const [data, satImage] = await Promise.all([
+  loadCity(),
+  settings.look === 'real' ? loadImage(`./cities/${settings.city}-sat.jpg`) : null,
+]);
+$('loadText').textContent = settings.look === 'lego' ? 'Building the city out of bricks…' : 'Building the city…';
 await new Promise((r) => setTimeout(r, 30));
-const world = new World(scene, data);
+const world = new World(scene, data, { satImage });
 $('loadBar').style.width = '100%';
 
 const traffic = new Traffic(scene, world, IS_TOUCH ? 900 : 2500);
-const plane = createLegoPlane();
+
+// Google Photorealistic 3D Tiles replace the built city: real buildings and terrain.
+let google = null;
+if (settings.look === 'google') {
+  google = new GoogleWorld({
+    scene, camera, renderer, apiKey: CONFIG.googleMapsKey,
+    lat: data.origin[1], lon: data.origin[0], height: world.baseElevation + (data.geoid || 0),
+  });
+  for (const m of world.meshes) m.visible = false;
+  for (const m of [traffic.body, traffic.cabin, traffic.wheels]) m.visible = false;
+  // Fly over the real surface where it has loaded, the elevation grid elsewhere.
+  const gridHeight = world.heightAt.bind(world);
+  world.heightAt = (x, z) => google.heightAt(x, z) ?? gridHeight(x, z);
+  camera.far = 60000;
+  camera.updateProjectionMatrix();
+  scene.fog.near = 6000;
+  scene.fog.far = 30000;
+}
+
+const isHeli = settings.vehicle === 'heli';
+const plane = isHeli ? createGhostSpiderHeli() : createLegoPlane();
 scene.add(plane.group);
-const flight = new Flight(world, plane);
+const flight = isHeli ? new HeliFlight(world, plane) : new Flight(world, plane);
 const input = new Input();
 const sound = new EngineSound();
 
@@ -466,7 +533,9 @@ function updateHud(dt) {
       message(flight.onWater ? 'Splashdown! 🌊 Nice water landing!'
         : world.isOnRunway(p.x, p.z) ? 'Nice landing! 🛬' : 'Landed in a field!', 3);
     }
-    if (!flight.onGround && flight.speed < 26 && flight.forward.y > -0.3) message('STALL — lower the nose!', 0.3);
+    if (flight.canStall !== false && !flight.onGround && flight.speed < 26 && flight.forward.y > -0.3) {
+      message('STALL — lower the nose!', 0.3);
+    }
     if (Math.abs(p.x) > world.halfX + 1500 || Math.abs(p.z) > world.halfZ + 1500) {
       message('Leaving Spartanburg — turn back!', 0.3);
     }
@@ -545,7 +614,7 @@ function start(airborne) {
   clearDebris();
   airborne ? flight.resetAirborne() : flight.reset();
   input.syncThrottle(flight.throttle);
-  tilt = flight.onGround ? GROUND_TILT : 0;
+  tilt = flight.onGround && !isHeli ? GROUND_TILT : 0;
   floatsAnim = 0;
   wasOnGround.v = flight.onGround;
   crashTimer = 0;
@@ -563,7 +632,34 @@ function start(airborne) {
   }
   sound.start();
   running = true;
-  message(airborne ? 'Welcome to Spartanburg!' : 'Runway 5 — full throttle to take off!', 3);
+  message(airborne ? `Welcome to ${data.name.split(',')[0]}!`
+    : isHeli ? 'Hold Shift (or push the throttle up) to lift off!'
+      : `Runway ${world.runway.names?.[0] ?? ''} — full throttle to take off!`, 3);
+}
+// Menu: choices and labels for this city and vehicle.
+document.title = `Lego Sky · ${data.name}`;
+$('subtitle').textContent = `Fly a ${isHeli ? 'Ghost-Spider helicopter' : 'Lego airplane'} over ${data.name}`;
+$('startRunway').textContent = `${isHeli ? 'Lift off from' : 'Take off from'} ${data.airport}`;
+$('startAir').textContent = 'Start in the air over downtown';
+document.body.classList.toggle('heli', isHeli);
+for (const [id, key, val] of [['segCity', 'city', settings.city], ['segVehicle', 'vehicle', settings.vehicle], ['segLook', 'look', lookWanted]]) {
+  for (const b of $(id).querySelectorAll('button')) {
+    const on = b.dataset.v === val;
+    b.classList.toggle('on', on);
+    b.setAttribute('aria-pressed', String(on));
+    b.onclick = () => !on && changeSetting(key, b.dataset.v);
+  }
+}
+if (lookWanted === 'google' && !CONFIG.googleMapsKey) {
+  $('lookNote').hidden = false;
+  $('lookNote').textContent = 'Google 3D needs a Google Maps API key on the server, so the satellite look is shown instead.';
+}
+if (google) {
+  $('attrib').hidden = false;
+  setInterval(() => {
+    const a = google.tiles.getAttributions?.() || [];
+    $('attribText').textContent = a.filter((x) => x.type === 'string').map((x) => x.value).join(' · ');
+  }, 2000);
 }
 $('loading').hidden = true;
 $('startButtons').hidden = false;
@@ -646,6 +742,12 @@ let tilt = 0;
 const tiltQ = new THREE.Quaternion();
 const AXIS_X = new THREE.Vector3(1, 0, 0);
 function poseAirplane(dt) {
+  if (isHeli) {
+    plane.group.position.copy(flight.pos);
+    plane.group.quaternion.copy(flight.quat);
+    plane.animate(flight, dt);
+    return;
+  }
   const want = flight.onGround && !flight.floats ? GROUND_TILT * THREE.MathUtils.clamp(1 - flight.speed / 24, 0, 1) : 0;
   tilt += (want - tilt) * (1 - Math.exp(-dt * 5));
   tiltQ.setFromAxisAngle(AXIS_X, tilt);
@@ -669,7 +771,8 @@ function frame() {
   const dt = Math.min(timer.getDelta(), 0.05);
   input.pollButtons(!running);
   world.update(timer.getElapsed());
-  traffic.update(dt);
+  if (google) google.update(renderer);
+  else traffic.update(dt);
   if (running) {
     const ctl = input.read();
     if (!flight.crashed) {
@@ -686,9 +789,11 @@ function frame() {
     updateFloats(dt);
     updateBoosters(dt);
     poseAirplane(dt);
-    const rpm = 8 + flight.throttle * 60;
-    plane.propeller.rotation.z += rpm * dt;
-    plane.propDisc.material.opacity = flight.throttle * 0.25;
+    if (!isHeli) {
+      const rpm = 8 + flight.throttle * 60;
+      plane.propeller.rotation.z += rpm * dt;
+      plane.propDisc.material.opacity = flight.throttle * 0.25;
+    }
     sound.update(flight.crashed ? 0 : flight.throttle, flight.speed);
     updateCamera(dt);
     updateHud(dt);
@@ -710,7 +815,7 @@ frame();
 
 // Test hook: ?debug exposes the simulation for automated checks.
 if (new URLSearchParams(location.search).has('debug')) {
-  window.__game = { world, flight, plane, start, step: (dt, ctl) => flight.update(dt, ctl) };
+  window.__game = { world, flight, plane, start, google, step: (dt, ctl) => flight.update(dt, ctl) };
   window.__tilt = input.tilt;
   window.__traffic = traffic;
 }

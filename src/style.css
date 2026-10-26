@@ -682,3 +682,66 @@ body.is-touch .card .sub {
   color: #fff;
   border-color: #ffc078;
 }
+
+#choices {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.choice {
+  display: grid;
+  grid-template-columns: 44px 1fr;
+  align-items: center;
+  gap: 8px;
+}
+
+.choice-label {
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #556;
+}
+
+.seg.seg3 {
+  grid-template-columns: 1fr 1fr 1fr;
+}
+
+.seg button {
+  min-width: 0;
+}
+
+.look-note {
+  margin: 0;
+  font-size: 13px;
+  color: #8a5a00;
+}
+
+body:not(.heli) .heli-only,
+body.heli .plane-only {
+  display: none;
+}
+
+body.is-touch .controls.heli-only {
+  display: none;
+}
+
+#attrib {
+  position: fixed;
+  left: 12px;
+  bottom: 6px;
+  max-width: 50vw;
+  font-size: 10px;
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+  pointer-events: none;
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+}
+
+#attrib .google {
+  font-weight: 800;
+  font-size: 13px;
+}

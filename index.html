@@ -45,12 +45,42 @@
       </div>
     </div>
 
+    <div id="attrib" hidden>
+      <span class="google">Google</span>
+      <span id="attribText"></span>
+    </div>
+
     <div id="rotate">Turn your phone sideways to fly ↻</div>
 
     <div id="menu" class="overlay">
       <div class="card">
         <h1><span class="brick r"></span><span class="brick y"></span><span class="brick b"></span> Lego Sky</h1>
-        <p class="sub">Fly a Lego airplane over Spartanburg, South Carolina</p>
+        <p class="sub" id="subtitle">Fly a Lego airplane over Spartanburg, South Carolina</p>
+        <div id="choices">
+          <div class="choice">
+            <span class="choice-label">City</span>
+            <div class="seg" id="segCity" role="group" aria-label="City">
+              <button data-v="spartanburg">Spartanburg, SC</button>
+              <button data-v="fortcollins">Fort Collins, CO</button>
+            </div>
+          </div>
+          <div class="choice">
+            <span class="choice-label">Fly</span>
+            <div class="seg" id="segVehicle" role="group" aria-label="Vehicle">
+              <button data-v="plane">✈️ Bush Plane</button>
+              <button data-v="heli">🕷️ Ghost-Spider Copter</button>
+            </div>
+          </div>
+          <div class="choice">
+            <span class="choice-label">Look</span>
+            <div class="seg seg3" id="segLook" role="group" aria-label="Look">
+              <button data-v="lego">🧱 Lego</button>
+              <button data-v="real">🛰️ Realistic</button>
+              <button data-v="google">🌎 Google 3D</button>
+            </div>
+          </div>
+          <p class="look-note" id="lookNote" hidden></p>
+        </div>
         <div id="loading">
           <div class="bar"><div id="loadBar"></div></div>
           <p id="loadText">Loading Spartanburg…</p>
@@ -67,7 +97,15 @@
           <button class="big alt" id="startAir">Start in the air over downtown</button>
           <button class="big phone-btn" id="phoneBtn">📱 Use my phone as the controller</button>
         </div>
-        <div class="controls">
+        <div class="controls heli-only">
+          <div><kbd>W</kbd><kbd>S</kbd> / <kbd>↑</kbd><kbd>↓</kbd> fly forward / back</div>
+          <div><kbd>A</kbd><kbd>D</kbd> / <kbd>←</kbd><kbd>→</kbd> turn left / right</div>
+          <div><kbd>Shift</kbd> / <kbd>Ctrl</kbd> go up / down (let go to hover)</div>
+          <div><kbd>Q</kbd><kbd>E</kbd> slide sideways &nbsp; <kbd>Space</kbd> stop and hover</div>
+          <div><kbd>B</kbd> floats (land on water) &nbsp; <kbd>T</kbd> turbo</div>
+          <div><kbd>C</kbd> camera &nbsp; <kbd>N</kbd> big map &nbsp; <kbd>R</kbd> restart</div>
+        </div>
+        <div class="controls plane-only">
           <div><kbd>W</kbd><kbd>S</kbd> / <kbd>↑</kbd><kbd>↓</kbd> climb / dive</div>
           <div><kbd>A</kbd><kbd>D</kbd> / <kbd>←</kbd><kbd>→</kbd> bank left / right</div>
           <div><kbd>Q</kbd><kbd>E</kbd> rudder</div>
@@ -77,10 +115,14 @@
           <div><kbd>C</kbd> camera &nbsp; <kbd>N</kbd> big map &nbsp; <kbd>R</kbd> restart</div>
           <div><kbd>I</kbd> invert pitch &nbsp; <kbd>M</kbd> sound</div>
         </div>
-        <p class="tip">Takeoff: full throttle, gently pull up at about 55 kt. Landing: line up with the
+        <p class="tip heli-only">Helicopter: hold Shift to lift off, W to fly forward, A/D to turn.
+          Let go of everything to hover, then Ctrl to come down gently and land anywhere.
+          On a phone or the phone controller, the throttle slider in the middle hovers.</p>
+        <p class="tip plane-only">Takeoff: full throttle, gently pull up at about 55 kt. Landing: line up with the
           runway, ease the throttle back and descend gently. The plane cushions itself near the ground.
           <span class="menu-tip-keys">Xbox controller: left stick to fly, triggers for throttle, A brakes, B floats, Y camera, RB turbo.</span></p>
-        <p class="credit">Map data © OpenStreetMap contributors, Overture Maps Foundation. Elevation: Mapzen Terrain Tiles.</p>
+        <p class="credit">Map data © OpenStreetMap contributors, Overture Maps Foundation. Elevation: Mapzen Terrain Tiles.
+          Satellite imagery contains modified Copernicus Sentinel data. Google 3D: © Google.</p>
       </div>
     </div>
 
@@ -96,6 +138,7 @@
       </div>
     </div>
 
+    <script src="./config.js"></script>
     <script type="module" src="./src/main.js"></script>
   </body>
 </html>

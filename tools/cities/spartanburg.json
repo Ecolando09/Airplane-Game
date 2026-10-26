@@ -1,0 +1,115 @@
+{
+  "name": "Spartanburg, SC",
+  "bbox": [
+    -82.0,
+    34.83,
+    -81.78,
+    35.0
+  ],
+  "airport": "Downtown Memorial Airport",
+  "runway": {
+    "lat": 34.9155,
+    "lon": -81.9567,
+    "heading": 44,
+    "length": 1585,
+    "width": 46,
+    "names": [
+      "5",
+      "23"
+    ]
+  },
+  "start": "Morgan Square",
+  "landmarks": [
+    [
+      "Morgan Square",
+      34.94971,
+      -81.93217
+    ],
+    [
+      "Wofford College",
+      34.95903,
+      -81.93513
+    ],
+    [
+      "Converse University",
+      34.956,
+      -81.9185
+    ],
+    [
+      "Spartanburg Regional",
+      34.96521,
+      -81.93865
+    ],
+    [
+      "Duncan Park Stadium",
+      34.93643,
+      -81.91274
+    ],
+    [
+      "Cleveland Park",
+      34.96572,
+      -81.95069
+    ],
+    [
+      "Drayton Mills",
+      34.97283,
+      -81.90713
+    ],
+    [
+      "USC Upstate",
+      34.99685,
+      -81.96956
+    ],
+    [
+      "Hatcher Garden",
+      34.93009,
+      -81.95835
+    ],
+    [
+      "Chapman Cultural Center",
+      34.95325,
+      -81.92978
+    ],
+    [
+      "Hub City Railroad Museum",
+      34.95353,
+      -81.93753
+    ],
+    [
+      "Downtown Memorial Airport",
+      34.91857,
+      -81.95728
+    ]
+  ],
+  "locators": [
+    [
+      "2225 Pineview Cir",
+      34.9366,
+      -81.8847,
+      "home"
+    ],
+    [
+      "Denny's Building",
+      34.94985,
+      -81.92824,
+      "pin"
+    ],
+    [
+      "Lake Craig \u00b7 Croft State Park",
+      34.87007,
+      -81.83842,
+      "park"
+    ]
+  ],
+  "imagery": [
+    "sentinel-s2-l2a-cogs/17/S/MU/2026/9/S2B_17SMU_20260927_0_L2A"
+  ],
+  "custom": [
+    {
+      "building": "Denny's Tower",
+      "kind": "dennys",
+      "height": 72
+    }
+  ],
+  "geoid": -32
+}

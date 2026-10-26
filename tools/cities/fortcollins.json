@@ -1,0 +1,139 @@
+{
+  "name": "Fort Collins, CO",
+  "bbox": [
+    -105.18,
+    40.43,
+    -104.96,
+    40.62
+  ],
+  "airport": "Northern Colorado Regional Airport",
+  "runway": {
+    "lat": 40.4515,
+    "lon": -105.0115,
+    "heading": 159,
+    "length": 2591,
+    "width": 40,
+    "names": [
+      "15",
+      "33"
+    ]
+  },
+  "start": "Old Town Square",
+  "landmarks": [
+    [
+      "Old Town Square",
+      40.588,
+      -105.07597
+    ],
+    [
+      "The Oval at CSU",
+      40.57616,
+      -105.08129
+    ],
+    [
+      "Canvas Stadium",
+      40.56988,
+      -105.08845
+    ],
+    [
+      "Sheldon Lake",
+      40.58254,
+      -105.10434
+    ],
+    [
+      "Horsetooth Reservoir",
+      40.55857,
+      -105.15926
+    ],
+    [
+      "Lee Martinez Park",
+      40.59627,
+      -105.08221
+    ],
+    [
+      "New Belgium Brewing",
+      40.59325,
+      -105.06881
+    ],
+    [
+      "Odell Brewing",
+      40.5895,
+      -105.06322
+    ],
+    [
+      "Museum of Discovery",
+      40.59335,
+      -105.07788
+    ],
+    [
+      "Spring Canyon Park",
+      40.53931,
+      -105.12371
+    ],
+    [
+      "Warren Lake",
+      40.53323,
+      -105.06149
+    ],
+    [
+      "Foothills Mall",
+      40.54256,
+      -105.07425
+    ],
+    [
+      "Fossil Creek Reservoir",
+      40.49121,
+      -105.01038
+    ],
+    [
+      "Northern Colorado Regional Airport",
+      40.4518,
+      -105.0113
+    ]
+  ],
+  "locators": [
+    [
+      "The Building",
+      40.58874,
+      -105.07456,
+      "pin"
+    ],
+    [
+      "Papa Doug's House",
+      40.60365,
+      -104.97983,
+      "home"
+    ],
+    [
+      "The Christabell",
+      40.58676,
+      -105.08643,
+      "star"
+    ],
+    [
+      "Nan's House",
+      40.58562,
+      -105.09523,
+      "home"
+    ],
+    [
+      "City Park",
+      40.58364,
+      -105.10263,
+      "park"
+    ]
+  ],
+  "imagery": [
+    "sentinel-s2-l2a-cogs/13/T/DE/2026/6/S2B_13TDE_20260619_0_L2A",
+    "sentinel-s2-l2a-cogs/13/T/EE/2026/6/S2B_13TEE_20260619_0_L2A",
+    "sentinel-s2-l2a-cogs/13/T/EE/2026/7/S2C_13TEE_20260711_0_L2A"
+  ],
+  "trees": [
+    0.07,
+    0.32,
+    0.3,
+    0.9
+  ],
+  "ground": "#86b04f",
+  "geoid": -17
+}

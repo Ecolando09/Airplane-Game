@@ -4,16 +4,18 @@
 - Elevation: Mapzen/AWS Terrarium terrain tiles.
 
 Usage:  pip install pyarrow shapely pillow numpy
-        python tools/fetch_data.py tools/data
+        python tools/fetch_data.py <city>        (city config: tools/cities/<city>.json)
 """
 import io, json, math, os, sys, urllib.request
 import numpy as np
 import pyarrow.dataset as ds, pyarrow.fs as fs, pyarrow.parquet as pq
 from PIL import Image
 
-W, S, E, N = -82.00, 34.83, -81.78, 35.00  # Spartanburg, SC, plus Croft State Park to the south-east
+CITY = sys.argv[1] if len(sys.argv) > 1 else 'spartanburg'
+CFG = json.load(open(os.path.join(os.path.dirname(__file__), 'cities', f'{CITY}.json')))
+W, S, E, N = CFG['bbox']
 RELEASE = '2026-09-23.1'
-OUT = sys.argv[1] if len(sys.argv) > 1 else 'tools/data'
+OUT = sys.argv[2] if len(sys.argv) > 2 else f'tools/data/{CITY}'
 os.makedirs(OUT, exist_ok=True)
 
 proxy = os.environ.get('HTTPS_PROXY')
