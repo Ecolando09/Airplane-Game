@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { LEGO, legoMaterial, isLego } from './lego.js';
+import { createBoosters } from './boosters.js';
 
 /**
  * Ghost-Spider's helicopter: white rounded body with magenta spider-web trim,
@@ -136,6 +137,9 @@ export function createGhostSpiderHeli() {
   floats.visible = false;
   floats.scale.setScalar(0.001);
 
+  // Turbo boosters on each side of the body, below the rotor.
+  const updateBoosters = createBoosters(heli, (color) => mat(color), { x: 2.55, y: -0.2, z: 1.2, scale: 1.4 });
+
   /** Spin the rotors; tilt is handled by the flight model. */
   function animate(flight, dt) {
     const spin = 18 + flight.throttle * 20;
@@ -153,7 +157,7 @@ export function createGhostSpiderHeli() {
     floats,
     wheels: legs,
     animate,
-    updateBoosters() {},
+    updateBoosters,
     cockpitHidden: [canopy, frame],
     cockpitEye: new THREE.Vector3(0, 0.9, -1.7),
     gearHeight: SKID,

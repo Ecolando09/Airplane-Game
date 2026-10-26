@@ -9,6 +9,9 @@
 //   player -> ws(s)://HOST/ws?role=mp&room=ABCD
 //   Each player gets an id; their messages are tagged with it and passed to
 //   the other players. When a player leaves, the others get {t:'leave', id}.
+//   lobby  -> ws(s)://HOST/ws?role=lobby
+//   Gets {t:'rooms', rooms:[{code, players:[{name, city, vehicle}]}]} whenever
+//   the open rooms change, so the menu can list them with a Join button.
 // Run: node server/relay.js   (PORT env, default 8787)
 import { WebSocketServer } from 'ws';
 
@@ -21,6 +24,7 @@ wss.on('connection', (ws, req) => {
   const url = new URL(req.url, 'http://x');
   const role = url.searchParams.get('role');
   const code = (url.searchParams.get('room') || '').toUpperCase();
+  if (role === 'lobby') return joinLobby(ws);
   if (!/^[A-Z]{4}$/.test(code) || !['game', 'pad', 'mp'].includes(role)) {
     ws.close(1008, 'bad room or role');
     return;
@@ -64,6 +68,32 @@ wss.on('connection', (ws, req) => {
 
 // ------------------------------------------------------------------ multiplayer
 const flights = new Map(); // code -> Map(id -> ws)
+const info = new Map(); // ws -> { name, city, vehicle } from the player's latest state
+const lobby = new Set();
+
+function roomList() {
+  const rooms = [];
+  for (const [code, room] of flights) {
+    const players = [...room.values()].map((ws) => info.get(ws)).filter(Boolean);
+    if (players.length) rooms.push({ code, players });
+  }
+  return JSON.stringify({ t: 'rooms', rooms });
+}
+let lobbyTimer = null;
+function updateLobby() {
+  // Batch changes: at most one update per half second.
+  if (lobbyTimer) return;
+  lobbyTimer = setTimeout(() => {
+    lobbyTimer = null;
+    const msg = roomList();
+    for (const ws of lobby) if (ws.readyState === 1) ws.send(msg);
+  }, 500);
+}
+function joinLobby(ws) {
+  lobby.add(ws);
+  ws.send(roomList());
+  ws.on('close', () => lobby.delete(ws));
+}
 let nextId = 1;
 function joinFlight(ws, code) {
   let room = flights.get(code);
@@ -88,11 +118,21 @@ function joinFlight(ws, code) {
     }
     if (typeof m !== 'object' || m === null) return;
     m.id = id; // players can't speak for each other
+    if (m.t === 'state') {
+      const prev = info.get(ws);
+      const now = { name: String(m.name || 'Pilot').slice(0, 16), city: String(m.city || ''), vehicle: String(m.vehicle || '') };
+      if (!prev || prev.name !== now.name || prev.city !== now.city || prev.vehicle !== now.vehicle) {
+        info.set(ws, now);
+        updateLobby();
+      }
+    }
     const out = JSON.stringify(m);
     others((sock) => sock.send(out));
   });
   ws.on('close', () => {
     room.delete(id);
+    info.delete(ws);
+    updateLobby();
     others((sock) => sock.send(JSON.stringify({ t: 'leave', id })));
     if (room.size === 0) flights.delete(code);
   });
@@ -113,4 +153,4 @@ wss.on('connection', (ws) => {
   ws.on('pong', () => (ws.isAlive = true));
 });
 
-console.log(`Phone-controller relay listening on :${PORT}/ws`);
+console.log(`Lego Sky relay (phone controller + multiplayer) listening on :${PORT}/ws`);

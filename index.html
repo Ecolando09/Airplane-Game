@@ -94,6 +94,7 @@
 
         <section class="opt" id="mpSection" aria-labelledby="optMp">
           <h2 id="optMp">Fly together</h2>
+          <ul id="mpRooms" hidden></ul>
           <div id="mpOff">
             <input id="mpName" maxlength="16" placeholder="Your name" autocomplete="nickname" aria-label="Your name" />
             <div class="mp-row">
@@ -111,6 +112,7 @@
             <ul id="mpList"></ul>
           </div>
           <p class="look-note" id="mpNote" hidden>Multiplayer works on play.latlas.lol (your own server).</p>
+          <p class="mp-err" id="mpErr" hidden>Can't reach the multiplayer server, so rooms won't connect. Retrying…</p>
         </section>
 
         <div id="phoneControls" class="opt" hidden>

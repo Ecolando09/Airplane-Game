@@ -89,11 +89,28 @@ if [ -s "$KEY_FILE" ]; then
   printf "window.LEGOSKY_CONFIG = { googleMapsKey: '%s' };\n" "$(tr -dc 'A-Za-z0-9_-' < "$KEY_FILE")" > "$WEB/legoplane/config.js"
 fi
 
-say "Starting the phone-controller relay"
-sed "s#^WorkingDirectory=.*#WorkingDirectory=$APP#" deploy/lego-sky-relay.service > /etc/systemd/system/lego-sky-relay.service
+say "Starting the relay (phone controller + multiplayer)"
+# Use whichever Node.js is installed (nvm installs it under /root, which the
+# www-data user can't read, so the relay runs as root in that case).
+NODE_BIN=$(command -v node)
+RELAY_USER=www-data
+case "$NODE_BIN" in /root/*) RELAY_USER=root ;; esac
+sed -e "s#^WorkingDirectory=.*#WorkingDirectory=$APP#" -e "s#^ExecStart=.*#ExecStart=$NODE_BIN server/relay.js#" \
+  -e "s#^User=.*#User=$RELAY_USER#" deploy/lego-sky-relay.service > /etc/systemd/system/lego-sky-relay.service
 systemctl daemon-reload
 systemctl enable --now lego-sky-relay
 systemctl restart lego-sky-relay
+sleep 2
+# Check the relay answers a WebSocket handshake (101 = OK).
+CODE=$(curl -s -o /dev/null -w '%{http_code}' -m 5 -H 'Connection: Upgrade' -H 'Upgrade: websocket' \
+  -H 'Sec-WebSocket-Version: 13' -H 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==' \
+  'http://127.0.0.1:8787/ws?role=mp&room=TEST' || true)
+if [ "$CODE" = "101" ]; then
+  echo "Relay OK"
+else
+  echo "!! The relay isn't answering (got: ${CODE:-nothing}). Recent log:"
+  journalctl -u lego-sky-relay -n 20 --no-pager || true
+fi
 
 IP=$(curl -fsS https://api.ipify.org || echo "")
 
@@ -141,6 +158,15 @@ else
   caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile >/dev/null
   systemctl enable --now caddy
   systemctl reload caddy
+fi
+
+THRU=$(curl -s -o /dev/null -w '%{http_code}' -m 8 -H 'Connection: Upgrade' -H 'Upgrade: websocket' \
+  -H 'Sec-WebSocket-Version: 13' -H 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==' \
+  "https://$DOMAIN/ws?role=mp&room=TEST" || true)
+if [ "$THRU" = "101" ]; then
+  echo "Multiplayer/phone relay reachable at https://$DOMAIN/ws: OK"
+else
+  echo "!! https://$DOMAIN/ws didn't answer the handshake (got: ${THRU:-nothing}); multiplayer won't connect."
 fi
 
 say "Done!"

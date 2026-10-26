@@ -313,6 +313,8 @@ const CAMS = ['chase', 'far', 'cockpit'];
 let camMode = 0;
 const camPos = new THREE.Vector3();
 const camLook = new THREE.Vector3();
+const camOff = new THREE.Vector3();
+const camLookOff = new THREE.Vector3();
 let camInit = false;
 function updateCamera(dt) {
   const mode = CAMS[camMode];
@@ -356,23 +358,29 @@ function updateCamera(dt) {
   }
   const ground = world.heightAt(want.x, want.z) + 3;
   want.y = Math.max(want.y, ground);
+  // Smooth the camera's offset from the vehicle (not its world position), so the
+  // camera stays the same distance behind at any speed, turbo included.
+  const wantOff = want.clone().sub(p);
+  const lookOff = look.clone().sub(p);
   if (!camInit) {
-    camPos.copy(want);
-    camLook.copy(look);
+    camOff.copy(wantOff);
+    camLookOff.copy(lookOff);
     camInit = true;
   }
   const k = 1 - Math.exp(-dt * (mode === 'chase' ? 7 : 3));
-  camPos.lerp(want, k);
-  camLook.lerp(look, 1 - Math.exp(-dt * 12));
+  camOff.lerp(wantOff, k);
+  camLookOff.lerp(lookOff, 1 - Math.exp(-dt * 12));
+  if (flight.crashed) {
+    camPos.lerp(want, k);
+    camLook.lerp(look, k);
+  } else {
+    camPos.copy(p).add(camOff);
+    camLook.copy(p).add(camLookOff);
+    camPos.y = Math.max(camPos.y, ground);
+  }
   camera.position.copy(camPos);
   camera.up.set(0, 1, 0).lerp(up, 0.25).normalize();
   camera.lookAt(camLook);
-  // Widen the view a little at turbo speeds for a sense of speed.
-  const fov = 65 + Math.min(20, Math.max(0, flight.speed - 75) * 0.1);
-  if (Math.abs(camera.fov - fov) > 0.05) {
-    camera.fov += (fov - camera.fov) * (1 - Math.exp(-dt * 3));
-    camera.updateProjectionMatrix();
-  }
 }
 
 // ------------------------------------------------------------------ minimap
@@ -901,13 +909,59 @@ function joinRoom(code) {
   q.set('room', code);
   history.replaceState(null, '', `?${q}`);
 }
+// Open rooms on the server, listed with a Join button (the "lobby").
+let openRooms = [];
+let lobbyOk = true;
+function watchLobby() {
+  if (!MP_OK) return;
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  const ws = new WebSocket(`${proto}://${location.host}/ws?role=lobby`);
+  ws.onopen = () => {
+    lobbyOk = true;
+    updateMpUi();
+  };
+  ws.onmessage = (e) => {
+    try {
+      const m = JSON.parse(e.data);
+      if (m.t === 'rooms') openRooms = m.rooms;
+    } catch {}
+    updateMpUi();
+  };
+  ws.onclose = () => {
+    lobbyOk = false;
+    openRooms = [];
+    updateMpUi();
+    setTimeout(watchLobby, 5000);
+  };
+}
 function updateMpUi() {
   $('mpOff').hidden = !!mp.room;
   $('mpOn').hidden = !mp.room;
   $('mpNote').hidden = MP_OK;
+  $('mpErr').hidden = !MP_OK || (lobbyOk && mp.status !== 'error');
+  const rooms = $('mpRooms');
+  const listed = mp.room ? [] : openRooms;
+  rooms.hidden = !listed.length;
+  rooms.innerHTML = '';
+  for (const r of listed) {
+    const li = document.createElement('li');
+    const who = r.players.map((p) => p.name).join(', ');
+    const where = [...new Set(r.players.map((p) => CITIES[p.city] || p.city))].join(' & ');
+    li.innerHTML = '<div><b></b><span></span></div><button class="small-btn">Join</button>';
+    li.querySelector('b').textContent = `${who}`;
+    li.querySelector('span').textContent = `Room ${r.code} · ${where}`;
+    li.querySelector('button').onclick = async () => {
+      // Fly where they are.
+      const city = r.players[0]?.city;
+      if (city in CITIES && city !== settings.city) await applySetting('city', city);
+      joinRoom(r.code);
+    };
+    rooms.appendChild(li);
+  }
   if (!mp.room) return;
   $('mpRoomCode').textContent = mp.room;
-  $('mpStatus').textContent = { connecting: '· connecting…', on: '· connected', error: "· can't reach the server, retrying…" }[mp.status] || '';
+  $('mpStatus').textContent = { connecting: '· connecting…', on: '· connected', error: "· can't reach the server" }[mp.status] || '';
+  $('mpStatus').classList.toggle('bad', mp.status === 'error');
   const list = $('mpList');
   list.innerHTML = '';
   const me = document.createElement('li');
@@ -946,6 +1000,7 @@ $('mpCopy').onclick = async () => {
 {
   const code = (new URLSearchParams(location.search).get('room') || '').toUpperCase();
   if (MP_OK && /^[A-Z]{4}$/.test(code)) joinRoom(code);
+  watchLobby();
   updateMpUi();
 }
 
@@ -1155,7 +1210,7 @@ frame();
 
 // Test hook: ?debug exposes the simulation for automated checks.
 if (new URLSearchParams(location.search).has('debug')) {
-  window.__game = { world, flight, plane, start, google, mp, step: (dt, ctl) => flight.update(dt, ctl) };
+  window.__game = { world, flight, plane, start, google, mp, camera, step: (dt, ctl) => flight.update(dt, ctl) };
   window.__tilt = input.tilt;
   window.__traffic = traffic;
 }

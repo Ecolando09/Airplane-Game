@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { LEGO, legoMaterial, isLego } from './lego.js';
+import { createBoosters } from './boosters.js';
 
 /**
  * LEGO Technic 42198 Bush Plane, at roughly 40x scale.
@@ -401,59 +402,8 @@ export function createLegoPlane() {
   floats.visible = false;
 
   // ---------------------------------------------------------------- turbo boosters
-  // Two Lego rocket boosters strapped along the tail boom. Their flames point
-  // backward (+Z): orange for T2X, blue for T3X. Hidden at normal speed.
-  const boosters = new THREE.Group();
-  plane.add(boosters);
-  const flames = [];
-  const flameMat = (color, opacity) => new THREE.MeshBasicMaterial({
-    color, transparent: true, opacity, blending: THREE.AdditiveBlending, depthWrite: false,
-  });
-  // Unit flame: base (nozzle end) at z = 0, tip at z = 1.
-  const flameGeo = new THREE.ConeGeometry(1, 1, 14, 1, true).rotateX(Math.PI / 2).translate(0, 0, 0.5);
-  for (const sx of [-1, 1]) {
-    const b = new THREE.Group();
-    // Big boosters: everything below is modeled at 1x and the group is scaled up.
-    b.position.set(sx * 1.86, -0.3, 2.0);
-    b.scale.setScalar(1.8);
-    boosters.add(b);
-    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.42, 3.2, 16).rotateX(Math.PI / 2), mat(LEGO.lightGray));
-    body.castShadow = true;
-    const nose = new THREE.Mesh(new THREE.ConeGeometry(0.42, 0.9, 16).rotateX(-Math.PI / 2), mat(LEGO.red));
-    nose.position.z = -2.05;
-    const band = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.45, 0.35, 16).rotateX(Math.PI / 2), mat(LEGO.red));
-    band.position.z = -0.6;
-    const nozzle = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.46, 0.5, 16, 1, true).rotateX(Math.PI / 2), mat(LEGO.darkGray));
-    nozzle.position.z = 1.85;
-    // Strut to the fuselage
-    const strut = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.18, 1.2), mat(LEGO.black));
-    strut.position.set(-sx * 0.4, 0.2, 0);
-    b.add(body, nose, band, nozzle, strut);
-    const outer = new THREE.Mesh(flameGeo, flameMat(0xff7a1a, 0.75));
-    const inner = new THREE.Mesh(flameGeo, flameMat(0xfff2a8, 0.95));
-    outer.position.z = inner.position.z = 2.05;
-    b.add(outer, inner);
-    flames.push({ outer, inner });
-  }
-  boosters.scale.setScalar(0.001);
-  boosters.visible = false;
-
-  const FLAME_COLORS = { 2: [0xff7a1a, 0xffe08a], 3: [0x2f7bff, 0xbfe9ff] };
-  /** Show/animate boosters: level 0..1 (deploy), turbo 2 or 3 (color), power 0..1 (flame size). */
-  function updateBoosters(level, turbo, power, t) {
-    boosters.visible = level > 0.02;
-    boosters.scale.setScalar(Math.max(0.001, level));
-    if (!boosters.visible) return;
-    const [outerC, innerC] = FLAME_COLORS[turbo] || FLAME_COLORS[2];
-    flames.forEach(({ outer, inner }, i) => {
-      outer.material.color.setHex(outerC);
-      inner.material.color.setHex(innerC);
-      const flicker = 0.85 + 0.15 * Math.sin(t * 47 + i * 2.1) + 0.1 * Math.sin(t * 91 + i);
-      const len = (turbo === 3 ? 4.6 : 3.4) * (0.35 + 0.65 * power) * flicker;
-      outer.scale.set(0.42, 0.42, len);
-      inner.scale.set(0.22, 0.22, len * 0.6);
-    });
-  }
+  // Two big Lego rocket boosters strapped along the tail boom.
+  const updateBoosters = createBoosters(plane, mat, { x: 1.86, y: -0.3, z: 2.0, scale: 1.8 });
 
   return {
     updateBoosters,
