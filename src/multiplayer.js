@@ -13,12 +13,15 @@ export class Multiplayer {
   /**
    * @param {object} opts.makeVehicle (vehicle) => model with .group (and optional updateBoosters, floats, propeller)
    */
-  constructor({ scene, makeVehicle, onChange, onJoin, onLeave }) {
+  constructor({ scene, makeVehicle, onChange, onJoin, onLeave, onRoomSettings, getSettings }) {
     this.scene = scene;
     this.makeVehicle = makeVehicle;
     this.onChange = onChange;
     this.onJoin = onJoin;
     this.onLeave = onLeave;
+    this.onRoomSettings = onRoomSettings;
+    this.getSettings = getSettings;
+    this.settings = null; // the room's city and look, once connected
     this.room = null;
     this.name = '';
     this.ws = null;
@@ -38,6 +41,7 @@ export class Multiplayer {
 
   leave() {
     this.room = null;
+    this.settings = null;
     this.status = 'off';
     if (this.ws) {
       this.ws.onclose = null;
@@ -50,7 +54,10 @@ export class Multiplayer {
 
   _connect() {
     const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-    const ws = (this.ws = new WebSocket(`${proto}://${location.host}/ws?role=mp&room=${this.room}`));
+    // Proposed city/look: used only if this connection creates the room.
+    const want = this.settings || this.getSettings();
+    const q = `role=mp&room=${this.room}&city=${encodeURIComponent(want.city)}&look=${encodeURIComponent(want.look)}`;
+    const ws = (this.ws = new WebSocket(`${proto}://${location.host}/ws?${q}`));
     ws.onmessage = (e) => {
       let m;
       try {
@@ -61,6 +68,10 @@ export class Multiplayer {
       if (m.t === 'welcome') {
         this.myId = m.id;
         this.status = 'on';
+        if (m.settings?.city) {
+          this.settings = m.settings;
+          this.onRoomSettings?.(m.settings);
+        }
         this.onChange?.();
       } else if (m.t === 'state') this._onState(m);
       else if (m.t === 'leave') this._remove(m.id);

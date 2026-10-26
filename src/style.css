@@ -1413,3 +1413,19 @@ body.is-touch .crash-actions kbd {
   margin: 6px 0 0;
   font-size: 13px;
 }
+
+.room-lock {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: #eef9f0;
+  border: 2px solid #b7e4c0;
+  font-size: 13px;
+  color: #2b5a36;
+}
+
+.label.player {
+  font-size: 15px;
+  padding: 4px 10px;
+  z-index: 2;
+}

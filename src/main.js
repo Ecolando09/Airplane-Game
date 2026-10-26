@@ -97,6 +97,8 @@ const mp = new Multiplayer({
   onChange: () => updateMpUi(),
   onJoin: (p) => toast(`👋 ${p.name} joined${p.city !== settings.city ? ` (in ${CITIES[p.city] || 'another city'})` : ''}`, p.color),
   onLeave: (p) => toast(`${p.name} left the room`, '#868e96'),
+  getSettings: () => settings,
+  onRoomSettings: (r) => applyRoomSettings(r),
 });
 /** Small notification in the top-right corner (who joined/left the room). */
 function toast(text, color) {
@@ -739,12 +741,13 @@ function updateLabels() {
     pl.label.style.setProperty('--pin', pl.color);
     pl.label.textContent = pl.name;
     const d = Math.hypot(pl.pos.x - p.x, pl.pos.z - p.z);
-    items.push({ el: pl.label, x: pl.pos.x, y: pl.pos.y + 6, z: pl.pos.z, d, pin: true });
+    items.push({ el: pl.label, x: pl.pos.x, y: pl.pos.y + 4.5, z: pl.pos.z, d, pin: true, player: true });
   }
   for (const el of document.querySelectorAll('.label.player')) {
     if (![...mp.players.values()].some((pl) => pl.label === el && pl.city === settings.city)) el.style.display = 'none';
   }
-  items.sort((a, b) => (b.pin - a.pin) || a.d - b.d);
+  // Other players' name tags first (always shown), then map pins, then nearest landmarks.
+  items.sort((a, b) => (!!b.player - !!a.player) || (b.pin - a.pin) || a.d - b.d);
   const placed = [];
   const veh = running && CAMS[camMode] !== 'cockpit' ? vehicleScreenRect() : null;
   const hit = (r, q) => r[0] < q[2] && r[2] > q[0] && r[1] < q[3] && r[3] > q[1];
@@ -760,7 +763,7 @@ function updateLabels() {
     const w = it.el.offsetWidth;
     const h = it.el.offsetHeight + 6;
     const rect = [x - w / 2, y - h, x + w / 2, y]; // labels sit above their point
-    if (placed.some((q) => hit(rect, q))) {
+    if (!it.player && placed.some((q) => hit(rect, q))) {
       it.el.style.display = 'none';
       continue;
     }
@@ -768,7 +771,7 @@ function updateLabels() {
     it.el.style.left = `${x}px`;
     it.el.style.top = `${y}px`;
     const fade = it.pin ? 1 : THREE.MathUtils.clamp(1.4 - it.d / 4000, 0.3, 1);
-    it.el.style.opacity = String(veh && hit(rect, veh) ? 0.08 : fade);
+    it.el.style.opacity = String(!it.player && veh && hit(rect, veh) ? 0.08 : fade);
   }
 }
 
@@ -854,18 +857,43 @@ function updateMenu() {
       const on = b.dataset.v === settings[key];
       b.classList.toggle('on', on);
       b.setAttribute('aria-pressed', String(on));
-      b.disabled = building || (b.dataset.v === 'google' && !HAS_GOOGLE);
+      const locked = mp.room && mp.settings && key !== 'vehicle';
+      b.disabled = building || locked || (b.dataset.v === 'google' && !HAS_GOOGLE);
+      b.title = locked ? 'Set by the room. Leave the room to change it.' : '';
     }
   }
+  $('roomLock').hidden = !(mp.room && mp.settings);
   $('previewText').textContent = `${VEHICLE_NAMES[settings.vehicle]} · ${LOOK_NAMES[settings.look]} · ${CITIES[settings.city]}`;
   $('previewBusy').hidden = !building;
   $('startRunway').disabled = $('startAir').disabled = building;
   $('attrib').hidden = !google;
 }
 async function applySetting(key, value) {
-  if (building || settings[key] === value) return;
-  settings[key] = value;
+  return applySettings({ [key]: value });
+}
+/** Change one or more settings and rebuild once. City and look are locked while in a room. */
+/** Joined a room: switch to its city and look, then lock them. */
+async function applyRoomSettings(r) {
+  const changes = {};
+  if (r.city in CITIES) changes.city = r.city;
+  if (r.look in LOOK_NAMES && (r.look !== 'google' || HAS_GOOGLE)) changes.look = r.look;
+  if (building) await new Promise((res) => { const iv = setInterval(() => !building && (clearInterval(iv), res()), 100); });
+  if (running && Object.entries(changes).some(([k, v]) => settings[k] !== v)) {
+    running = false; // a different world loads under you: back to the menu
+    $('menu').hidden = false;
+    $('hud').hidden = $('touch').hidden = $('labels').hidden = true;
+  }
+  await applySettings(changes, { force: true });
+  updateMenu();
+  if (Object.keys(changes).length) toast(`Room settings: ${CITIES[settings.city]} · ${LOOK_NAMES[settings.look]}`, '#2f8a45');
+}
+async function applySettings(changes, { force = false } = {}) {
+  const roomLocked = mp.room && mp.settings && !force;
+  const next = Object.entries(changes).filter(([k, v]) => settings[k] !== v && !(roomLocked && k !== 'vehicle'));
+  if (building || !next.length) return;
+  for (const [k, v] of next) settings[k] = v;
   saveSettings();
+  const key = next.length === 1 && next[0][0] === 'vehicle' ? 'vehicle' : 'world';
   building = true;
   pausedFlight = false;
   updateMenu();
@@ -935,6 +963,7 @@ function watchLobby() {
   };
 }
 function updateMpUi() {
+  if (data) updateMenu();
   $('mpOff').hidden = !!mp.room;
   $('mpOn').hidden = !mp.room;
   $('mpNote').hidden = MP_OK;
@@ -946,16 +975,12 @@ function updateMpUi() {
   for (const r of listed) {
     const li = document.createElement('li');
     const who = r.players.map((p) => p.name).join(', ');
-    const where = [...new Set(r.players.map((p) => CITIES[p.city] || p.city))].join(' & ');
+    const where = r.city ? `${CITIES[r.city] || r.city} · ${LOOK_NAMES[r.look] || ''}`
+      : [...new Set(r.players.map((p) => CITIES[p.city] || p.city))].join(' & ');
     li.innerHTML = '<div><b></b><span></span></div><button class="small-btn">Join</button>';
     li.querySelector('b').textContent = `${who}`;
     li.querySelector('span').textContent = `Room ${r.code} · ${where}`;
-    li.querySelector('button').onclick = async () => {
-      // Fly where they are.
-      const city = r.players[0]?.city;
-      if (city in CITIES && city !== settings.city) await applySetting('city', city);
-      joinRoom(r.code);
-    };
+    li.querySelector('button').onclick = () => joinRoom(r.code);
     rooms.appendChild(li);
   }
   if (!mp.room) return;

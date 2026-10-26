@@ -6,11 +6,13 @@
 //   Phone messages go to the room's game; game messages go to the room's phones.
 //
 // Multiplayer: everyone flying in the same room sees each other.
-//   player -> ws(s)://HOST/ws?role=mp&room=ABCD
+//   player -> ws(s)://HOST/ws?role=mp&room=ABCD&city=...&look=...
+//   The first player's city and look become the room's; everyone who joins
+//   gets them in the welcome message.
 //   Each player gets an id; their messages are tagged with it and passed to
 //   the other players. When a player leaves, the others get {t:'leave', id}.
 //   lobby  -> ws(s)://HOST/ws?role=lobby
-//   Gets {t:'rooms', rooms:[{code, players:[{name, city, vehicle}]}]} whenever
+//   Gets {t:'rooms', rooms:[{code, city, look, players:[{name, city, vehicle}]}]} whenever
 //   the open rooms change, so the menu can list them with a Join button.
 // Run: node server/relay.js   (PORT env, default 8787)
 import { WebSocketServer } from 'ws';
@@ -29,7 +31,11 @@ wss.on('connection', (ws, req) => {
     ws.close(1008, 'bad room or role');
     return;
   }
-  if (role === 'mp') return joinFlight(ws, code);
+  if (role === 'mp') {
+    const city = (url.searchParams.get('city') || '').slice(0, 32);
+    const look = (url.searchParams.get('look') || '').slice(0, 16);
+    return joinFlight(ws, code, { city, look });
+  }
   let room = rooms.get(code);
   if (!room) rooms.set(code, (room = { game: null, pads: new Set() }));
 
@@ -75,7 +81,7 @@ function roomList() {
   const rooms = [];
   for (const [code, room] of flights) {
     const players = [...room.values()].map((ws) => info.get(ws)).filter(Boolean);
-    if (players.length) rooms.push({ code, players });
+    if (players.length) rooms.push({ code, players, ...roomSettings.get(code) });
   }
   return JSON.stringify({ t: 'rooms', rooms });
 }
@@ -95,9 +101,13 @@ function joinLobby(ws) {
   ws.on('close', () => lobby.delete(ws));
 }
 let nextId = 1;
-function joinFlight(ws, code) {
+const roomSettings = new Map(); // code -> { city, look }, set by whoever starts the room
+function joinFlight(ws, code, wanted) {
   let room = flights.get(code);
-  if (!room) flights.set(code, (room = new Map()));
+  if (!room) {
+    flights.set(code, (room = new Map()));
+    roomSettings.set(code, wanted);
+  }
   if (room.size >= 8) {
     ws.close(1008, 'room full');
     return;
@@ -107,7 +117,8 @@ function joinFlight(ws, code) {
   const others = (fn) => {
     for (const [oid, sock] of room) if (oid !== id && sock.readyState === 1) fn(sock);
   };
-  ws.send(JSON.stringify({ t: 'welcome', id, players: room.size }));
+  // Everyone in a room flies the same city and look (vehicles are each player's own).
+  ws.send(JSON.stringify({ t: 'welcome', id, players: room.size, settings: roomSettings.get(code) }));
   ws.on('message', (data, isBinary) => {
     if (isBinary) return;
     let m;
@@ -134,7 +145,10 @@ function joinFlight(ws, code) {
     info.delete(ws);
     updateLobby();
     others((sock) => sock.send(JSON.stringify({ t: 'leave', id })));
-    if (room.size === 0) flights.delete(code);
+    if (room.size === 0) {
+      flights.delete(code);
+      roomSettings.delete(code);
+    }
   });
 }
 
