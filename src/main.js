@@ -677,7 +677,7 @@ function updateBuddies() {
   while (box.children.length < players.length) {
     const el = document.createElement('div');
     el.className = 'buddy';
-    el.innerHTML = '<span class="arrow">➤</span><span class="txt"></span>';
+    el.innerHTML = '<span class="arrow">➤</span><span class="txt"><span class="who"></span> <span class="far"></span></span>';
     box.appendChild(el);
   }
   const p = plane.group.position;
@@ -685,11 +685,13 @@ function updateBuddies() {
     const el = box.children[i];
     el.style.setProperty('--c', pl.color);
     const arrow = el.querySelector('.arrow');
-    const txt = el.querySelector('.txt');
+    // Names come from other players: set as text, never as HTML.
+    el.querySelector('.who').textContent = pl.name;
+    const far = el.querySelector('.far');
     if (pl.city !== settings.city) {
       arrow.style.transform = '';
       arrow.textContent = '✈';
-      txt.innerHTML = `${pl.name} <span class="far">in ${CITIES[pl.city] || 'another city'}</span>`;
+      far.textContent = `in ${CITIES[pl.city] || 'another city'}`;
       return;
     }
     const dx = pl.pos.x - p.x;
@@ -700,7 +702,7 @@ function updateBuddies() {
     arrow.style.transform = `rotate(${rel}deg)`;
     const up = pl.pos.y - p.y;
     const alt = Math.abs(up) > 30 ? ` ${up > 0 ? '↑' : '↓'}${Math.round(Math.abs(up) * 3.281)} ft` : '';
-    txt.innerHTML = `${pl.name} <span class="far">${fmtDist(Math.hypot(dx, dz))} ${compass(bearing)}${alt}</span>`;
+    far.textContent = `${fmtDist(Math.hypot(dx, dz))} ${compass(bearing)}${alt}`;
   });
 }
 
