@@ -23,6 +23,7 @@
       <div class="panel" id="over"></div>
       <canvas id="minimap" width="480" height="480" title="Tap to enlarge (N)"></canvas>
       <div id="message"></div>
+      <button id="autoLandBtn" class="big go" hidden>🛬 Auto-land at <span id="autoLandName"></span><kbd>L</kbd></button>
       <div id="crashBox" hidden>
         <p id="crashReason">💥 Crashed!</p>
         <div class="crash-actions">
@@ -154,6 +155,7 @@
           <div class="controls">
             <div><kbd>B</kbd> floats (land on water) &nbsp; <kbd>T</kbd> turbo (or <kbd>1</kbd><kbd>2</kbd><kbd>3</kbd>)</div>
             <div><kbd>C</kbd> camera &nbsp; <kbd>N</kbd> big map &nbsp; <kbd>R</kbd> restart &nbsp; <kbd>Esc</kbd> menu</div>
+            <div><kbd>L</kbd> auto-land (within 500 ft of a landmark)</div>
             <div><kbd>I</kbd> invert pitch &nbsp; <kbd>M</kbd> sound</div>
           </div>
           <p class="tip heli-only">Push LIFT up (or hold W) to take off, then raise SPEED to fly. To land, stop and

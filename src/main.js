@@ -627,6 +627,7 @@ function updateHud(dt) {
   $('hdg').textContent = compass(hdg);
   $('hdgDeg').textContent = `${String(hdg).padStart(3, '0')}°`;
   updateBuddies();
+  updateAutoLandButton();
 
   let best = null;
   let bestD = 700;
@@ -806,6 +807,7 @@ function start(airborne) {
   // Runs inside the tap, so the motion-sensor permission prompt is allowed here.
   if (input.isTouch) input.setTilt(phoneSteering === 'tilt').then((on) => on && message('Tilt to steer — tap CENTER to re-center', 3));
   clearDebris();
+  autoLand = null;
   airborne ? flight.resetAirborne() : flight.reset();
   snapToGoogleGround();
   input.syncThrottle(flight.throttle);
@@ -1090,6 +1092,8 @@ setInterval(() => {
 }, 200);
 
 input.on('cam', () => (camMode = (camMode + 1) % CAMS.length));
+input.on('autoland', () => running && startAutoLand());
+$('autoLandBtn').onclick = () => startAutoLand();
 input.on('floats', toggleFloats);
 // Turbo modes: 1X normal, T2X and T3X multiply top speed by 2 and 3.
 const turboName = (t) => (t === 1 ? '1X' : `T${t}X`);
@@ -1141,6 +1145,132 @@ function poseAirplane(dt) {
   plane.controls.rudder.rotation.y = c.yaw * 0.4;
 }
 
+// ------------------------------------------------------------------ auto-land
+// Within 500 ft of a landmark or map pin, an "Auto-land" button appears. It flies
+// the vehicle down to a clear spot in front of the landmark and parks it facing it.
+const AUTO_LAND_RANGE = 152; // meters (500 ft)
+let autoLand = null; // active landing: { from, ctrl, to, yaw, t, dur, name }
+let autoLandTarget = null; // landmark offered by the button
+
+function nearestLandmark() {
+  const p = flight.pos;
+  let best = null;
+  let bestD = AUTO_LAND_RANGE;
+  for (const l of [...world.landmarks, ...world.locators]) {
+    const d = Math.hypot(l.x - p.x, l.z - p.z);
+    if (d < bestD) {
+      bestD = d;
+      best = l;
+    }
+  }
+  return best;
+}
+
+/** A clear, fairly flat spot near the landmark, on the side we're coming from. */
+function findLandingSpot(l) {
+  const p = flight.pos;
+  const toUs = Math.atan2(p.z - l.z, p.x - l.x);
+  const clear = (x, z) => {
+    const y = world.heightAt(x, z);
+    if (world.isWater(x, z) && !flight.floats) return null;
+    for (const [dx, dz] of [[0, 0], [8, 0], [-8, 0], [0, 8], [0, -8]]) {
+      if (Math.abs(world.heightAt(x + dx, z + dz) - y) > 2.5) return null; // too steep
+      if (world.hitsObstacle({ x: x + dx, y: y + 3, z: z + dz }, 5)) return null;
+    }
+    return y;
+  };
+  for (const r of [35, 50, 65, 80, 100, 125, 150]) {
+    for (let i = 0; i < 16; i++) {
+      // Try straight in front first, then alternate left/right around the landmark.
+      const a = toUs + (i % 2 ? 1 : -1) * Math.ceil(i / 2) * (Math.PI / 8);
+      const x = l.x + Math.cos(a) * r;
+      const z = l.z + Math.sin(a) * r;
+      const y = clear(x, z);
+      if (y !== null) return { x, y, z };
+    }
+  }
+  return null;
+}
+
+function startAutoLand() {
+  const l = autoLandTarget;
+  if (!l || autoLand || flight.crashed || flight.onGround) return;
+  const spot = findLandingSpot(l);
+  if (!spot) {
+    message(`No clear spot to land near ${l.name}`, 2.5);
+    return;
+  }
+  const from = flight.pos.clone();
+  const to = new THREE.Vector3(spot.x, spot.y + plane.gearHeight, spot.z);
+  const dist = from.distanceTo(to);
+  // Keep the current direction of travel at first, then curve in to the spot.
+  const ctrl = from.clone().addScaledVector(flight.forward.clone().setY(0).normalize(), Math.min(dist * 0.5, 150));
+  autoLand = {
+    from, ctrl, to, name: l.name, t: 0,
+    dur: THREE.MathUtils.clamp(dist / 22, 5, 10),
+    yaw: Math.atan2(-(l.x - spot.x), -(l.z - spot.z)), // face the landmark
+  };
+  $('autoLandBtn').hidden = true;
+  message(`🛬 Auto-landing at ${l.name}…`, 2);
+}
+
+const _q = new THREE.Quaternion();
+const _e = new THREE.Euler(0, 0, 0, 'YXZ');
+function updateAutoLand(dt) {
+  const a = autoLand;
+  a.t = Math.min(1, a.t + dt / a.dur);
+  const t = a.t;
+  const s = t * t * (3 - 2 * t); // ease in and out
+  // Horizontal: curve from the current heading into the spot.
+  const x = (1 - s) ** 2 * a.from.x + 2 * (1 - s) * s * a.ctrl.x + s * s * a.to.x;
+  const z = (1 - s) ** 2 * a.from.z + 2 * (1 - s) * s * a.ctrl.z + s * s * a.to.z;
+  // Height: glide down, staying above the ground until the very end.
+  const descent = a.from.y + (a.to.y - a.from.y) * (1 - Math.cos(Math.min(1, t * 1.15) * Math.PI)) / 2;
+  const floor = world.heightAt(x, z) + plane.gearHeight + 35 * (1 - t) ** 2;
+  const y = t >= 1 ? a.to.y : Math.max(descent, floor);
+  const prev = flight.pos.clone();
+  flight.pos.set(x, y, z);
+  // Face the direction of travel, turning to face the landmark at the end.
+  const move = flight.pos.clone().sub(prev);
+  const travelYaw = move.lengthSq() > 1e-4 ? Math.atan2(-move.x, -move.z) : a.yaw;
+  let dy = a.yaw - travelYaw;
+  dy = Math.atan2(Math.sin(dy), Math.cos(dy));
+  const yaw = travelYaw + dy * THREE.MathUtils.smoothstep(t, 0.7, 1);
+  const pitch = t < 1 ? THREE.MathUtils.clamp(Math.atan2(move.y, Math.hypot(move.x, move.z) || 1), -0.25, 0.2) * (1 - t) : 0;
+  flight.speed = move.length() / Math.max(dt, 1e-3);
+  flight.verticalSpeed = move.y / Math.max(dt, 1e-3);
+  if (isHeli) {
+    flight.yaw = yaw;
+    flight.tilt.pitch = -0.1 * (1 - t);
+    flight.tilt.roll = 0;
+    flight._updateQuat();
+  } else {
+    flight.quat.setFromEuler(_e.set(pitch, yaw, 0));
+  }
+  if (t >= 1) {
+    // Parked: stopped on the ground, ready to take off again.
+    flight.onGround = true;
+    flight.speed = 0;
+    flight.verticalSpeed = 0;
+    flight.throttle = 0;
+    flight.vel.set(0, 0, 0);
+    flight.ctrl = { pitch: 0, roll: 0, yaw: 0 };
+    input.syncThrottle(0);
+    wasOnGround.v = true;
+    message(`Landed at ${a.name} 📍`, 3);
+    autoLand = null;
+  }
+}
+
+function updateAutoLandButton() {
+  const l = !autoLand && !flight.crashed && !flight.onGround ? nearestLandmark() : null;
+  if (l !== autoLandTarget) {
+    autoLandTarget = l;
+    if (l) $('autoLandName').textContent = l.name;
+  }
+  $('autoLandBtn').hidden = !l;
+}
+
 // ------------------------------------------------------------------ Google 3D ground
 // The start position comes from the elevation grid, which can be a few meters
 // off from Google's real 3D ground (and the tiles load after the start). While
@@ -1169,7 +1299,9 @@ function frame() {
   }
   if (running) {
     const ctl = input.read();
-    if (!flight.crashed) {
+    if (autoLand) {
+      updateAutoLand(dt);
+    } else if (!flight.crashed) {
       flight.update(dt, ctl);
       if (flight.crashed) {
         explode();
@@ -1235,7 +1367,7 @@ frame();
 
 // Test hook: ?debug exposes the simulation for automated checks.
 if (new URLSearchParams(location.search).has('debug')) {
-  window.__game = { world, flight, plane, start, google, mp, camera, step: (dt, ctl) => flight.update(dt, ctl) };
+  window.__game = { world, flight, plane, start, google, mp, camera, autoLandApi: { start: (l) => { autoLandTarget = l; startAutoLand(); }, step: (dt) => autoLand && updateAutoLand(dt), active: () => !!autoLand }, step: (dt, ctl) => flight.update(dt, ctl) };
   window.__tilt = input.tilt;
   window.__traffic = traffic;
 }

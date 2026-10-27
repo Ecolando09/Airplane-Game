@@ -320,15 +320,15 @@ export class HeliFlight {
     const steps = Math.max(1, Math.ceil((this.vel.length() * dt) / 3));
     for (let i = 0; i < steps; i++) {
       this.pos.addScaledVector(this.vel, dt / steps);
-      if (this.world.hitsObstacle(this.pos, this.plane.radius * 0.8)) return this.crash('Crashed into the city!');
+      if (this.world.hitsObstacle(this.pos, this.plane.radius * 0.5)) return this.crash('Crashed into the city!');
     }
 
     // Ground: land gently anywhere flat-ish; water needs floats.
     const ground = this.world.heightAt(this.pos.x, this.pos.z);
     const minY = ground + this.plane.gearHeight;
     if (this.pos.y <= minY) {
-      if (!this.onGround && this.vel.y < -8) return this.crash('Landed too hard!');
-      if (!this.onGround && this.speed > 30) return this.crash('Skidded into the ground!');
+      if (!this.onGround && this.vel.y < -14) return this.crash('Landed too hard!');
+      if (!this.onGround && this.speed > 50) return this.crash('Skidded into the ground!');
       this.onWater = this.world.isWater(this.pos.x, this.pos.z);
       if (this.onWater && !this.floats) return this.crash('Splash! Press B for floats before landing on water.');
       this.pos.y = minY;

@@ -763,7 +763,10 @@ export class World {
         const dz = p.z - c.z;
         if (Math.abs(dx * c.c + dz * c.s) < c.hw + rad && Math.abs(-dx * c.s + dz * c.c) < c.hd + rad) return true;
       } else if (c.t === 'tree') {
-        if (Math.hypot(p.x - c.x, p.z - c.z) < c.rad + rad) return true;
+        // Only the solid middle of a tree counts (clipping the leaves is fine),
+        // and the treetop is a few meters forgiving.
+        if (p.y - rad > c.top - 3) continue;
+        if (Math.hypot(p.x - c.x, p.z - c.z) < c.rad * 0.5 + rad) return true;
       } else if (p.x > c.minx - rad && p.x < c.maxx + rad && p.z > c.minz - rad && p.z < c.maxz + rad) {
         if (pointInPoly(p.x, p.z, c.p)) return true;
       }

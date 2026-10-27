@@ -168,7 +168,7 @@ export class Flight {
     const steps = Math.max(1, Math.ceil((this.speed * dt) / 3));
     for (let i = 0; i < steps; i++) {
       this.pos.addScaledVector(this.vel, dt / steps);
-      if (this.world.hitsObstacle(this.pos, this.plane.radius * 0.8)) return this.crash('Crashed into the city!');
+      if (this.world.hitsObstacle(this.pos, this.plane.radius * 0.5)) return this.crash('Crashed into the city!');
     }
 
     // ---- ground contact
@@ -177,10 +177,11 @@ export class Flight {
     if (this.pos.y <= minY) {
       const pitchDeg = THREE.MathUtils.radToDeg(Math.asin(f.y));
       const bankDeg = Math.abs(THREE.MathUtils.radToDeg(bank));
-      if (!this.onGround && (this.vel.y < -9 || bankDeg > 35 || pitchDeg < -20)) {
+      // Forgiving touchdowns: only a real nosedive, a hard slam or a steep bank crashes.
+      if (!this.onGround && (this.vel.y < -14 || bankDeg > 50 || pitchDeg < -32)) {
         return this.crash(
-          pitchDeg < -20 || this.vel.y < -15 ? 'Crashed into the ground!'
-            : bankDeg > 35 ? 'Wing hit the ground!' : 'Landed too hard!'
+          pitchDeg < -32 || this.vel.y < -20 ? 'Crashed into the ground!'
+            : bankDeg > 50 ? 'Wing hit the ground!' : 'Landed too hard!'
         );
       }
       this.onWater = this.world.isWater(this.pos.x, this.pos.z);
@@ -208,7 +209,7 @@ export class Flight {
       this.speed = Math.max(0, this.speed - 6 * dt);
     }
 
-    if (this.world.hitsObstacle(this.pos, this.plane.radius * 0.8)) {
+    if (this.world.hitsObstacle(this.pos, this.plane.radius * 0.5)) {
       return this.crash('Crashed into the city!');
     }
   }
