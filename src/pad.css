@@ -332,3 +332,8 @@ body.heli #pad {
   background: var(--blue);
   box-shadow: 0 3px 0 #003577;
 }
+
+button.act.go {
+  grid-column: 1 / -1;
+  background: #2f8a45;
+}

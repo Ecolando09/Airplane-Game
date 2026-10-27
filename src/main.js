@@ -803,11 +803,20 @@ if (input.isTouch) {
   $('ctlStick').onclick = () => setPhoneSteering('stick');
 }
 
+/** Reset the flight to an airborne state (used by respawn); keeps the session running. */
+function airborneRestart() {
+  autoLand = null;
+  flight.resetAirborne();
+  tilt = 0;
+  boosterLevel = 0;
+}
+
 function start(airborne) {
   // Runs inside the tap, so the motion-sensor permission prompt is allowed here.
   if (input.isTouch) input.setTilt(phoneSteering === 'tilt').then((on) => on && message('Tilt to steer — tap CENTER to re-center', 3));
   clearDebris();
   autoLand = null;
+  trail = [];
   airborne ? flight.resetAirborne() : flight.reset();
   snapToGoogleGround();
   input.syncThrottle(flight.throttle);
@@ -1032,6 +1041,8 @@ $('mpCopy').onclick = async () => {
 }
 
 $('crashRetry').onclick = () => start(false);
+$('crashRespawn').onclick = () => respawnHere();
+input.on('respawn', () => respawnHere());
 $('crashMenu').onclick = () => $('helpBtn').onclick();
 $('resumeBtn').onclick = () => {
   pausedFlight = false;
@@ -1143,6 +1154,49 @@ function poseAirplane(dt) {
   right.rotation.x = -c.roll * 0.35;
   plane.controls.elevator.rotation.x = -c.pitch * 0.4;
   plane.controls.rudder.rotation.y = c.yaw * 0.4;
+}
+
+// ------------------------------------------------------------------ respawn in place
+// A short trail of recent positions; after a crash, "Respawn here" puts the
+// vehicle back where it was a few seconds earlier, lifted clear of trouble.
+let trail = [];
+let trailTimer = 0;
+function recordTrail(dt) {
+  trailTimer -= dt;
+  if (trailTimer > 0 || flight.crashed || autoLand) return;
+  trailTimer = 0.5;
+  trail.push({ pos: flight.pos.clone(), heading: flight.heading });
+  if (trail.length > 12) trail.shift();
+}
+
+function respawnHere() {
+  if (!running || !flight.crashed) return;
+  // About 3 seconds before the crash (or the oldest point we have).
+  const snap = trail[Math.max(0, trail.length - 7)] || { pos: flight.pos.clone(), heading: flight.heading };
+  const { floats, turbo } = flight;
+  clearDebris();
+  airborneRestart();
+  flight.floats = floats;
+  flight.turbo = turbo || 1;
+  flight.turboNow = flight.turbo;
+  // Safe height: well above the ground and clear of buildings and trees.
+  const pos = snap.pos.clone();
+  pos.y = Math.max(pos.y, world.heightAt(pos.x, pos.z) + plane.gearHeight + (isHeli ? 25 : 60));
+  for (let i = 0; i < 40 && world.hitsObstacle(pos, 8); i++) pos.y += 10;
+  flight.pos.copy(pos);
+  const yaw = -THREE.MathUtils.degToRad(snap.heading);
+  if (isHeli) {
+    flight.yaw = yaw;
+    flight._updateQuat();
+  } else {
+    flight.quat.setFromAxisAngle(new THREE.Vector3(0, 1, 0), yaw);
+  }
+  trail = [{ pos: pos.clone(), heading: snap.heading }];
+  input.syncThrottle(flight.throttle);
+  wasOnGround.v = false;
+  camInit = false;
+  $('crashBox').hidden = true;
+  message('Back in the air!', 1.5);
 }
 
 // ------------------------------------------------------------------ auto-land
@@ -1313,6 +1367,7 @@ function frame() {
     } else {
       crashTimer += dt;
     }
+    recordTrail(dt);
     snapToGoogleGround();
     updateDebris(dt);
     updateFloats(dt);

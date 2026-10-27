@@ -17,7 +17,7 @@ export class Input {
 
     const actions = {
       KeyC: 'cam', KeyR: 'reset', KeyM: 'mute', KeyI: 'invert', KeyB: 'floats', KeyN: 'map',
-      KeyT: 'turbo', KeyL: 'autoland', Digit1: 'turbo1', Digit2: 'turbo2', Digit3: 'turbo3', Escape: 'pause',
+      KeyT: 'turbo', KeyL: 'autoland', Enter: 'respawn', NumpadEnter: 'respawn', Digit1: 'turbo1', Digit2: 'turbo2', Digit3: 'turbo3', Escape: 'pause',
     };
     addEventListener('keydown', (e) => {
       if (e.repeat || e.target.closest?.('input, textarea')) return; // typing a name, not flying

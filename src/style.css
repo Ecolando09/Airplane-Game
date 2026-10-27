@@ -1466,3 +1466,8 @@ body.is-touch #autoLandBtn kbd {
     padding: 9px 14px;
   }
 }
+
+.crash-actions {
+  flex-wrap: wrap;
+  justify-content: center;
+}

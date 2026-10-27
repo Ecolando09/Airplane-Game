@@ -29,6 +29,7 @@ npm run build      # static site in dist/ (works on GitHub Pages or any static h
 | Q / E | Rudder |
 | Shift / Ctrl (or + / −) | Throttle up / down |
 | B | Boat floats up/down (land on water) |
+| Enter | Respawn in place after a crash |
 | L | Auto-land (button appears within 500 ft of a landmark or map pin) |
 | T (or 1 / 2 / 3) | Turbo: normal, T2X (2× speed, orange booster rockets), T3X (3× speed, blue flames) |
 | Space | Brakes |

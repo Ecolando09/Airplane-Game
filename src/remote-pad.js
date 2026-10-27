@@ -48,6 +48,7 @@ function connect() {
       $('menuButtons').hidden = !m.menu;
       $('flyButtons').hidden = m.menu;
       if (m.crashed && !wasCrashed) navigator.vibrate?.([120, 60, 240]);
+      $('respawnBtn').hidden = !m.crashed;
       wasCrashed = m.crashed;
     }
   };
