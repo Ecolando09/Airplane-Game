@@ -534,7 +534,8 @@ function drawMinimap() {
   }
 
   // Pins (address, Denny's) and the runway; arrows at the edge when off the map.
-  const pins = [...world.locators.map((l) => ({ x: l.x, z: l.z, color: '#' + l.color.toString(16).padStart(6, '0'), name: l.name })),
+  // (During a Beer Run shift only the delivery target is marked.)
+  const pins = beerRun?.active ? [] : [...world.locators.map((l) => ({ x: l.x, z: l.z, color: '#' + l.color.toString(16).padStart(6, '0'), name: l.name })),
     { x: rw.x, z: rw.z, color: '#1b2a34', name: 'Airport' }];
   mctx.font = '700 14px system-ui, sans-serif';
   for (const pin of pins) {
@@ -619,11 +620,6 @@ function drawMinimap() {
     else mctx.arc(x, y, r, 0, Math.PI * 2);
     mctx.fill();
     mctx.stroke();
-    mctx.fillStyle = '#fff';
-    mctx.font = `900 ${m.guide ? 17 : 13}px system-ui, sans-serif`;
-    mctx.textBaseline = 'middle';
-    mctx.fillText(m.letter, x, y + 1);
-    mctx.textBaseline = 'alphabetic';
     mctx.globalAlpha = 1;
   }
 
@@ -784,12 +780,15 @@ function updateLabels() {
   const p = plane.group.position;
   const maxDist = innerHeight < 500 ? 2500 : 5000;
   const items = [];
+  const shift = !!beerRun?.active; // during a shift the target is the only place tagged
   world.locators.forEach((l, i) => {
+    if (shift) return void (pinEls[i].style.display = 'none');
     const d = Math.hypot(l.x - p.x, l.z - p.z);
     pinEls[i].textContent = `📍 ${l.name} · ${d < 1000 ? Math.round(d) + ' m' : (d / 1609).toFixed(1) + ' mi'}`;
     items.push({ el: pinEls[i], x: l.x, y: l.y + 170, z: l.z, d, pin: true });
   });
   world.landmarks.forEach((l, i) => {
+    if (shift) return void (labelEls[i].style.display = 'none');
     const d = Math.hypot(l.x - p.x, l.z - p.z);
     items.push({ el: labelEls[i], x: l.x, y: l.y + 40 + d * 0.01, z: l.z, d, pin: false, hide: d > maxDist });
   });
@@ -909,12 +908,12 @@ function start(airborne) {
   if (beerOn()) {
     beerRun.start(isHeli ? 4 : 6);
     message(`🍺 Shift started! Head for the <span style="color:#ffb300">amber beams</span><small>${isHeli ? 4 : 6} kegs fit in your ${isHeli ? 'copter' : 'plane'}</small>`, 4);
-    $('beerHud').hidden = $('beerOrders').hidden = false;
+    $('beerHud').hidden = false;
     document.body.classList.add('beer');
     return;
   }
   beerRun?.stop();
-  $('beerHud').hidden = $('beerOrders').hidden = true;
+  $('beerHud').hidden = true;
   document.body.classList.remove('beer');
   message(airborne ? `Welcome to ${data.name.split(',')[0]}!`
     : isHeli ? (input.isTouch ? 'Push LIFT up to take off!' : 'Hold W to lift off, Shift for speed!')
@@ -1164,71 +1163,39 @@ const BEER_COLORS = { pickup: '#ffb300', drop: '#2ecc71', RUSH: '#ffd700', VIP: 
 
 function updateBeerHud() {
   const h = beerRun.hud(flight.pos, flight.heading);
+  const stats = `${h.cash} · ⏱ ${h.clock} · 🛢️ ${h.hold.loaded}/${h.hold.capacity}`;
   $('beerCash').textContent = h.cash;
   $('beerClock').textContent = `⏱ ${h.clock}`;
   $('beerClock').classList.toggle('hurry', h.hurry);
   $('beerHold').textContent = `🛢️ ${h.hold.loaded}/${h.hold.capacity}`;
   $('beerCombo').textContent = h.combo && `🔥${h.combo}`;
   $('beerHappy').textContent = h.happy;
-  // The order you're working on: which step, where, which way and how long.
+  // The one delivery: what to do, where, which way and how long it has left.
   const m = h.mission;
   const mi = $('beerMission');
-  mi.hidden = !m;
+  mi.classList.toggle('waiting', !m);
   if (m) {
     mi.style.setProperty('--c', m.color);
-    mi.querySelector('.beer-letter').textContent = m.letter;
-    mi.querySelector('.step').textContent = m.tag ? `${m.step} · ${m.tag}` : m.step;
-    mi.querySelector('.where').textContent = `${m.step.startsWith('LOAD') ? 'at' : 'to'} ${m.where}`;
-    mi.querySelector('.next').textContent = `${m.next} · up to ${m.pay}`;
+    mi.querySelector('.beer-letter').textContent = m.icon;
+    mi.querySelector('.step').textContent = m.step;
+    mi.querySelector('.where').textContent = m.where;
+    mi.querySelector('.next').textContent = m.next;
+    mi.querySelector('.mini').textContent = `${stats} · ${m.next}`;
     mi.querySelector('.arrow').style.transform = `rotate(${m.rel}deg)`;
     mi.querySelector('.dist').textContent = m.dist;
     mi.querySelector('.time').textContent = m.time;
     mi.querySelector('.time').classList.toggle('hurry', m.hurry);
     mi.querySelector('.beer-mbar').style.width = `${Math.max(0, m.frac) * 100}%`;
+  } else {
+    mi.style.setProperty('--c', '#868e96');
+    mi.querySelector('.beer-letter').textContent = '📋';
+    mi.querySelector('.step').textContent = 'NEXT DELIVERY';
+    mi.querySelector('.where').textContent = 'Coming in…';
+    mi.querySelector('.next').textContent = '';
+    mi.querySelector('.mini').textContent = stats;
+    mi.querySelector('.dist').textContent = mi.querySelector('.time').textContent = '';
+    mi.querySelector('.beer-mbar').style.width = '0';
   }
-  // Other orders as small letter chips: tap one to follow it instead.
-  const others = h.orders.filter((o) => !o.guided);
-  const box = $('beerOthers');
-  while (box.children.length > others.length) box.lastChild.remove();
-  while (box.children.length < others.length) {
-    const b = document.createElement('button');
-    b.className = 'beer-chip';
-    b.onclick = () => {
-      beerRun.guideId = Number(b.dataset.id);
-      updateBeerHud();
-    };
-    box.appendChild(b);
-  }
-  others.forEach((o, i) => {
-    const b = box.children[i];
-    b.dataset.id = o.id;
-    b.style.setProperty('--c', o.color);
-    b.classList.toggle('hurry', o.hurry);
-    b.textContent = `${o.letter} ${o.state === 'pickup' ? '🏭' : '🏪'} ${o.time}${o.tag ? ` ${o.tag}` : ''}`;
-    b.title = `${o.text}: ${o.route} (tap to follow)`;
-  });
-  // Computers: every order spelled out on the left.
-  const list = $('beerOrders');
-  while (list.children.length > h.orders.length) list.lastChild.remove();
-  while (list.children.length < h.orders.length) {
-    const li = document.createElement('li');
-    li.innerHTML = '<div class="top"><span class="beer-letter"></span><span class="what"></span><span class="tag"></span><span class="pay"></span></div><div class="route"></div><div class="bar"></div>';
-    li.onclick = () => (beerRun.guideId = Number(li.dataset.id));
-    list.appendChild(li);
-  }
-  h.orders.forEach((o, i) => {
-    const li = list.children[i];
-    li.dataset.id = o.id;
-    li.classList.toggle('guided', o.guided);
-    li.style.setProperty('--c', o.color);
-    li.querySelector('.beer-letter').textContent = o.letter;
-    li.querySelector('.what').textContent = `${o.state === 'pickup' ? 'Load' : 'Deliver'} ${o.text}`;
-    li.querySelector('.tag').textContent = o.tag;
-    li.querySelector('.tag').hidden = !o.tag;
-    li.querySelector('.pay').textContent = o.pay;
-    li.querySelector('.route').textContent = `${o.route} · ${o.time}`;
-    li.querySelector('.bar').style.width = `${Math.max(0, o.frac) * 100}%`;
-  });
   $('beerDwell').hidden = !h.dwell;
   if (h.dwell) {
     $('beerDwellArc').style.strokeDashoffset = String(119.4 * (1 - Math.min(1, h.dwell)));
@@ -1243,7 +1210,7 @@ function endShift(stats) {
   running = false;
   pausedFlight = false;
   $('hud').hidden = $('touch').hidden = $('labels').hidden = true;
-  $('beerHud').hidden = $('beerDwell').hidden = $('beerOrders').hidden = true;
+  $('beerHud').hidden = $('beerDwell').hidden = true;
   document.body.classList.remove('beer');
   sound.blip('cash');
   $('beerEndCash').textContent = `$${stats.cash.toLocaleString()}`;
@@ -1411,6 +1378,13 @@ async function showPhonePanel() {
 }
 $('phoneBtn').onclick = showPhonePanel;
 $('phoneChip').onclick = showPhonePanel;
+// Phones in a browser: a button to go fullscreen again (the address bar eats the screen).
+const goFullscreen = () => document.documentElement.requestFullscreen?.({ navigationUI: 'hide' })
+  .then(() => screen.orientation?.lock?.('landscape')).catch(() => {});
+$('fsChip').onclick = goFullscreen;
+const updateFsChip = () => ($('fsChip').hidden = !input.isTouch || !document.fullscreenEnabled || !!document.fullscreenElement);
+document.addEventListener('fullscreenchange', updateFsChip);
+updateFsChip();
 $('phoneDone').onclick = () => ($('phonePanel').hidden = true);
 setInterval(() => {
   if (!plane) return;

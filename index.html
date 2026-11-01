@@ -33,13 +33,11 @@
         </div>
         <div class="beer-mission" id="beerMission">
           <span class="beer-letter"></span>
-          <span class="beer-what"><b class="step"></b> <span class="where"></span><small class="next"></small></span>
+          <span class="beer-what"><b class="step"></b> <span class="where"></span><small class="next"></small><small class="mini"></small></span>
           <span class="beer-go"><span class="arrow">▲</span><span class="dist"></span><span class="time"></span></span>
           <span class="beer-mbar"></span>
         </div>
-        <div class="beer-others" id="beerOthers" aria-label="Other orders (tap to follow)"></div>
       </div>
-      <ol id="beerOrders" hidden></ol>
       <div id="beerDwell" hidden><svg viewBox="0 0 44 44"><circle cx="22" cy="22" r="19" /><circle id="beerDwellArc" cx="22" cy="22" r="19" /></svg><span id="beerDwellText"></span></div>
       <button id="autoLandBtn" class="big go" hidden>🛬 Auto-land at <span id="autoLandName"></span><kbd>L</kbd></button>
       <div id="crashBox" hidden>
@@ -52,6 +50,7 @@
       </div>
       <div id="topRight">
         <button id="phoneChip" class="chip" aria-label="Phone controller">📱</button>
+        <button id="fsChip" class="chip" aria-label="Full screen" title="Full screen" hidden>⛶</button>
         <button id="helpBtn" class="chip" aria-label="Menu (Esc)" title="Menu (Esc)">☰ Menu</button>
       </div>
     </div>

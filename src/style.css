@@ -1639,111 +1639,25 @@ a.link-btn {
   color: #cfd6dc;
 }
 
-.beer-mbar {
-  position: absolute;
-  left: 0;
-  bottom: 0;
-  height: 3px;
-  background: var(--c);
-}
-
-.beer-others {
-  display: flex;
-  justify-content: center;
-  gap: 6px;
-  pointer-events: auto;
-}
-
-.beer-others:empty {
+.beer-what .mini {
   display: none;
-}
-
-.beer-chip {
-  font: inherit;
-  font-weight: 800;
-  font-size: 12px;
-  color: #fff;
-  background: var(--panel);
-  border: 2px solid var(--c);
-  border-radius: 999px;
-  padding: 2px 9px;
-  cursor: pointer;
-  font-variant-numeric: tabular-nums;
-}
-
-/* Computers: every order spelled out on the left, under the instruments. */
-#beerOrders {
-  position: fixed;
-  top: 168px;
-  left: 12px;
-  width: 290px;
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  gap: 4px;
-}
-
-#beerOrders li {
-  position: relative;
-  overflow: hidden;
-  background: var(--panel);
-  border-radius: 8px;
-  padding: 5px 10px 7px 6px;
-  border-left: 5px solid var(--c);
-  font-size: 13px;
-  line-height: 1.3;
-  cursor: pointer;
-}
-
-#beerOrders li.guided {
-  outline: 2px solid var(--c);
-}
-
-#beerOrders .top {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-weight: 800;
-}
-
-#beerOrders .beer-letter {
-  width: 20px;
-  height: 20px;
-  font-size: 12px;
-  border-radius: 5px;
-}
-
-#beerOrders .pay {
-  margin-left: auto;
-  color: #7ee08a;
-}
-
-#beerOrders .tag {
-  background: #ffd700;
-  color: var(--ink);
-  border-radius: 4px;
-  padding: 0 4px;
-  font-size: 11px;
-}
-
-#beerOrders .route {
+  font-size: 10.5px;
   color: #cfd6dc;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-#beerOrders .bar {
+.beer-mission.waiting .beer-go {
+  display: none;
+}
+
+.beer-mbar {
   position: absolute;
   left: 0;
   bottom: 0;
   height: 3px;
   background: var(--c);
-}
-
-body.is-touch #beerOrders {
-  display: none;
 }
 
 /* During a shift the strip takes the top center: "Over …" steps aside and
@@ -2014,11 +1928,6 @@ body.beer #buddies {
     font-size: 10px;
   }
 
-  .beer-chip {
-    font-size: 11px;
-    padding: 1px 7px;
-  }
-
   body.beer #buddies {
     top: 112px;
   }
@@ -2030,5 +1939,62 @@ body.beer #buddies {
   .label.beer.guided {
     font-size: 12px;
     padding: 3px 7px;
+  }
+}
+
+/* Very short screens (a phone with the browser's address bar showing): one
+   panel instead of two, and the touch controls packed tighter so the rudder
+   bar stays clear of the speed box. */
+@media (max-height: 360px) {
+  .beer-bar {
+    display: none;
+  }
+
+  .beer-what .next {
+    display: none;
+  }
+
+  .beer-what .mini {
+    display: block;
+  }
+
+  body.beer #buddies {
+    top: 64px;
+  }
+
+  #instruments {
+    padding: 4px 8px;
+    gap: 0;
+  }
+
+  #instruments .stat b {
+    font-size: 14px;
+    min-width: 40px;
+  }
+
+  #stick {
+    width: 108px;
+    height: 108px;
+    bottom: 12px;
+  }
+
+  #rudderTouch {
+    bottom: 128px;
+    width: 108px;
+    height: 28px;
+  }
+
+  #rudderTouch span {
+    display: none;
+  }
+
+  #throttleTouch,
+  #liftTouch {
+    height: 110px;
+    bottom: 18px;
+  }
+
+  #beerDwell {
+    top: 58%;
   }
 }
