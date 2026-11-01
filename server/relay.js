@@ -14,8 +14,17 @@
 //   lobby  -> ws(s)://HOST/ws?role=lobby
 //   Gets {t:'rooms', rooms:[{code, city, look, players:[{name, city, vehicle}]}]} whenever
 //   the open rooms change, so the menu can list them with a Join button.
-// Run: node server/relay.js   (PORT env, default 8787)
+//
+// Beer Run leaderboard (the Fort Collins delivery game):
+//   board -> ws(s)://HOST/ws?role=board
+//   Gets {t:'board', week:[...], all:[...]} (top 10 each: {name, score, deliveries, vehicle, when})
+//   now and whenever it changes. Send {t:'score', name, score, deliveries, vehicle}
+//   after a shift to get {t:'placed', week, all} (your ranks) back.
+//   Kept in STATE_DIR/beer-run.json.
+// Run: node server/relay.js   (PORT env, default 8787; STATE_DIR, default server/data)
 import { WebSocketServer } from 'ws';
+import fs from 'node:fs';
+import path from 'node:path';
 
 const PORT = Number(process.env.PORT) || 8787;
 const rooms = new Map(); // code -> { game, pads: Set }
@@ -27,6 +36,7 @@ wss.on('connection', (ws, req) => {
   const role = url.searchParams.get('role');
   const code = (url.searchParams.get('room') || '').toUpperCase();
   if (role === 'lobby') return joinLobby(ws);
+  if (role === 'board') return joinBoard(ws);
   if (!/^[A-Z]{4}$/.test(code) || !['game', 'pad', 'mp'].includes(role)) {
     ws.close(1008, 'bad room or role');
     return;
@@ -168,3 +178,60 @@ wss.on('connection', (ws) => {
 });
 
 console.log(`Lego Sky relay (phone controller + multiplayer) listening on :${PORT}/ws`);
+
+// ------------------------------------------------------------------ Beer Run leaderboard
+const STATE_DIR = process.env.STATE_DIR || path.join(path.dirname(new URL(import.meta.url).pathname), 'data');
+const BOARD_FILE = path.join(STATE_DIR, 'beer-run.json');
+const WEEK = 7 * 24 * 3600 * 1000;
+let scores = [];
+try {
+  scores = JSON.parse(fs.readFileSync(BOARD_FILE, 'utf8'));
+} catch {}
+const watchers = new Set();
+
+function boards() {
+  const byScore = (a, b) => b.score - a.score;
+  const since = Date.now() - WEEK;
+  return { week: scores.filter((s) => s.when > since).sort(byScore).slice(0, 10), all: [...scores].sort(byScore).slice(0, 10) };
+}
+
+function saveScores() {
+  // Keep the best 200 ever plus everything from the last week.
+  const since = Date.now() - WEEK;
+  const best = new Set([...scores].sort((a, b) => b.score - a.score).slice(0, 200));
+  scores = scores.filter((s) => best.has(s) || s.when > since);
+  fs.mkdir(STATE_DIR, { recursive: true }, () => {
+    fs.writeFile(BOARD_FILE + '.tmp', JSON.stringify(scores), (err) => !err && fs.rename(BOARD_FILE + '.tmp', BOARD_FILE, () => {}));
+  });
+}
+
+function joinBoard(ws) {
+  watchers.add(ws);
+  ws.send(JSON.stringify({ t: 'board', ...boards() }));
+  let last = 0;
+  ws.on('message', (data, isBinary) => {
+    if (isBinary || Date.now() - last < 10000) return; // one score per shift, not a flood
+    let m;
+    try {
+      m = JSON.parse(data.toString());
+    } catch {
+      return;
+    }
+    const score = Math.round(Number(m.score));
+    if (m.t !== 'score' || !(score > 0 && score < 100000)) return;
+    last = Date.now();
+    const entry = {
+      name: String(m.name || 'Pilot').slice(0, 16), score, when: last,
+      deliveries: Math.max(0, Math.min(999, Math.round(Number(m.deliveries) || 0))),
+      vehicle: m.vehicle === 'heli' ? 'heli' : 'plane',
+    };
+    scores.push(entry);
+    saveScores();
+    const b = boards();
+    const rank = (list) => list.indexOf(entry) + 1 || null;
+    ws.send(JSON.stringify({ t: 'placed', week: rank(b.week), all: rank(b.all) }));
+    const msg = JSON.stringify({ t: 'board', ...b });
+    for (const w of watchers) if (w.readyState === 1) w.send(msg);
+  });
+  ws.on('close', () => watchers.delete(ws));
+}

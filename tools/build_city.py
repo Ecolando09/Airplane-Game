@@ -221,9 +221,18 @@ out['land'] = land
 out['name'] = CFG['name']
 out['ground'] = CFG.get('ground', '#58ab41')
 out['geoid'] = CFG.get('geoid', 0)  # ellipsoid minus sea level, for Google 3D tiles
+if 'fog' in CFG:  # [near, far] meters: see farther in big mountain country
+    out['fog'] = CFG['fog']
 if 'airStart' in CFG:  # where "Start in the air" begins: direction toward landmarks[0], distance, height
     out['airStart'] = CFG['airStart']
 out['airport'] = CFG['airport']
+if 'beerRun' in CFG:  # the Beer Run delivery game: breweries, shops and VIP customers
+    br = CFG['beerRun']
+    out['beerRun'] = {
+        'breweries': [{'name': n, 'x': xy(lon, lat)[0], 'z': xy(lon, lat)[1], 'beer': b} for n, lat, lon, b in br['breweries']],
+        'shops': [{'name': n, 'x': xy(lon, lat)[0], 'z': xy(lon, lat)[1]} for n, lat, lon in br['shops']]
+               + [{'name': n, 'x': xy(lon, lat)[0], 'z': xy(lon, lat)[1], 'vip': True} for n, lat, lon in br.get('vips', [])],
+    }
 out['landmarks'] = [{'name': n, 'x': xy(lon, lat)[0], 'z': xy(lon, lat)[1]} for n, lat, lon in CFG['landmarks']]
 out['locators'] = [{'name': n, 'x': xy(lon, lat)[0], 'z': xy(lon, lat)[1], 'kind': k} for n, lat, lon, k in CFG.get('locators', [])]
 # Runways aren't in the source data, so each config places one by hand.
@@ -285,11 +294,19 @@ block = np.array(block); kind = np.array(kind)
 # city, e.g. Colorado's open prairie has far fewer trees than the Carolina woods.
 PROB = dict(enumerate(CFG.get('trees', [0.55, 0.18, 0.25, 0.95])))
 rng = np.random.default_rng(3)
+TREELINE = CFG.get('treeline')  # meters above sea level; no trees above it
+EN = elev['size']
+def LAND_H(x, z):
+    i = min(EN - 1, max(0, round((x + HALF_X) / (2 * HALF_X) * (EN - 1))))
+    j = min(EN - 1, max(0, round((z + HALF_Z) / (2 * HALF_Z) * (EN - 1))))
+    return elev['h'][j * EN + i]
 trees = []
-for _ in range(int(HALF_X * HALF_Z * 4 / 1e6 * 450)):  # ~450 candidates per km²
+for _ in range(int(HALF_X * HALF_Z * 4 / 1e6 * CFG.get('treeDensity', 450))):  # candidate spots per km²
     x = rng.uniform(-HALF_X, HALF_X); z = rng.uniform(-HALF_Z, HALF_Z)
     i, j = int((x + HALF_X) / RES), int((z + HALF_Z) / RES)
     if i >= MW or j >= MH or block[j, i]:
+        continue
+    if TREELINE and LAND_H(x, z) > TREELINE:  # bare rock up high
         continue
     if rng.random() < PROB[int(kind[j, i])]:
         trees.append([int(round(x)), int(round(z)), int(rng.random() < 0.3), round(float(rng.uniform(0.8, 1.4)), 1)])

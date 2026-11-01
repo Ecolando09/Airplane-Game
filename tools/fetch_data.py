@@ -36,8 +36,8 @@ for name, (path, cols) in THEMES.items():
     pq.write_table(t, f'{OUT}/{name}.parquet')
     print(name, t.num_rows)
 
-# Elevation: zoom-13 Terrarium tiles resampled to a 257x257 grid over the bbox.
-Z, G = 13, 321
+# Elevation: zoom-13 Terrarium tiles resampled to a grid over the bbox (finer for big mountain maps).
+Z, G = 13, CFG.get('elevGrid', 321)
 def tile(lon, lat):
     n = 2 ** Z
     return (lon + 180) / 360 * n, (1 - math.asinh(math.tan(math.radians(lat))) / math.pi) / 2 * n

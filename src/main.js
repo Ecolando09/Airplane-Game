@@ -11,6 +11,7 @@ import { legoMaterial } from './lego.js';
 import { RemoteLink } from './remote.js';
 import { Traffic } from './traffic.js';
 import { Multiplayer, randomRoomCode } from './multiplayer.js';
+import { BeerRun } from './beerrun.js';
 
 const $ = (id) => document.getElementById(id);
 const SKY = 0x9fd0ff;
@@ -19,11 +20,13 @@ const SKY = 0x9fd0ff;
 // City, vehicle and look come from the URL (?city=&vehicle=&look=) or the last
 // choice on this device. Changing one in the menu rebuilds the preview in place.
 const CITIES = {
-  spartanburg: 'Spartanburg, SC', fortcollins: 'Fort Collins, CO', denver: 'Denver, CO', stlouis: 'St. Louis, MO',
+  spartanburg: 'Spartanburg, SC', fortcollins: 'Fort Collins, CO', carbondale: 'Carbondale–Marble, CO',
+  denver: 'Denver, CO', stlouis: 'St. Louis, MO',
   sanfrancisco: 'San Francisco, CA', hongkong: 'Hong Kong', tokyo: 'Tokyo, Japan', singapore: 'Singapore',
 };
 const VEHICLE_NAMES = { plane: 'Bush Plane', heli: 'Ghost-Spider Copter' };
 const LOOK_NAMES = { lego: 'Lego', real: 'Realistic', google: 'Google 3D' };
+const MODES = { free: 'Free flight', beer: 'Beer Run' }; // Beer Run: only in cities that have it (Fort Collins)
 const CONFIG = window.LEGOSKY_CONFIG || {};
 const HAS_GOOGLE = !!CONFIG.googleMapsKey;
 const settings = (() => {
@@ -37,6 +40,7 @@ const settings = (() => {
     city: pick('city', (v) => v in CITIES, 'spartanburg'),
     vehicle: pick('vehicle', (v) => v in VEHICLE_NAMES, 'plane'),
     look: pick('look', (v) => v in LOOK_NAMES && (v !== 'google' || HAS_GOOGLE), 'lego'),
+    mode: pick('mode', (v) => v in MODES, 'free'),
   };
 })();
 function saveSettings() {
@@ -92,6 +96,7 @@ let flight;
 let labelEls = [];
 let pinEls = [];
 let worldObjects = [];
+let beerRun = null; // the Beer Run game, in cities that have one
 const input = new Input();
 const sound = new EngineSound();
 const mp = new Multiplayer({
@@ -183,6 +188,12 @@ async function buildWorld() {
   const before = new Set(scene.children);
   world = new World(scene, data, { satImage });
   traffic = new Traffic(scene, world, IS_TOUCH ? 900 : 2500);
+  beerRun?.dispose();
+  beerRun = data.beerRun ? new BeerRun(scene, world, $('labels'), {
+    toast,
+    sound: (k) => sound.blip(k),
+    onEnd: endShift,
+  }) : null;
 
   // Google Photorealistic 3D Tiles replace the built city: real buildings and terrain.
   if (settings.look === 'google') {
@@ -198,8 +209,8 @@ async function buildWorld() {
   }
   camera.far = google ? 60000 : 40000;
   camera.updateProjectionMatrix();
-  scene.fog.near = google ? 6000 : 2500;
-  scene.fog.far = google ? 30000 : 11000;
+  scene.fog.near = google ? 6000 : data.fog?.[0] ?? 2500;
+  scene.fog.far = google ? 30000 : data.fog?.[1] ?? 11000;
   worldObjects = scene.children.filter((o) => !before.has(o) && o !== google?.tiles.group);
 
   labelEls = world.landmarks.map((l) => {
@@ -574,6 +585,29 @@ function drawMinimap() {
     }
   }
 
+  // Beer Run stops: amber to load, green to deliver; the guided one bigger.
+  for (const m of beerRun?.mapMarks() || []) {
+    let [x, y] = toMap(m.x, m.z);
+    const off = x < 12 || y < 12 || x > W - 12 || y > W - 12;
+    if (off && !m.guide) continue;
+    if (off) {
+      const dx = x - W / 2;
+      const dy = y - W / 2;
+      const f = (W / 2 - 14) / Math.max(Math.abs(dx), Math.abs(dy));
+      x = W / 2 + dx * f;
+      y = W / 2 + dy * f;
+    }
+    mctx.fillStyle = m.color;
+    mctx.strokeStyle = '#1b2a34';
+    mctx.lineWidth = 3;
+    const r = m.guide ? 13 : 9;
+    mctx.beginPath();
+    if (m.kind === 'brewery') mctx.rect(x - r, y - r, r * 2, r * 2);
+    else mctx.arc(x, y, r, 0, Math.PI * 2);
+    mctx.fill();
+    mctx.stroke();
+  }
+
   // Other players
   for (const pl of mp.visible(settings.city)) {
     let [x, y] = toMap(pl.pos.x, pl.pos.z);
@@ -707,7 +741,7 @@ function updateBuddies() {
     arrow.style.transform = `rotate(${rel}deg)`;
     const up = pl.pos.y - p.y;
     const alt = Math.abs(up) > 30 ? ` ${up > 0 ? '↑' : '↓'}${Math.round(Math.abs(up) * 3.281)} ft` : '';
-    far.textContent = `${fmtDist(Math.hypot(dx, dz))} ${compass(bearing)}${alt}`;
+    far.textContent = `${fmtDist(Math.hypot(dx, dz))} ${compass(bearing)}${alt}${pl.cash != null ? ` · 💰$${pl.cash.toLocaleString()}` : ''}`;
   });
 }
 
@@ -740,6 +774,7 @@ function updateLabels() {
     const d = Math.hypot(l.x - p.x, l.z - p.z);
     items.push({ el: labelEls[i], x: l.x, y: l.y + 40 + d * 0.01, z: l.z, d, pin: false, hide: d > maxDist });
   });
+  if (beerRun) items.push(...beerRun.labelItems(p));
   for (const pl of mp.visible(settings.city)) {
     if (!pl.label) {
       pl.label = document.createElement('div');
@@ -851,6 +886,15 @@ function start(airborne) {
   }
   sound.start();
   running = true;
+  $('beerEnd').hidden = true;
+  if (beerOn()) {
+    beerRun.start(isHeli ? 4 : 6);
+    message(`🍺 Shift started! Head for the <span style="color:#ffb300">amber beams</span><small>${isHeli ? 4 : 6} kegs fit in your ${isHeli ? 'copter' : 'plane'}</small>`, 4);
+    $('beerHud').hidden = false;
+    return;
+  }
+  beerRun?.stop();
+  $('beerHud').hidden = true;
   message(airborne ? `Welcome to ${data.name.split(',')[0]}!`
     : isHeli ? (input.isTouch ? 'Push LIFT up to take off!' : 'Hold W to lift off, Shift for speed!')
       : `Runway ${world.runway.names?.[0] ?? ''} — full throttle to take off!`, 3);
@@ -881,6 +925,20 @@ function updateMenu() {
     }
   }
   $('roomLock').hidden = !(mp.room && mp.settings);
+  // Beer Run: only where the city has it.
+  $('modeSection').hidden = !data.beerRun;
+  for (const b of $('segMode').querySelectorAll('button')) {
+    const on = b.dataset.v === (beerOn() ? 'beer' : 'free');
+    b.classList.toggle('on', on);
+    b.setAttribute('aria-pressed', String(on));
+    b.disabled = building;
+  }
+  $('beerIntro').hidden = !beerOn();
+  if (beerOn() && !pausedFlight) {
+    $('startRunway').textContent = `🍺 Start a shift from ${base}`;
+    $('startAir').textContent = '🍺 Start a shift in the air';
+  }
+  if (beerOn()) watchBoard();
   $('previewText').textContent = `${VEHICLE_NAMES[settings.vehicle]} · ${LOOK_NAMES[settings.look]} · ${CITIES[settings.city]}`;
   $('previewBusy').hidden = !building;
   $('startRunway').disabled = $('startAir').disabled = building;
@@ -931,6 +989,14 @@ async function applySettings(changes, { force = false } = {}) {
 }
 for (const [id, key] of SEGS) {
   for (const b of $(id).querySelectorAll('button')) b.onclick = () => applySetting(key, b.dataset.v);
+}
+for (const b of $('segMode').querySelectorAll('button')) {
+  b.onclick = () => {
+    settings.mode = b.dataset.v;
+    saveSettings();
+    pausedFlight = false; // a different game: start fresh
+    updateMenu();
+  };
 }
 if (!HAS_GOOGLE) $('lookNote').hidden = false;
 setInterval(() => {
@@ -1067,6 +1133,175 @@ $('helpBtn').onclick = () => {
   $('menu').hidden = false;
   $('hud').hidden = $('touch').hidden = $('labels').hidden = true;
   updateMenu();
+};
+
+// ------------------------------------------------------------------ Beer Run
+// The Fort Collins delivery game (src/beerrun.js). Here: the HUD, the end of
+// the shift, and the shared leaderboard on the relay server.
+const beerOn = () => !!beerRun && settings.mode === 'beer';
+const BEER_COLORS = { pickup: '#ffb300', drop: '#2ecc71', RUSH: '#ffd700', VIP: '#ff5fa2' };
+
+function updateBeerHud() {
+  const h = beerRun.hud(flight.pos, flight.heading);
+  $('beerCash').textContent = h.cash;
+  $('beerClock').textContent = `⏱ ${h.clock}`;
+  $('beerClock').classList.toggle('hurry', h.hurry);
+  $('beerHold').textContent = `🛢️ ${h.hold.loaded}/${h.hold.capacity}`;
+  $('beerCombo').textContent = h.combo && `🔥 ${h.combo}`;
+  $('beerHappy').textContent = h.happy;
+  const list = $('beerOrders');
+  while (list.children.length > h.orders.length) list.lastChild.remove();
+  while (list.children.length < h.orders.length) {
+    const li = document.createElement('li');
+    li.innerHTML = '<div class="top"><span class="what"></span><span class="tag"></span><span class="pay"></span></div><div class="route"></div><div class="bar"></div>';
+    li.onclick = () => (beerRun.guideId = Number(li.dataset.id)); // steer the guide arrow to this order
+    list.appendChild(li);
+  }
+  h.orders.forEach((o, i) => {
+    const li = list.children[i];
+    li.dataset.id = o.id;
+    li.classList.toggle('guided', o.guided);
+    li.style.setProperty('--c', BEER_COLORS[o.tag] || BEER_COLORS[o.state === 'pickup' ? 'pickup' : 'drop']);
+    li.querySelector('.what').textContent = `${o.state === 'pickup' ? '📦' : '🛢️'} ${o.text}`;
+    li.querySelector('.tag').textContent = o.tag;
+    li.querySelector('.tag').hidden = !o.tag;
+    li.querySelector('.pay').textContent = `up to ${o.pay}`;
+    li.querySelector('.route').textContent = `${o.route} · ${o.time}`;
+    li.querySelector('.bar').style.width = `${Math.max(0, o.frac) * 100}%`;
+  });
+  const g = h.guide;
+  $('beerGuide').hidden = !g;
+  if (g) {
+    $('beerGuide').style.setProperty('--c', g.color);
+    $('beerGuide').querySelector('.arrow').style.transform = `rotate(${g.rel}deg)`;
+    $('beerGuide').querySelector('.who').textContent = g.text;
+    $('beerGuide').querySelector('.far').textContent = g.dist;
+  }
+  $('beerDwell').hidden = !h.dwell;
+  if (h.dwell) {
+    $('beerDwellArc').style.strokeDashoffset = String(119.4 * (1 - Math.min(1, h.dwell)));
+    $('beerDwellText').textContent = h.dwellText;
+  }
+}
+
+let lastShift = null;
+function endShift(stats) {
+  lastShift = { ...stats, vehicle: settings.vehicle, posted: false };
+  running = false;
+  pausedFlight = false;
+  $('hud').hidden = $('touch').hidden = $('labels').hidden = true;
+  $('beerHud').hidden = $('beerDwell').hidden = true;
+  sound.blip('cash');
+  $('beerEndCash').textContent = `$${stats.cash.toLocaleString()}`;
+  $('beerEndTitle').textContent = `🏅 ${stats.title}`;
+  let best = 0;
+  try {
+    best = Number(localStorage.getItem('legosky.beerBest')) || 0;
+    if (stats.cash > best) localStorage.setItem('legosky.beerBest', String(stats.cash));
+  } catch {}
+  $('beerEndBest').textContent = stats.cash > best ? (best ? `New personal best! (was $${best.toLocaleString()})` : 'Your first shift: now beat it!')
+    : `Personal best: $${best.toLocaleString()}`;
+  $('beerEndBest').classList.toggle('new', stats.cash > best);
+  const chips = [
+    `🚚 ${stats.deliveries} deliver${stats.deliveries === 1 ? 'y' : 'ies'}`, `🛢️ ${stats.kegs} kegs`, `🔥 best streak ×${stats.bestCombo.toFixed(2).replace(/0$/, '')}`,
+    stats.rush && `⚡ ${stats.rush} rush`, stats.vip && `⭐ ${stats.vip} VIP ($${stats.tips} tips)`,
+    stats.missed && `⌛ ${stats.missed} missed`, stats.broken && `💥 ${stats.broken} kegs broken`,
+  ].filter(Boolean);
+  $('beerEndStats').replaceChildren(...chips.map((t) => Object.assign(document.createElement('li'), { textContent: t })));
+  // Flying with others: how everyone on a shift is doing right now.
+  const others = [...mp.players.values()].filter((pl) => pl.cash != null);
+  $('beerEndRoom').hidden = !others.length;
+  $('beerEndRoom').replaceChildren(...[{ name: `${mp.name || 'You'} (you)`, cash: stats.cash, color: '#c91a09' }, ...others]
+    .sort((a, b) => b.cash - a.cash)
+    .map((pl, i) => {
+      const li = document.createElement('li');
+      li.style.setProperty('--c', pl.color);
+      li.textContent = `${i + 1}. ${pl.name} · $${pl.cash.toLocaleString()}`;
+      return li;
+    }));
+  $('beerName').value = mp.name || mpName || '';
+  $('beerPost').hidden = !BOARD_OK || stats.cash <= 0;
+  $('beerSubmit').disabled = false;
+  $('beerSubmit').textContent = 'Post my score';
+  $('beerPlaced').hidden = true;
+  watchBoard();
+  renderBoard();
+  $('beerEnd').hidden = false;
+}
+$('beerAgain').onclick = () => start(false);
+$('beerMenu').onclick = () => {
+  $('beerEnd').hidden = true;
+  $('menu').hidden = false;
+  updateMenu();
+};
+
+// Leaderboard: this week's and all-time best shifts, shared by everyone on the server.
+const BOARD_OK = !/claude\.ai|claudeusercontent/.test(location.host) && location.protocol !== 'file:';
+let board = null;
+let boardTab = 'week';
+let boardWs = null;
+function watchBoard() {
+  if (!BOARD_OK || boardWs) return;
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  const ws = (boardWs = new WebSocket(`${proto}://${location.host}/ws?role=board`));
+  ws.onmessage = (e) => {
+    let m;
+    try {
+      m = JSON.parse(e.data);
+    } catch {
+      return;
+    }
+    if (m.t === 'board') {
+      board = m;
+      renderBoard();
+    } else if (m.t === 'placed') {
+      const r = m.week || m.all;
+      $('beerPlaced').hidden = false;
+      $('beerPlaced').textContent = m.week ? `🏆 You're #${m.week} this week${m.all ? ` and #${m.all} of all time` : ''}!`
+        : r ? `🏆 #${r} of all time!` : 'Posted! Not in the top 10 yet. Run another shift!';
+    }
+  };
+  ws.onclose = () => {
+    boardWs = null;
+    setTimeout(() => !$('beerEnd').hidden || beerOn() ? watchBoard() : null, 5000);
+  };
+}
+function renderBoard() {
+  const list = board?.[boardTab] || [];
+  const me = lastShift?.posted && lastShift;
+  $('beerBoard').replaceChildren(...(list.length ? list.map((e) => {
+    const li = document.createElement('li');
+    const sc = document.createElement('span');
+    sc.className = 'sc';
+    sc.textContent = `$${e.score.toLocaleString()}`;
+    li.append(`${e.name} ${e.vehicle === 'heli' ? '🕷️' : '✈️'} · ${e.deliveries} deliver${e.deliveries === 1 ? 'y' : 'ies'}`, sc);
+    if (me && e.name === me.postedName && e.score === me.cash) li.className = 'me';
+    return li;
+  }) : [Object.assign(document.createElement('li'), { className: 'muted', textContent: board ? 'No shifts yet. Be the first!' : 'Leaderboard needs the game server.' })]));
+  const top = board?.week?.slice(0, 3) || [];
+  $('beerTop3').textContent = top.length ? `🏆 This week: ${top.map((e, i) => `${i + 1}. ${e.name} $${e.score.toLocaleString()}`).join('  ')}` : '';
+}
+for (const b of document.querySelectorAll('.beer-tabs button')) {
+  b.onclick = () => {
+    boardTab = b.dataset.b;
+    for (const x of document.querySelectorAll('.beer-tabs button')) {
+      x.classList.toggle('on', x === b);
+      x.setAttribute('aria-pressed', String(x === b));
+    }
+    renderBoard();
+  };
+}
+$('beerSubmit').onclick = () => {
+  const name = $('beerName').value.trim().slice(0, 16) || 'Pilot';
+  if (!lastShift || lastShift.posted || boardWs?.readyState !== 1) return;
+  boardWs.send(JSON.stringify({ t: 'score', name, score: lastShift.cash, deliveries: lastShift.deliveries, vehicle: lastShift.vehicle }));
+  lastShift.posted = true;
+  lastShift.postedName = name;
+  try {
+    localStorage.setItem('legosky.name', name);
+  } catch {}
+  $('beerSubmit').disabled = true;
+  $('beerSubmit').textContent = 'Posted ✓';
 };
 
 // ------------------------------------------------------------------ Android app
@@ -1379,12 +1614,14 @@ function frame() {
   const dt = Math.min(timer.getDelta(), 0.05);
   input.pollButtons(!running);
   world.update(timer.getElapsed());
+  if (beerRun && !beerRun.active) beerRun.update(dt, {}); // finish the kegs' flight animations
   if (google) google.update(renderer);
   else traffic.update(dt);
   if (plane && mp.room) {
     mp.update(dt, {
       group: plane.group, city: settings.city, vehicle: settings.vehicle, speed: flight.speed,
       turbo: flight.turbo || 1, floats: !!flight.floats, crashed: flight.crashed,
+      cash: beerRun?.active ? beerRun.cash : undefined,
     });
   }
   if (running) {
@@ -1395,6 +1632,7 @@ function frame() {
       flight.update(dt, ctl);
       if (flight.crashed) {
         explode();
+        beerRun?.onCrash();
         crashTimer = 0;
         $('crashReason').textContent = `💥 ${flight.crashReason}`;
         $('crashBox').hidden = false;
@@ -1402,6 +1640,11 @@ function frame() {
       }
     } else {
       crashTimer += dt;
+    }
+    if (beerRun?.active) {
+      const p = flight.pos;
+      beerRun.update(dt, { pos: p, agl: p.y - plane.gearHeight - world.heightAt(p.x, p.z), onGround: flight.onGround, crashed: flight.crashed });
+      updateBeerHud();
     }
     recordTrail(dt);
     snapToGoogleGround();
@@ -1458,7 +1701,7 @@ frame();
 
 // Test hook: ?debug exposes the simulation for automated checks.
 if (new URLSearchParams(location.search).has('debug')) {
-  window.__game = { world, flight, plane, start, google, mp, camera, autoLandApi: { start: (l) => { autoLandTarget = l; startAutoLand(); }, step: (dt) => autoLand && updateAutoLand(dt), active: () => !!autoLand }, step: (dt, ctl) => flight.update(dt, ctl) };
+  window.__game = { world, flight, plane, start, google, mp, camera, autoLandApi: { start: (l) => { autoLandTarget = l; startAutoLand(); }, step: (dt) => autoLand && updateAutoLand(dt), active: () => !!autoLand }, step: (dt, ctl) => flight.update(dt, ctl), beer: () => beerRun };
   window.__tilt = input.tilt;
   window.__traffic = traffic;
 }

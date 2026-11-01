@@ -7,6 +7,9 @@ After=network.target
 WorkingDirectory=/opt/latlas-play/Airplane-Game
 ExecStart=/usr/bin/node server/relay.js
 Environment=PORT=8787
+# Writable home for the Beer Run leaderboard (/var/lib/lego-sky).
+StateDirectory=lego-sky
+Environment=STATE_DIR=/var/lib/lego-sky
 Restart=always
 User=www-data
 

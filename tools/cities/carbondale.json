@@ -1,0 +1,141 @@
+{
+  "name": "Carbondale–Marble, CO",
+  "bbox": [
+    -107.31,
+    39.045,
+    -107.09,
+    39.425
+  ],
+  "elevGrid": 513,
+  "airport": "Glen-Aspen Airport",
+  "runway": {
+    "lat": 39.38995,
+    "lon": -107.16305,
+    "heading": 234.9,
+    "length": 1057,
+    "width": 25,
+    "names": [
+      "23",
+      "5"
+    ]
+  },
+  "helipad": {
+    "name": "Carbondale Rodeo Grounds",
+    "lat": 39.39823,
+    "lon": -107.18684
+  },
+  "airStart": {
+    "heading": 180,
+    "distance": 2500,
+    "alt": 260
+  },
+  "landmarks": [
+    [
+      "Main Street Carbondale",
+      39.40061,
+      -107.2119
+    ],
+    [
+      "Carbondale Beer Works",
+      39.40071,
+      -107.21297
+    ],
+    [
+      "Marble Distilling",
+      39.40043,
+      -107.2079
+    ],
+    [
+      "Mount Sopris",
+      39.2632,
+      -107.17594
+    ],
+    [
+      "Penny Hot Springs",
+      39.23979,
+      -107.233
+    ],
+    [
+      "Filoha Meadows",
+      39.2233,
+      -107.22598
+    ],
+    [
+      "Redstone Coke Ovens",
+      39.1858,
+      -107.2336
+    ],
+    [
+      "Redstone Inn",
+      39.17999,
+      -107.23978
+    ],
+    [
+      "Redstone Castle",
+      39.16912,
+      -107.24156
+    ],
+    [
+      "Hays Creek Falls",
+      39.156,
+      -107.2445
+    ],
+    [
+      "McClure Pass",
+      39.12888,
+      -107.28394
+    ],
+    [
+      "Marble Airstrip",
+      39.0748,
+      -107.21473
+    ],
+    [
+      "Town of Marble",
+      39.07126,
+      -107.18922
+    ],
+    [
+      "Beaver Lake",
+      39.07137,
+      -107.18021
+    ],
+    [
+      "Yule Marble Quarry",
+      39.0616,
+      -107.1458
+    ],
+    [
+      "Crystal Mill",
+      39.05914,
+      -107.10465
+    ],
+    [
+      "Carbondale Rodeo Grounds",
+      39.39823,
+      -107.18684
+    ]
+  ],
+  "trees": [
+    0.3,
+    0.25,
+    0.4,
+    0.9
+  ],
+  "treeline": 3450,
+  "ground": "#7d9c52",
+  "geoid": -17,
+  "imagery": [
+    "sentinel-s2-l2a-cogs/13/S/BD/2026/8/S2C_13SBD_20260806_0_L2A",
+    "sentinel-s2-l2a-cogs/13/S/CD/2026/8/S2C_13SCD_20260806_0_L2A",
+    "sentinel-s2-l2a-cogs/13/S/BD/2025/8/S2C_13SBD_20250811_0_L2A",
+    "sentinel-s2-l2a-cogs/13/S/CD/2025/8/S2C_13SCD_20250811_0_L2A",
+    "sentinel-s2-l2a-cogs/13/S/BD/2026/7/S2B_13SBD_20260702_0_L2A",
+    "sentinel-s2-l2a-cogs/13/S/CD/2026/7/S2B_13SCD_20260702_0_L2A"
+  ],
+  "treeDensity": 140,
+  "fog": [
+    7000,
+    32000
+  ]
+}

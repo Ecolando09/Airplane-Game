@@ -23,6 +23,17 @@
       <div class="panel" id="over"></div>
       <canvas id="minimap" width="480" height="480" title="Tap to enlarge (N)"></canvas>
       <div id="message"></div>
+      <div id="beerHud" hidden>
+        <div class="beer-bar">
+          <span class="beer-cash" id="beerCash">$0</span>
+          <span class="beer-clock" id="beerClock">5:00</span>
+          <span class="beer-hold" id="beerHold" title="Kegs on board"></span>
+        </div>
+        <div class="beer-extra"><span id="beerCombo"></span><span id="beerHappy"></span></div>
+        <ol id="beerOrders"></ol>
+        <div class="buddy beer-guide" id="beerGuide"><span class="arrow">▲</span><span class="txt"><span class="who"></span> <span class="far"></span></span></div>
+      </div>
+      <div id="beerDwell" hidden><svg viewBox="0 0 44 44"><circle cx="22" cy="22" r="19" /><circle id="beerDwellArc" cx="22" cy="22" r="19" /></svg><span id="beerDwellText"></span></div>
       <button id="autoLandBtn" class="big go" hidden>🛬 Auto-land at <span id="autoLandName"></span><kbd>L</kbd></button>
       <div id="crashBox" hidden>
         <p id="crashReason">💥 Crashed!</p>
@@ -75,6 +86,7 @@
           <div class="cards two cities" id="segCity" role="group" aria-labelledby="optCity">
             <button data-v="spartanburg"><b>Spartanburg</b><span>SC</span></button>
             <button data-v="fortcollins"><b>Fort Collins</b><span>CO</span></button>
+            <button data-v="carbondale"><b>Carbondale–Marble</b><span>CO</span></button>
             <button data-v="denver"><b>Denver</b><span>CO</span></button>
             <button data-v="stlouis"><b>St. Louis</b><span>MO</span></button>
             <button data-v="sanfrancisco"><b>San Francisco</b><span>CA</span></button>
@@ -89,6 +101,20 @@
           <div class="cards two" id="segVehicle" role="group" aria-labelledby="optVehicle">
             <button data-v="plane"><b>✈️ Bush Plane</b><span>LEGO Technic 42198</span></button>
             <button data-v="heli"><b>🕷️ Ghost-Spider</b><span>Copter · hover &amp; land anywhere</span></button>
+          </div>
+        </section>
+
+        <section class="opt" id="modeSection" aria-labelledby="optMode" hidden>
+          <h2 id="optMode">Game</h2>
+          <div class="cards two" id="segMode" role="group" aria-labelledby="optMode">
+            <button data-v="free"><b>✈️ Free flight</b><span>Explore at your own pace</span></button>
+            <button data-v="beer"><b>🍺 Beer Run</b><span>Deliver kegs, beat the clock</span></button>
+          </div>
+          <div class="beer-intro" id="beerIntro" hidden>
+            <p>Five-minute shift. Fly low through a brewery's <b class="amber">amber beam</b> (or land in it) to
+              load kegs, then drop them at the shop's <b class="green">green beam</b> before time runs out. Early
+              deliveries and on-time streaks pay more; crashing breaks your kegs.</p>
+            <p class="beer-top3" id="beerTop3"></p>
           </div>
         </section>
 
@@ -181,6 +207,33 @@
       <div id="previewTag" aria-live="polite">
         <span class="dot"></span><span id="previewText">Preview</span>
         <span id="previewBusy" hidden>· building…</span>
+      </div>
+    </div>
+
+    <div id="beerEnd" class="overlay" hidden>
+      <div class="card beer-card">
+        <h2>🍺 Shift's over!</h2>
+        <p class="beer-total" id="beerEndCash">$0</p>
+        <p class="beer-title" id="beerEndTitle"></p>
+        <p class="beer-best" id="beerEndBest"></p>
+        <ul class="beer-stats" id="beerEndStats"></ul>
+        <ul class="beer-room" id="beerEndRoom" hidden></ul>
+        <div class="beer-board">
+          <div class="beer-tabs" role="group" aria-label="Leaderboard">
+            <button data-b="week" class="on" aria-pressed="true">This week</button>
+            <button data-b="all" aria-pressed="false">All time</button>
+          </div>
+          <ol id="beerBoard"><li class="muted">Loading the leaderboard…</li></ol>
+          <div class="beer-post" id="beerPost">
+            <input id="beerName" maxlength="16" placeholder="Your name" autocomplete="nickname" aria-label="Your name for the leaderboard" />
+            <button class="small-btn" id="beerSubmit">Post my score</button>
+          </div>
+          <p class="beer-placed" id="beerPlaced" hidden></p>
+        </div>
+        <div class="crash-actions">
+          <button class="big go" id="beerAgain">Run another shift</button>
+          <button class="big alt" id="beerMenu">Menu</button>
+        </div>
       </div>
     </div>
 

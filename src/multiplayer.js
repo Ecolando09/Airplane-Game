@@ -99,6 +99,7 @@ export class Multiplayer {
     Object.assign(p, {
       name: String(m.name || 'Pilot').slice(0, 16), city: m.city, vehicle: m.vehicle === 'heli' ? 'heli' : 'plane',
       speed: +m.speed || 0, turbo: +m.turbo || 1, floats: !!m.floats, crashed: !!m.crashed, seen: performance.now(),
+      cash: Number.isFinite(m.cash) ? m.cash : null, // Beer Run money, while they're on a shift
     });
     if (p.isNew) {
       p.isNew = false;
@@ -144,6 +145,7 @@ export class Multiplayer {
         x: +g.position.x.toFixed(2), y: +g.position.y.toFixed(2), z: +g.position.z.toFixed(2),
         qx: +g.quaternion.x.toFixed(4), qy: +g.quaternion.y.toFixed(4), qz: +g.quaternion.z.toFixed(4), qw: +g.quaternion.w.toFixed(4),
         speed: +me.speed.toFixed(1), turbo: me.turbo, floats: me.floats, crashed: me.crashed,
+        ...(Number.isFinite(me.cash) ? { cash: Math.round(me.cash) } : {}),
       }));
     }
     // Move the others smoothly toward their latest reported position.

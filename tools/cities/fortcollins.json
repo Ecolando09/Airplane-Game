@@ -140,5 +140,259 @@
     "name": "Poudre Valley Hospital helipad",
     "lat": 40.57161,
     "lon": -105.05436
+  },
+  "beerRun": {
+    "breweries": [
+      [
+        "New Belgium Brewing",
+        40.59325,
+        -105.06881,
+        "Fat Tire"
+      ],
+      [
+        "Odell Brewing",
+        40.5895,
+        -105.06322,
+        "90 Shilling"
+      ],
+      [
+        "Funkwerks",
+        40.58315,
+        -105.04211,
+        "Saison"
+      ],
+      [
+        "Horse & Dragon",
+        40.58957,
+        -105.04573,
+        "Sad Panda Stout"
+      ],
+      [
+        "Equinox Brewing",
+        40.5864,
+        -105.07576,
+        "IPA"
+      ],
+      [
+        "Black Bottle Brewery",
+        40.56634,
+        -105.0784,
+        "Hazy IPA"
+      ],
+      [
+        "Maxline Brewing",
+        40.54966,
+        -105.07929,
+        "Amber"
+      ],
+      [
+        "Intersect Brewing",
+        40.55391,
+        -105.11771,
+        "Lager"
+      ],
+      [
+        "Zwei Brewing",
+        40.52272,
+        -105.0782,
+        "Hefeweizen"
+      ],
+      [
+        "Snowbank Brewing",
+        40.58993,
+        -105.05872,
+        "Pale Ale"
+      ],
+      [
+        "Rally King Brewing",
+        40.56611,
+        -105.05698,
+        "Rally Lager"
+      ],
+      [
+        "Jessup Farm Barrel House",
+        40.56219,
+        -105.03786,
+        "Barrel Sour"
+      ],
+      [
+        "Mythmaker Brewing",
+        40.57282,
+        -105.11523,
+        "Porter"
+      ],
+      [
+        "Purpose Brewing",
+        40.53133,
+        -105.08006,
+        "Farmhouse Ale"
+      ],
+      [
+        "Anheuser-Busch Brewery",
+        40.61742,
+        -105.00755,
+        "Budweiser"
+      ],
+      [
+        "Stodgy Brewing",
+        40.58961,
+        -105.1089,
+        "Brown Ale"
+      ]
+    ],
+    "shops": [
+      [
+        "Wilbur's Total Beverage",
+        40.55883,
+        -105.07859
+      ],
+      [
+        "West End Pub",
+        40.55183,
+        -105.09709
+      ],
+      [
+        "City Park Liquors",
+        40.58938,
+        -105.11423
+      ],
+      [
+        "Campus West Liquors",
+        40.57393,
+        -105.10096
+      ],
+      [
+        "Ramskeller Pub",
+        40.57465,
+        -105.08456
+      ],
+      [
+        "The Mayor of Old Town",
+        40.57887,
+        -105.07869
+      ],
+      [
+        "Wolverine Farm Publick House",
+        40.59064,
+        -105.07339
+      ],
+      [
+        "Poudre Liquors",
+        40.59817,
+        -105.07566
+      ],
+      [
+        "Bullfrog Wine & Spirits",
+        40.61099,
+        -105.07378
+      ],
+      [
+        "Thirsty's Liquor",
+        40.57407,
+        -105.05828
+      ],
+      [
+        "Young's Liquor",
+        40.58181,
+        -105.05061
+      ],
+      [
+        "Moon Dance Wine & Spirits",
+        40.55082,
+        -105.05889
+      ],
+      [
+        "Fabby's Wine & Spirits",
+        40.55164,
+        -105.03697
+      ],
+      [
+        "RJ's Wine and Spirits",
+        40.52598,
+        -105.02744
+      ],
+      [
+        "Uptown Liquors",
+        40.52239,
+        -105.04311
+      ],
+      [
+        "Premier Liquors",
+        40.52501,
+        -105.05306
+      ],
+      [
+        "Warehouse Liquors",
+        40.5212,
+        -105.06465
+      ],
+      [
+        "Crystal's Liquor",
+        40.52466,
+        -105.07357
+      ],
+      [
+        "Seneca Liquor",
+        40.52419,
+        -105.11012
+      ],
+      [
+        "JJ's Liquor",
+        40.53154,
+        -105.11593
+      ],
+      [
+        "Bison Liquors",
+        40.5374,
+        -105.09429
+      ],
+      [
+        "Square Beverage",
+        40.53937,
+        -105.07535
+      ],
+      [
+        "287 Craft Spirits",
+        40.50467,
+        -105.07648
+      ],
+      [
+        "Mackenzie's Pub & Grill",
+        40.50556,
+        -105.05567
+      ],
+      [
+        "Chill Bar",
+        40.57996,
+        -105.00785
+      ],
+      [
+        "Prospect Liquors",
+        40.56667,
+        -105.09759
+      ]
+    ],
+    "vips": [
+      [
+        "The Building",
+        40.58874,
+        -105.07456
+      ],
+      [
+        "Papa Doug's House",
+        40.60365,
+        -104.97983
+      ],
+      [
+        "The Christabell",
+        40.58676,
+        -105.08643
+      ],
+      [
+        "Nan's House",
+        40.58562,
+        -105.09523
+      ]
+    ]
   }
 }
