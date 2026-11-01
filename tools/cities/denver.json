@@ -1,0 +1,141 @@
+{
+  "name": "Denver, CO",
+  "bbox": [
+    -105.24,
+    39.655,
+    -104.87,
+    39.79
+  ],
+  "airport": "Lowry Field",
+  "runway": {
+    "lat": 39.71746,
+    "lon": -104.88483,
+    "heading": 80,
+    "length": 1600,
+    "width": 40,
+    "names": [
+      "8",
+      "26"
+    ]
+  },
+  "helipad": {
+    "name": "9NEWS helipad",
+    "lat": 39.72135,
+    "lon": -104.98116
+  },
+  "airStart": {
+    "heading": 90,
+    "distance": 3500,
+    "alt": 320
+  },
+  "landmarks": [
+    [
+      "Colorado State Capitol",
+      39.73926,
+      -104.98486
+    ],
+    [
+      "Union Station",
+      39.75312,
+      -105.00014
+    ],
+    [
+      "Coors Field",
+      39.75599,
+      -104.99417
+    ],
+    [
+      "Empower Field at Mile High",
+      39.74395,
+      -105.02011
+    ],
+    [
+      "Ball Arena",
+      39.74864,
+      -105.00779
+    ],
+    [
+      "Denver Art Museum",
+      39.73737,
+      -104.98963
+    ],
+    [
+      "Museum of Nature & Science",
+      39.74758,
+      -104.94296
+    ],
+    [
+      "Denver Zoo",
+      39.7496,
+      -104.95085
+    ],
+    [
+      "City Park",
+      39.7476,
+      -104.9493
+    ],
+    [
+      "Sloan's Lake",
+      39.74901,
+      -105.04843
+    ],
+    [
+      "Washington Park",
+      39.70032,
+      -104.97101
+    ],
+    [
+      "Red Rocks Amphitheatre",
+      39.6654,
+      -105.2057
+    ],
+    [
+      "Coors Brewery",
+      39.75963,
+      -105.21543
+    ],
+    [
+      "Wings Over the Rockies Museum",
+      39.72106,
+      -104.89554
+    ],
+    [
+      "Elitch Gardens",
+      39.75017,
+      -105.01012
+    ],
+    [
+      "16th Street Mall",
+      39.7475,
+      -104.9945
+    ],
+    [
+      "Green Mountain",
+      39.6948,
+      -105.1386
+    ],
+    [
+      "Cherry Creek Shopping Center",
+      39.71767,
+      -104.95216
+    ]
+  ],
+  "trees": [
+    0.08,
+    0.3,
+    0.3,
+    0.9
+  ],
+  "ground": "#8fae55",
+  "geoid": -17,
+  "imagery": [
+    "sentinel-s2-l2a-cogs/13/S/DD/2025/6/S2A_13SDD_20250621_1_L2A",
+    "sentinel-s2-l2a-cogs/13/S/ED/2025/6/S2B_13SED_20250621_0_L2A",
+    "sentinel-s2-l2a-cogs/13/T/DE/2025/6/S2A_13TDE_20250621_1_L2A",
+    "sentinel-s2-l2a-cogs/13/T/EE/2025/6/S2A_13TEE_20250621_1_L2A",
+    "sentinel-s2-l2a-cogs/13/S/DD/2026/6/S2B_13SDD_20260629_0_L2A",
+    "sentinel-s2-l2a-cogs/13/S/ED/2026/6/S2C_13SED_20260611_0_L2A",
+    "sentinel-s2-l2a-cogs/13/T/DE/2026/6/S2B_13TDE_20260619_0_L2A",
+    "sentinel-s2-l2a-cogs/13/T/EE/2026/6/S2A_13TEE_20260613_0_L2A"
+  ]
+}

@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { LEGO, legoMaterial, isLego } from './lego.js';
+import { buildLandmark } from './landmarks.js';
 
 const CHUNK = 1600; // meters per culling chunk
 const GRID = 200; // meters per collision cell
@@ -48,8 +49,10 @@ export class World {
     this.halfZ = this.sizeZ / 2;
     this.rand = rng(42);
     this.colliders = new Map();
+    this.animate = []; // per-frame updates for moving landmarks: fn(time)
 
     this._setupElevation();
+    this._buildWaterMask();
     this.mapCanvas = this._drawMap();
     this._buildTerrain();
     this._buildRunway();
@@ -58,7 +61,6 @@ export class World {
     this._buildCustom();
     this._buildHelipad();
     this._buildClouds();
-    this._buildWaterMask();
     this.landmarks = data.landmarks.map((l) => ({ ...l, y: this.heightAt(l.x, l.z) }));
     this.locators = this._buildLocators(data.locators || []);
   }
@@ -81,8 +83,8 @@ export class World {
     };
     g.fillStyle = g.strokeStyle = '#fff';
     for (const w of this.data.water) {
-      path(w);
-      g.fill();
+      waterPath(g, w, (x, z) => [(x + this.halfX) * sx, (z + this.halfZ) * sz]);
+      g.fill('evenodd');
     }
     g.lineCap = 'round';
     for (const st of this.data.streams) {
@@ -146,6 +148,7 @@ export class World {
       l.pin.rotation.y = t * 1.2;
       l.pin.position.y = 110 + Math.sin(t * 2) * 5;
     }
+    for (const fn of this.animate) fn(t);
   }
 
   // ---------------------------------------------------------------- terrain
@@ -249,8 +252,8 @@ export class World {
     }
     g.fillStyle = hex(LEGO.lightBlue);
     for (const w of this.data.water) {
-      path(w, true);
-      g.fill();
+      waterPath(g, w, (x, z) => [(x + this.halfX) * sx, (z + this.halfZ) * sz]);
+      g.fill('evenodd');
     }
     g.lineCap = g.lineJoin = 'round';
     g.strokeStyle = hex(LEGO.lightBlue);
@@ -315,14 +318,22 @@ export class World {
     // below the map so the detailed terrain always wins where they overlap.
     const og = new THREE.PlaneGeometry(120000, 120000, 240, 240).rotateX(-Math.PI / 2);
     const op = og.attributes.position;
+    // Where the map's edge is sea (or a big lake), the ground beyond it is water too.
+    const land = new THREE.Color(isLego() ? (this.data.ground || 0x58ab41) : 0x6f7f4f);
+    const sea = new THREE.Color(isLego() ? LEGO.lightBlue : 0x2f5d73);
+    const colors = new Float32Array(op.count * 3);
     for (let k = 0; k < op.count; k++) {
       const x = op.getX(k);
       const z = op.getZ(k);
       const inside = Math.abs(x) < this.halfX - 10 && Math.abs(z) < this.halfZ - 10;
       op.setY(k, this._rawHeight(x, z) - (inside ? 60 : 6));
+      const ex = THREE.MathUtils.clamp(x, -this.halfX + 30, this.halfX - 30);
+      const ez = THREE.MathUtils.clamp(z, -this.halfZ + 30, this.halfZ - 30);
+      (this.isWater(ex, ez) ? sea : land).toArray(colors, k * 3);
     }
+    og.setAttribute('color', new THREE.BufferAttribute(colors, 3));
     og.computeVertexNormals();
-    const outer = new THREE.Mesh(og, legoMaterial({ color: isLego() ? (this.data.ground || 0x58ab41) : 0x6f7f4f, studs: 6 }));
+    const outer = new THREE.Mesh(og, legoMaterial({ vertexColors: true, studs: 6 }));
     this.scene.add(outer);
     this.meshes.push(outer);
   }
@@ -629,7 +640,9 @@ export class World {
   _buildCustom() {
     for (const c of this.data.custom || []) {
       if (c.kind === 'dennys') this._buildDennys(c);
+      else buildLandmark(this, c);
     }
+    for (const s of this.data.structures || []) buildLandmark(this, s);
   }
 
   /**
@@ -749,6 +762,31 @@ export class World {
       x - R + this.halfX, z - R + this.halfZ, x + R + this.halfX, z + R + this.halfZ);
   }
 
+  /**
+   * Where "Start in the air" begins: `dist` meters out from the first landmark
+   * and `alt` above it, pointed at it (each city can set its own approach),
+   * raised until the first 1.5 km ahead clears the hills and buildings.
+   */
+  airStart(dist, alt) {
+    const sq = this.landmarks[0];
+    const cfg = this.data.airStart || {};
+    const heading = cfg.heading ?? 40;
+    const h = THREE.MathUtils.degToRad(heading);
+    const fx = Math.sin(h);
+    const fz = -Math.cos(h);
+    const d = cfg.distance ?? dist;
+    const p = { x: sq.x - fx * d, y: sq.y + (cfg.alt ?? alt), z: sq.z - fz * d };
+    const clear = () => {
+      for (let s = 0; s <= 1500; s += 50) {
+        const q = { x: p.x + fx * s, y: p.y, z: p.z + fz * s };
+        if (q.y < this.heightAt(q.x, q.z) + 100 || this.hitsObstacle(q, 40)) return false;
+      }
+      return true;
+    };
+    for (let i = 0; i < 40 && !clear(); i++) p.y += 25;
+    return { ...p, heading };
+  }
+
   // -------------------------------------------------------------- collision
   /** True if a sphere at `p` with radius `rad` touches a building or tree. */
   hitsObstacle(p, rad) {
@@ -757,7 +795,7 @@ export class World {
     );
     if (!list) return false;
     for (const c of list) {
-      if (p.y - rad > c.top) continue;
+      if (p.y - rad > c.top || p.y + rad < c.bottom) continue; // bottom: open space under bridges and arches
       if (c.t === 'box') {
         const dx = p.x - c.x;
         const dz = p.z - c.z;
@@ -772,6 +810,18 @@ export class World {
       }
     }
     return false;
+  }
+}
+
+/** Path for a water area: one outline, or [outline, ...islands] (filled even-odd). */
+function waterPath(g, w, toXY) {
+  g.beginPath();
+  for (const ring of typeof w[0] === 'number' ? [w] : w) {
+    for (let i = 0; i < ring.length; i += 2) {
+      const [X, Y] = toXY(ring[i], ring[i + 1]);
+      i ? g.lineTo(X, Y) : g.moveTo(X, Y);
+    }
+    g.closePath();
   }
 }
 

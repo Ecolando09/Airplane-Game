@@ -35,7 +35,7 @@ export class Flight {
     this.reset();
   }
 
-  /** Line up on runway 5 at Spartanburg Downtown Memorial Airport. */
+  /** Line up at the start of the city's runway. */
   reset() {
     const rw = this.world.runway;
     const back = rw.length / 2 - 70;
@@ -58,13 +58,10 @@ export class Flight {
   /** Start in the air above downtown, heading north-east. */
   resetAirborne() {
     this.reset();
-    // 2 km south-west of Morgan Square, pointed at it.
-    const sq = this.world.landmarks[0];
-    const hdg = 40;
-    const h = THREE.MathUtils.degToRad(hdg);
-    this.pos.set(sq.x - Math.sin(h) * 2000, 0, sq.z + Math.cos(h) * 2000);
-    this.pos.y = sq.y + 220;
-    this.quat.setFromAxisAngle(Y, -h);
+    // 2 km out from downtown, pointed at it (or the city's own approach).
+    const a = this.world.airStart(2000, 220);
+    this.pos.set(a.x, a.y, a.z);
+    this.quat.setFromAxisAngle(Y, -THREE.MathUtils.degToRad(a.heading));
     this.speed = 55;
     this.throttle = 0.7;
     this.onGround = false;

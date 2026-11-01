@@ -1,0 +1,168 @@
+{
+  "name": "San Francisco, CA",
+  "bbox": [
+    -122.525,
+    37.7,
+    -122.355,
+    37.86
+  ],
+  "airport": "Crissy Field",
+  "runway": {
+    "lat": 37.80406,
+    "lon": -122.46328,
+    "heading": 92.5,
+    "length": 800,
+    "width": 30,
+    "names": [
+      "9",
+      "27"
+    ]
+  },
+  "helipad": {
+    "name": "Alcatraz Island helipad",
+    "lat": 37.82587,
+    "lon": -122.4215
+  },
+  "airStart": {
+    "heading": 100,
+    "distance": 3000,
+    "alt": 320
+  },
+  "landmarks": [
+    [
+      "Golden Gate Bridge",
+      37.82316,
+      -122.47899
+    ],
+    [
+      "Alcatraz Island",
+      37.82625,
+      -122.42229
+    ],
+    [
+      "Coit Tower",
+      37.80237,
+      -122.40583
+    ],
+    [
+      "Transamerica Pyramid",
+      37.79517,
+      -122.40279
+    ],
+    [
+      "Salesforce Tower",
+      37.78979,
+      -122.39717
+    ],
+    [
+      "Pier 39",
+      37.80865,
+      -122.40988
+    ],
+    [
+      "Lombard Street",
+      37.80214,
+      -122.41881
+    ],
+    [
+      "Palace of Fine Arts",
+      37.80292,
+      -122.4484
+    ],
+    [
+      "Golden Gate Park",
+      37.7694,
+      -122.4862
+    ],
+    [
+      "Sutro Tower",
+      37.75524,
+      -122.45285
+    ],
+    [
+      "Twin Peaks",
+      37.7544,
+      -122.4477
+    ],
+    [
+      "Oracle Park",
+      37.77842,
+      -122.38922
+    ],
+    [
+      "Chase Center",
+      37.76802,
+      -122.38783
+    ],
+    [
+      "Ferry Building",
+      37.79544,
+      -122.39361
+    ],
+    [
+      "Painted Ladies",
+      37.77635,
+      -122.43478
+    ],
+    [
+      "Ocean Beach",
+      37.7594,
+      -122.51065
+    ],
+    [
+      "Treasure Island",
+      37.8235,
+      -122.3706
+    ],
+    [
+      "Crissy Field",
+      37.80403,
+      -122.46492
+    ],
+    [
+      "Ghirardelli Square",
+      37.80591,
+      -122.42292
+    ],
+    [
+      "City Hall",
+      37.77928,
+      -122.41925
+    ]
+  ],
+  "custom": [
+    {
+      "building": "sutro tower",
+      "kind": "sutro",
+      "height": 298
+    },
+    {
+      "building": "transamerica pyramid",
+      "kind": "pyramid",
+      "height": 260
+    }
+  ],
+  "structures": [
+    {
+      "kind": "ggbridge",
+      "lat": 37.82316,
+      "lon": -122.47899,
+      "heading": 351.8,
+      "south": 1687,
+      "north": 1036
+    }
+  ],
+  "trees": [
+    0.3,
+    0.15,
+    0.6,
+    0.95
+  ],
+  "ground": "#7da35a",
+  "geoid": -32,
+  "imagery": [
+    "sentinel-s2-l2a-cogs/10/S/EG/2026/9/S2A_10SEG_20260912_0_L2A",
+    "sentinel-s2-l2a-cogs/10/S/EG/2026/7/S2A_10SEG_20260714_0_L2A",
+    "sentinel-s2-l2a-cogs/10/S/EG/2025/9/S2B_10SEG_20250923_0_L2A"
+  ]
+}

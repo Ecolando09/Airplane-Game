@@ -1,0 +1,133 @@
+{
+  "name": "St. Louis, MO",
+  "bbox": [
+    -90.32,
+    38.555,
+    -90.13,
+    38.7
+  ],
+  "airport": "St. Louis Downtown Airport",
+  "runway": {
+    "lat": 38.56888,
+    "lon": -90.15471,
+    "heading": 122.1,
+    "length": 2128,
+    "width": 45,
+    "names": [
+      "12L",
+      "30R"
+    ]
+  },
+  "helipad": {
+    "name": "Cardinal Glennon Children's Hospital helipad",
+    "lat": 38.62067,
+    "lon": -90.23994
+  },
+  "airStart": {
+    "heading": 90,
+    "distance": 3000,
+    "alt": 260
+  },
+  "landmarks": [
+    [
+      "Gateway Arch",
+      38.6247,
+      -90.18493
+    ],
+    [
+      "Busch Stadium",
+      38.6226,
+      -90.19281
+    ],
+    [
+      "Enterprise Center",
+      38.62681,
+      -90.20262
+    ],
+    [
+      "Union Station",
+      38.62916,
+      -90.20757
+    ],
+    [
+      "City Museum",
+      38.63361,
+      -90.20045
+    ],
+    [
+      "Forest Park",
+      38.63715,
+      -90.2858
+    ],
+    [
+      "Saint Louis Art Museum",
+      38.63935,
+      -90.29445
+    ],
+    [
+      "Saint Louis Zoo",
+      38.6367,
+      -90.2932
+    ],
+    [
+      "Saint Louis Science Center",
+      38.62872,
+      -90.27047
+    ],
+    [
+      "Anheuser-Busch Brewery",
+      38.5992,
+      -90.21426
+    ],
+    [
+      "Eads Bridge",
+      38.62891,
+      -90.1788
+    ],
+    [
+      "Missouri Botanical Garden",
+      38.61255,
+      -90.26077
+    ],
+    [
+      "Cathedral Basilica",
+      38.64252,
+      -90.25472
+    ],
+    [
+      "Soulard Market",
+      38.6107,
+      -90.2104
+    ],
+    [
+      "Ted Drewes Frozen Custard",
+      38.5874,
+      -90.3047
+    ],
+    [
+      "Grand Basin",
+      38.639,
+      -90.292
+    ]
+  ],
+  "custom": [
+    {
+      "building": "gateway arch",
+      "kind": "arch",
+      "height": 192
+    }
+  ],
+  "trees": [
+    0.45,
+    0.22,
+    0.3,
+    0.95
+  ],
+  "ground": "#5fa845",
+  "geoid": -31,
+  "imagery": [
+    "sentinel-s2-l2a-cogs/15/S/YC/2026/5/S2C_15SYC_20260514_0_L2A",
+    "sentinel-s2-l2a-cogs/15/S/YC/2026/9/S2C_15SYC_20260901_0_L2A",
+    "sentinel-s2-l2a-cogs/15/S/YC/2025/9/S2C_15SYC_20250906_0_L2A"
+  ]
+}

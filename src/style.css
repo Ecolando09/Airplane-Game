@@ -910,6 +910,20 @@ body.is-touch .controls.heli-only {
   grid-template-columns: 1fr 1fr 1fr;
 }
 
+/* Eight cities: name and region on one line to keep the list short. */
+.cards.cities button {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 7px 10px;
+}
+
+.cards.cities button span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .cards button {
   min-width: 0;
   display: grid;

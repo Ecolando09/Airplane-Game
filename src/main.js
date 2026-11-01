@@ -18,7 +18,10 @@ const SKY = 0x9fd0ff;
 // ------------------------------------------------------------------ settings
 // City, vehicle and look come from the URL (?city=&vehicle=&look=) or the last
 // choice on this device. Changing one in the menu rebuilds the preview in place.
-const CITIES = { spartanburg: 'Spartanburg, SC', fortcollins: 'Fort Collins, CO' };
+const CITIES = {
+  spartanburg: 'Spartanburg, SC', fortcollins: 'Fort Collins, CO', denver: 'Denver, CO', stlouis: 'St. Louis, MO',
+  sanfrancisco: 'San Francisco, CA', hongkong: 'Hong Kong', tokyo: 'Tokyo, Japan', singapore: 'Singapore',
+};
 const VEHICLE_NAMES = { plane: 'Bush Plane', heli: 'Ghost-Spider Copter' };
 const LOOK_NAMES = { lego: 'Lego', real: 'Realistic', google: 'Google 3D' };
 const CONFIG = window.LEGOSKY_CONFIG || {};
@@ -327,10 +330,12 @@ function updateCamera(dt) {
   let want;
   let look;
   if (window.__game?.photo) {
-    const ph = window.__game.photo; // test hook: fixed camera relative to the plane
-    camera.position.copy(p).add(ph.offset);
+    const ph = window.__game.photo; // test hook: fixed camera relative to the plane (or anywhere)
+    if (ph.pos) camera.position.copy(ph.pos);
+    else camera.position.copy(p).add(ph.offset);
     camera.up.set(0, 1, 0);
-    camera.lookAt(p);
+    if (ph.target) camera.lookAt(ph.target.x, ph.target.y, ph.target.z);
+    else camera.lookAt(p);
     return;
   }
   for (const m of plane.cockpitHidden) m.visible = mode !== 'cockpit';
@@ -653,7 +658,7 @@ function updateHud(dt) {
       message('STALL — lower the nose!', 0.3);
     }
     if (Math.abs(p.x) > world.halfX + 1500 || Math.abs(p.z) > world.halfZ + 1500) {
-      message('Leaving Spartanburg — turn back!', 0.3);
+      message(`Leaving ${data.name.split(',')[0]} — turn back!`, 0.3);
     }
   }
   wasOnGround.v = flight.onGround;

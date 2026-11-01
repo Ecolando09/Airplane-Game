@@ -1,0 +1,198 @@
+{
+  "name": "Singapore",
+  "bbox": [
+    103.79,
+    1.24,
+    103.93,
+    1.385
+  ],
+  "airport": "Paya Lebar Air Base",
+  "runway": {
+    "lat": 1.36041,
+    "lon": 103.90951,
+    "heading": 203.2,
+    "length": 3788,
+    "width": 60,
+    "names": [
+      "20",
+      "02"
+    ]
+  },
+  "helipad": {
+    "name": "Marina South helipad",
+    "lat": 1.2721,
+    "lon": 103.86476
+  },
+  "airStart": {
+    "heading": 315,
+    "distance": 3000,
+    "alt": 330
+  },
+  "landmarks": [
+    [
+      "Marina Bay Sands",
+      1.28359,
+      103.86069
+    ],
+    [
+      "Gardens by the Bay",
+      1.2816,
+      103.8636
+    ],
+    [
+      "Merlion Park",
+      1.2867,
+      103.85432
+    ],
+    [
+      "Singapore Flyer",
+      1.2894,
+      103.8631
+    ],
+    [
+      "Raffles Hotel",
+      1.29475,
+      103.85459
+    ],
+    [
+      "Esplanade",
+      1.28968,
+      103.8558
+    ],
+    [
+      "Universal Studios Singapore",
+      1.254,
+      103.824
+    ],
+    [
+      "Sentosa",
+      1.2494,
+      103.8303
+    ],
+    [
+      "Singapore Botanic Gardens",
+      1.31384,
+      103.81591
+    ],
+    [
+      "Chinatown",
+      1.28329,
+      103.8443
+    ],
+    [
+      "Little India",
+      1.30687,
+      103.85158
+    ],
+    [
+      "National Stadium",
+      1.30441,
+      103.87429
+    ],
+    [
+      "Clarke Quay",
+      1.2905,
+      103.84639
+    ],
+    [
+      "Mount Faber",
+      1.27108,
+      103.81941
+    ],
+    [
+      "Orchard Road",
+      1.30403,
+      103.8319
+    ],
+    [
+      "Paya Lebar Air Base",
+      1.3604,
+      103.9097
+    ]
+  ],
+  "structures": [
+    {
+      "kind": "skypark",
+      "lat": 1.28382,
+      "lon": 103.86069,
+      "heading": 23.9,
+      "top": 195,
+      "length": 340
+    },
+    {
+      "kind": "flyer",
+      "lat": 1.28941,
+      "lon": 103.86313,
+      "heading": 52,
+      "clear": 25
+    },
+    {
+      "kind": "supertrees",
+      "lat": 1.28195,
+      "lon": 103.86394,
+      "clear": 45
+    }
+  ],
+  "estimateHeights": true,
+  "heights": [
+    [
+      150,
+      9
+    ],
+    [
+      600,
+      15
+    ],
+    [
+      3000,
+      45
+    ],
+    [
+      1000000000000.0,
+      20
+    ]
+  ],
+  "trees": [
+    0.4,
+    0.2,
+    0.5,
+    0.97
+  ],
+  "ground": "#4f9a3c",
+  "geoid": 7,
+  "imagery": [
+    "sentinel-s2-l2a-cogs/48/N/UG/2026/3/S2C_48NUG_20260325_0_L2A",
+    "sentinel-s2-l2a-cogs/48/N/UG/2025/12/S2C_48NUG_20251205_0_L2A",
+    "sentinel-s2-l2a-cogs/48/N/UG/2026/3/S2B_48NUG_20260320_0_L2A",
+    "sentinel-s2-l2a-cogs/48/N/UG/2025/9/S2C_48NUG_20250906_0_L2A",
+    "sentinel-s2-l2a-cogs/48/N/UG/2026/8/S2C_48NUG_20260822_0_L2A",
+    "sentinel-s2-l2a-cogs/48/N/UG/2025/8/S2B_48NUG_20250822_0_L2A",
+    "sentinel-s2-l2a-cogs/48/N/UG/2025/7/S2C_48NUG_20250728_0_L2A",
+    "sentinel-s2-l2a-cogs/48/N/UG/2026/6/S2C_48NUG_20260613_0_L2A"
+  ],
+  "custom": [
+    {
+      "building": "marina bay sands tower 1",
+      "kind": "tower",
+      "height": 194,
+      "color": "#e9e5da"
+    },
+    {
+      "building": "marina bay sands tower 2",
+      "kind": "tower",
+      "height": 194,
+      "color": "#e9e5da"
+    },
+    {
+      "building": "marina bay sands tower 3",
+      "kind": "tower",
+      "height": 194,
+      "color": "#e9e5da"
+    },
+    {
+      "building": "skypark",
+      "kind": "skip",
+      "height": 0
+    }
+  ]
+}

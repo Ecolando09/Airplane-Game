@@ -1,0 +1,167 @@
+{
+  "name": "Tokyo, Japan",
+  "bbox": [
+    139.685,
+    35.535,
+    139.83,
+    35.72
+  ],
+  "airport": "Haneda Airport",
+  "runway": {
+    "lat": 35.5483,
+    "lon": 139.77735,
+    "heading": 329.8,
+    "length": 2987,
+    "width": 60,
+    "names": [
+      "34L",
+      "16R"
+    ]
+  },
+  "helipad": {
+    "name": "Tokyo Heliport",
+    "lat": 35.63598,
+    "lon": 139.79682
+  },
+  "airStart": {
+    "heading": 20,
+    "distance": 3000,
+    "alt": 430
+  },
+  "landmarks": [
+    [
+      "Tokyo Tower",
+      35.65862,
+      139.74543
+    ],
+    [
+      "Tokyo Skytree",
+      35.71008,
+      139.81067
+    ],
+    [
+      "Tokyo Metropolitan Government Building",
+      35.6895,
+      139.69171
+    ],
+    [
+      "Shibuya Crossing",
+      35.6595,
+      139.7005
+    ],
+    [
+      "Imperial Palace",
+      35.68488,
+      139.75316
+    ],
+    [
+      "Tokyo Station",
+      35.68111,
+      139.76728
+    ],
+    [
+      "Rainbow Bridge",
+      35.6365,
+      139.7633
+    ],
+    [
+      "Fuji TV Building",
+      35.62682,
+      139.77444
+    ],
+    [
+      "Sensō-ji Temple",
+      35.71468,
+      139.79672
+    ],
+    [
+      "Meiji Jingu",
+      35.67612,
+      139.70054
+    ],
+    [
+      "Roppongi Hills",
+      35.66045,
+      139.72919
+    ],
+    [
+      "Ginza",
+      35.67159,
+      139.76499
+    ],
+    [
+      "Ueno Park",
+      35.71405,
+      139.77409
+    ],
+    [
+      "Tokyo Dome",
+      35.70561,
+      139.75186
+    ],
+    [
+      "Akihabara",
+      35.69841,
+      139.77314
+    ],
+    [
+      "Tokyo Big Sight",
+      35.63015,
+      139.79424
+    ],
+    [
+      "Haneda Airport",
+      35.5494,
+      139.7798
+    ],
+    [
+      "Tsukiji Outer Market",
+      35.66559,
+      139.7703
+    ]
+  ],
+  "custom": [
+    {
+      "building": "東京タワー",
+      "kind": "tokyotower",
+      "height": 333
+    },
+    {
+      "building": "東京スカイツリー",
+      "kind": "skytree",
+      "height": 634
+    }
+  ],
+  "estimateHeights": true,
+  "heights": [
+    [
+      150,
+      9
+    ],
+    [
+      500,
+      18
+    ],
+    [
+      2000,
+      30
+    ],
+    [
+      1000000000000.0,
+      25
+    ]
+  ],
+  "trees": [
+    0.15,
+    0.05,
+    0.6,
+    0.95
+  ],
+  "ground": "#7a9f63",
+  "geoid": 37,
+  "imagery": [
+    "sentinel-s2-l2a-cogs/54/S/UE/2026/10/S2C_54SUE_20261018_0_L2A",
+    "sentinel-s2-l2a-cogs/54/S/UE/2025/12/S2B_54SUE_20251207_0_L2A",
+    "sentinel-s2-l2a-cogs/54/S/UE/2026/1/S2B_54SUE_20260116_0_L2A"
+  ]
+}

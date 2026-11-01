@@ -1,0 +1,156 @@
+{
+  "name": "Hong Kong",
+  "bbox": [
+    114.11,
+    22.25,
+    114.24,
+    22.36
+  ],
+  "airport": "Kai Tak (historic)",
+  "runway": {
+    "lat": 22.31383,
+    "lon": 114.20421,
+    "heading": 134.5,
+    "length": 1650,
+    "width": 40,
+    "names": [
+      "13",
+      "31"
+    ]
+  },
+  "helipad": {
+    "name": "Wan Chai heliport",
+    "lat": 22.28476,
+    "lon": 114.17438
+  },
+  "airStart": {
+    "heading": 270,
+    "distance": 3500,
+    "alt": 300
+  },
+  "landmarks": [
+    [
+      "Victoria Harbour",
+      22.29,
+      114.17
+    ],
+    [
+      "Victoria Peak",
+      22.27126,
+      114.14999
+    ],
+    [
+      "International Commerce Centre",
+      22.30338,
+      114.16023
+    ],
+    [
+      "IFC",
+      22.2853,
+      114.15928
+    ],
+    [
+      "Bank of China Tower",
+      22.27927,
+      114.16157
+    ],
+    [
+      "Star Ferry Pier",
+      22.29375,
+      114.16873
+    ],
+    [
+      "Avenue of Stars",
+      22.29303,
+      114.17419
+    ],
+    [
+      "Golden Bauhinia Square",
+      22.28442,
+      114.17391
+    ],
+    [
+      "Kai Tak Cruise Terminal",
+      22.3061,
+      114.21322
+    ],
+    [
+      "Lion Rock",
+      22.35226,
+      114.18701
+    ],
+    [
+      "Happy Valley Racecourse",
+      22.27288,
+      114.18184
+    ],
+    [
+      "Wong Tai Sin Temple",
+      22.3424,
+      114.1937
+    ],
+    [
+      "Mong Kok",
+      22.31956,
+      114.16932
+    ],
+    [
+      "Kowloon Walled City Park",
+      22.33214,
+      114.19032
+    ],
+    [
+      "Victoria Park",
+      22.28239,
+      114.18874
+    ],
+    [
+      "Kai Tak Sports Park",
+      22.3237,
+      114.201
+    ],
+    [
+      "Tsim Sha Tsui Clock Tower",
+      22.29358,
+      114.16953
+    ]
+  ],
+  "estimateHeights": true,
+  "heights": [
+    [
+      120,
+      9
+    ],
+    [
+      400,
+      30
+    ],
+    [
+      2000,
+      60
+    ],
+    [
+      1000000000000.0,
+      25
+    ]
+  ],
+  "trees": [
+    0.5,
+    0.1,
+    0.5,
+    0.97
+  ],
+  "ground": "#4d8f3e",
+  "geoid": -2,
+  "imagery": [
+    "sentinel-s2-l2a-cogs/50/Q/KK/2025/1/S2A_50QKK_20250120_0_L2A",
+    "sentinel-s2-l2a-cogs/49/Q/HE/2025/1/S2A_49QHE_20250120_0_L2A",
+    "sentinel-s2-l2a-cogs/50/Q/KK/2025/3/S2C_50QKK_20250324_0_L2A",
+    "sentinel-s2-l2a-cogs/49/Q/HE/2025/3/S2C_49QHE_20250324_0_L2A",
+    "sentinel-s2-l2a-cogs/50/Q/KK/2025/4/S2C_50QKK_20250403_0_L2A",
+    "sentinel-s2-l2a-cogs/49/Q/HE/2026/1/S2B_49QHE_20260113_0_L2A"
+  ],
+  "landExtra": {
+    "national_park": "forest"
+  }
+}

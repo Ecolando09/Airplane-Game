@@ -215,10 +215,9 @@ export class HeliFlight {
   }
 
   resetAirborne() {
-    const sq = this.world.landmarks[0];
-    const h = THREE.MathUtils.degToRad(40);
-    this.pos.set(sq.x - Math.sin(h) * 1500, sq.y + 160, sq.z + Math.cos(h) * 1500);
-    this.yaw = -h;
+    const a = this.world.airStart(1500, 160);
+    this.pos.set(a.x, a.y, a.z);
+    this.yaw = -THREE.MathUtils.degToRad(a.heading);
     this._commonReset();
     this.onGround = false;
   }

@@ -1,4 +1,4 @@
-"""Download Spartanburg map data into tools/data/ (run before build_city.py).
+"""Download a city's map data into tools/data/<city>/ (run before build_city.py).
 
 - Buildings, roads/rail, water, land use, places: Overture Maps (OpenStreetMap-derived), public S3 bucket.
 - Elevation: Mapzen/AWS Terrarium terrain tiles.
