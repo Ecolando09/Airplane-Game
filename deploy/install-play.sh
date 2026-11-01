@@ -89,6 +89,29 @@ if [ -s "$KEY_FILE" ]; then
   printf "window.LEGOSKY_CONFIG = { googleMapsKey: '%s' };\n" "$(tr -dc 'A-Za-z0-9_-' < "$KEY_FILE")" > "$WEB/legoplane/config.js"
 fi
 
+# Android app: a window onto the live game, so it only needs rebuilding when the
+# app itself (android/) changes. Kept between runs; a failure here doesn't stop the update.
+say "Android app"
+APK_DIR=/opt/latlas-play/apk
+APK_HASH=$(find android deploy/build-apk.sh -type f | sort | xargs sha256sum | sha256sum | cut -c1-16)
+if [ -s "$APK_DIR/lego-sky.apk" ] && [ "$(cat "$APK_DIR/hash" 2>/dev/null)" = "$APK_HASH" ]; then
+  echo "Up to date"
+elif bash deploy/build-apk.sh "$APK_DIR/lego-sky.apk"; then
+  echo "$APK_HASH" > "$APK_DIR/hash"
+else
+  echo "!! Couldn't build the Android app; the website is updated anyway."
+fi
+if [ -s "$APK_DIR/lego-sky.apk" ]; then
+  mkdir -p "$WEB/downloads"
+  cp "$APK_DIR/lego-sky.apk" "$WEB/downloads/lego-sky.apk"
+  # Lets the app tell players when a newer version of the app is out.
+  VC=$(sed -n 's/.*android:versionCode="\([0-9]*\)".*/\1/p' android/AndroidManifest.xml)
+  VN=$(sed -n 's/.*android:versionName="\([^"]*\)".*/\1/p' android/AndroidManifest.xml)
+  printf '{"versionCode":%s,"versionName":"%s","size":%s}\n' "$VC" "$VN" "$(stat -c %s "$APK_DIR/lego-sky.apk")" \
+    > "$WEB/downloads/lego-sky.json"
+  echo "Download: https://$DOMAIN/downloads/lego-sky.apk"
+fi
+
 say "Starting the relay (phone controller + multiplayer)"
 # Use whichever Node.js is installed (nvm installs it under /root, which the
 # www-data user can't read, so the relay runs as root in that case).
@@ -172,6 +195,7 @@ fi
 say "Done!"
 echo "Homepage:  https://$DOMAIN/"
 echo "Game:      https://$DOMAIN/legoplane/"
+echo "Android:   https://$DOMAIN/downloads/lego-sky.apk"
 echo
 echo "If the site doesn't load yet, check DNS: Porkbun needs an A record for"
 echo "'${DOMAIN%%.latlas.lol}' pointing to ${IP:-this server}."

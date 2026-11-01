@@ -57,11 +57,30 @@
             </ul>
             <div class="actions">
               <a class="btn primary" href="legoplane/">Play now</a>
+              <a class="btn" href="#android">Android app</a>
               <a class="btn" href="#legoplane-how">How to play</a>
             </div>
             <p class="phone-note">📱 On a phone? Tap <b>Play now</b>, turn it sideways, and steer by tilting.</p>
           </div>
         </article>
+
+        <section class="how app" id="android" aria-labelledby="android-title">
+          <img class="app-icon" src="images/legosky-icon.png" alt="" width="96" height="96" />
+          <div>
+            <h3 id="android-title">Lego Sky for Android</h3>
+            <p>Full screen, always sideways, and the screen stays on while you fly. The app plays the live game, so
+              it gets every update automatically.</p>
+            <ol>
+              <li>On your Android phone, tap <b>Download the app</b>.</li>
+              <li>Open the downloaded file. If your phone asks, allow your browser to install apps.</li>
+              <li>Tap <b>Install</b>, then find <b>Lego Sky</b> with your other apps.</li>
+            </ol>
+            <p class="actions">
+              <a class="btn primary" href="downloads/lego-sky.apk" download>Download the app</a>
+              <span class="app-meta" id="appMeta">Android 7 or newer</span>
+            </p>
+          </div>
+        </section>
 
         <section class="how" id="legoplane-how" aria-labelledby="how-title">
           <h3 id="how-title">How to play Lego Sky</h3>
@@ -98,5 +117,15 @@
       <p>Made in Spartanburg, SC · <a href="https://latlas.lol/">latlas.lol</a></p>
       <p class="credit">Lego Sky map data © OpenStreetMap contributors, Overture Maps Foundation. LEGO® is a trademark of the LEGO Group, which does not sponsor or endorse this site.</p>
     </footer>
+    <script>
+      // Show the app version and size next to the download button.
+      fetch('downloads/lego-sky.json', { cache: 'no-store' })
+        .then((r) => r.json())
+        .then((a) => {
+          document.getElementById('appMeta').textContent =
+            `Version ${a.versionName} · ${Math.max(1, Math.round(a.size / 1024))} KB · Android 7 or newer`;
+        })
+        .catch(() => {});
+    </script>
   </body>
 </html>

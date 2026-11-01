@@ -1471,3 +1471,8 @@ body.is-touch #autoLandBtn kbd {
   flex-wrap: wrap;
   justify-content: center;
 }
+
+a.link-btn {
+  display: inline-block;
+  text-align: center;
+}

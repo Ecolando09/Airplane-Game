@@ -359,3 +359,48 @@ dd {
     transition: none;
   }
 }
+
+.how.app {
+  display: flex;
+  gap: 20px;
+  align-items: flex-start;
+}
+
+.app-icon {
+  flex: none;
+  width: 96px;
+  height: 96px;
+  border-radius: 22px;
+}
+
+.how.app p,
+.how.app ol {
+  margin: 0 0 12px;
+  max-width: 62ch;
+}
+
+.how.app ol {
+  padding-left: 20px;
+}
+
+.how.app .actions {
+  margin: 4px 0 0;
+  align-items: center;
+}
+
+.app-meta {
+  color: var(--muted, #5b6770);
+  font-size: 14px;
+}
+
+@media (max-width: 600px) {
+  .how.app {
+    flex-direction: column;
+  }
+
+  .app-icon {
+    width: 72px;
+    height: 72px;
+    border-radius: 16px;
+  }
+}

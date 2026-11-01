@@ -1064,6 +1064,35 @@ $('helpBtn').onclick = () => {
   updateMenu();
 };
 
+// ------------------------------------------------------------------ Android app
+// The app (android/) is a window onto this page and adds "LegoSkyApp/<version>" to
+// its user agent. Phone Back while flying opens the menu; from the menu it leaves the app.
+window.legoSkyBack = () => {
+  if (!$('phonePanel').hidden) $('phonePanel').hidden = true;
+  else if (running) $('helpBtn').onclick();
+  else return false;
+  return true;
+};
+{
+  const appVersion = +(navigator.userAgent.match(/LegoSkyApp\/(\d+)/)?.[1] || 0);
+  const link = $('androidLink');
+  if (appVersion) {
+    // In the app: offer the newer APK when the server has one.
+    fetch('/downloads/lego-sky.json', { cache: 'no-store' })
+      .then((r) => r.json())
+      .then((latest) => {
+        if (latest.versionCode > appVersion) {
+          link.textContent = `📲 Update the app (version ${latest.versionName})`;
+          link.href = '/downloads/lego-sky.apk';
+          link.hidden = false;
+        }
+      })
+      .catch(() => {});
+  } else if (/Android/i.test(navigator.userAgent)) {
+    link.hidden = false;
+  }
+}
+
 // ------------------------------------------------------------------ phone controller
 const STATUS = {
   waiting: ['Waiting for your phone…', ''],
