@@ -13,7 +13,9 @@ const LOW = 60; // highest you can be (above the ground) to load or unload in fl
 const DWELL = 1.0; // seconds inside a stop to load or unload
 const HAPPY_AT = 150; // Happy Hour starts with this many seconds left
 const HAPPY_LEN = 40;
-const COLORS = { pickup: '#ffb300', drop: '#2ecc71', rush: '#ffd700', vip: '#ff5fa2' };
+// Each order gets a letter and its own color, used on its card, beams, labels and the minimap.
+const LETTERS = ['A', 'B', 'C', 'D'];
+const ORDER_COLORS = { A: '#ff8a1f', B: '#3b9dff', C: '#c06bff', D: '#1fc7a8' };
 
 /** Ranks for the end-of-shift card, by money earned. */
 const TITLES = [[0, 'Keg Rookie'], [300, 'Delivery Cadet'], [700, 'Hop Hauler'], [1200, 'Barrel Baron'],
@@ -61,6 +63,12 @@ export class BeerRun {
       s.label.style.display = 'none';
       labelsEl.appendChild(s.label);
     }
+    // A big bouncing arrow over the stop the guide points to.
+    this.chevron = new THREE.Mesh(new THREE.ConeGeometry(16, 30, 4).rotateX(Math.PI),
+      new THREE.MeshBasicMaterial({ fog: false, transparent: true, opacity: 0.95 }));
+    this.chevron.visible = false;
+    this.chevron.renderOrder = 3;
+    scene.add(this.chevron);
     this.kegGeo = new THREE.CylinderGeometry(1.4, 1.4, 2.4, 10);
     this.kegMat = new THREE.MeshLambertMaterial({ color: 0xc0c6cc });
     this.chuteGeo = new THREE.ConeGeometry(3.2, 2.2, 10, 1, true).translate(0, 3.2, 0);
@@ -127,8 +135,10 @@ export class BeerRun {
     const travel = (reach + dist) / 40 + 22; // seconds at about 90 mph, plus loading
     const time = THREE.MathUtils.clamp(travel * (rush ? 1.15 : 1.9), 45, 170);
     const pay = (30 + (dist / 1000) * 18) * kegs * (rush ? 2 : 1);
+    const letter = LETTERS.find((l) => !this.orders.some((o) => o.letter === l)) || 'A';
     this.orders.push({
-      id: this.nextId++, from, to, kegs, pay, rush, vip: !!to.vip, time, timeLeft: time, state: 'pickup',
+      id: this.nextId++, letter, color: ORDER_COLORS[letter],
+      from, to, kegs, pay, rush, vip: !!to.vip, time, timeLeft: time, state: 'pickup',
       tip: to.vip ? 40 + Math.round(this.rand() * 6) * 10 : 0,
     });
   }
@@ -136,27 +146,44 @@ export class BeerRun {
   _updateMarkers() {
     const stops = [...this.breweries, ...this.shops];
     for (const s of stops) s.use = null;
+    const guide = this.guideOrder();
+    // Each stop shows one use: the guided order's next stop first, then other
+    // orders' next stops, then where the guided order goes after loading.
+    const uses = [];
     for (const o of this.orders) {
-      const s = o.state === 'pickup' ? o.from : o.to;
-      const kind = o.vip ? 'vip' : o.rush ? 'rush' : o.state === 'pickup' ? 'pickup' : 'drop';
-      // A stop shows its most urgent use.
-      if (!s.use || o.timeLeft < s.use.order.timeLeft) s.use = { kind, order: o };
+      const next = o.state === 'pickup' ? o.from : o.to;
+      uses.push({ stop: next, order: o, step: o.state === 'pickup' ? 'load' : 'deliver', rank: o === guide ? 0 : 1 });
+      if (o === guide && o.state === 'pickup') uses.push({ stop: o.to, order: o, step: 'then', rank: 2 });
     }
+    uses.sort((a, b) => a.rank - b.rank || a.order.timeLeft - b.order.timeLeft);
+    for (const u of uses) if (!u.stop.use) u.stop.use = u;
     for (const s of stops) {
       const on = this.active && !!s.use;
       s.beam.visible = s.ring.visible = on;
-      if (on) {
-        const c = new THREE.Color(COLORS[s.use.kind]);
-        s.beam.material.color.copy(c);
-        s.ring.material.color.copy(c);
-      }
+      if (!on) continue;
+      const c = new THREE.Color(s.use.order.color);
+      s.beam.material.color.copy(c);
+      s.ring.material.color.copy(c);
+      s.beam.material.opacity = { 0: 0.6, 1: 0.3, 2: 0.14 }[s.use.rank];
+      s.ring.material.opacity = s.use.rank === 2 ? 0.3 : 0.7;
+    }
+    const g = this.active && this.guideStop();
+    this.chevron.visible = !!g;
+    if (g) {
+      this.chevron.material.color.set(guide.color);
+      this.chevron.userData.stop = g;
     }
   }
 
-  /** The order whose next stop the guide arrow points to: the chosen one, or the most urgent. */
+  /** The order the guide follows: the one you picked, or else the most urgent,
+   *  which then stays picked until it's delivered or expires. */
   guideOrder() {
-    return this.orders.find((o) => o.id === this.guideId)
-      || [...this.orders].sort((a, b) => a.timeLeft - b.timeLeft)[0];
+    let o = this.orders.find((x) => x.id === this.guideId);
+    if (!o) {
+      o = [...this.orders].sort((a, b) => a.timeLeft - b.timeLeft)[0];
+      this.guideId = o?.id ?? null;
+    }
+    return o;
   }
 
   // ---------------------------------------------------------------- per frame
@@ -245,7 +272,7 @@ export class BeerRun {
       this._flyKegs(o.kegs, brewery, v.pos, false);
     }
     if (n) {
-      this.hooks.toast(`🛢️ Loaded ${n} keg${n > 1 ? 's' : ''} of ${brewery.beer} at ${brewery.name}`, COLORS.pickup);
+      this.hooks.toast(`🛢️ Loaded ${n} keg${n > 1 ? 's' : ''} of ${brewery.beer} at ${brewery.name}`, '#ffb300');
       this.hooks.sound('load');
     } else {
       this.hooks.toast(`Hold is full! Deliver first (${this.loaded}/${this.capacity} kegs)`, '#c91a09');
@@ -266,7 +293,7 @@ export class BeerRun {
       this.stats.tips += o.tip;
       const streak = this.combo > 1 ? ` · streak ×${this.combo.toFixed(1)}` : '';
       const tip = o.tip ? ` (incl. ${fmt(o.tip)} tip!)` : '';
-      this.hooks.toast(`💰 +${fmt(earned)} from ${shop.name}${tip}${streak}`, o.vip ? COLORS.vip : COLORS.drop);
+      this.hooks.toast(`💰 +${fmt(earned)} from ${shop.name}${tip}${streak}`, o.color);
       this.combo = Math.min(3, Math.round((this.combo + 0.15) * 100) / 100);
       this.bestCombo = Math.max(this.bestCombo, this.combo);
       this.orders.splice(this.orders.indexOf(o), 1);
@@ -315,6 +342,12 @@ export class BeerRun {
   }
 
   _updateFlying(dt) {
+    if (this.chevron.visible) {
+      const g = this.chevron.userData.stop;
+      this.bob = (this.bob || 0) + dt;
+      this.chevron.position.set(g.x, g.y + 150 + Math.sin(this.bob * 3) * 12, g.z);
+      this.chevron.rotation.y += dt * 1.5;
+    }
     for (const f of [...this.flying]) {
       f.t += dt;
       const u = THREE.MathUtils.clamp(f.t / f.len, 0, 1);
@@ -338,19 +371,31 @@ export class BeerRun {
         continue;
       }
       const d = Math.hypot(s.x - p.x, s.z - p.z);
-      const icon = s.kind === 'brewery' ? '🏭' : s.vip ? '⭐' : '🏪';
-      s.label.textContent = `${icon} ${s.name} · ${fmtDist(d)}`;
-      s.label.style.setProperty('--pin', COLORS[s.use.kind]);
-      items.push({ el: s.label, x: s.x, y: s.y + 110, z: s.z, d, pin: true });
+      const { order: o, step } = s.use;
+      const what = step === 'load' ? `LOAD ${o.kegs}× at` : step === 'deliver' ? `DELIVER ${o.kegs}× to` : 'then deliver to';
+      s.label.textContent = `${o.letter} · ${what} ${s.name} · ${fmtDist(d)}`;
+      s.label.style.setProperty('--pin', o.color);
+      s.label.classList.toggle('later', step === 'then');
+      s.label.classList.toggle('guided', s.use.rank === 0);
+      items.push({ el: s.label, x: s.x, y: s.y + 110, z: s.z, d, pin: s.use.rank < 2 });
     }
     return items;
   }
 
-  /** Spots for the minimap: { x, z, color, kind }. */
+  /** Spots for the minimap: { x, z, color, letter, kind, guide, later }, plus the guided route. */
   mapMarks() {
     if (!this.active) return [];
-    return [...this.breweries, ...this.shops].filter((s) => s.use)
-      .map((s) => ({ x: s.x, z: s.z, color: COLORS[s.use.kind], kind: s.kind, guide: s === this.guideStop() }));
+    return [...this.breweries, ...this.shops].filter((s) => s.use).map((s) => ({
+      x: s.x, z: s.z, color: s.use.order.color, letter: s.use.order.letter, kind: s.kind,
+      guide: s.use.rank === 0, later: s.use.step === 'then',
+    }));
+  }
+
+  /** The guided order's remaining path: [vehicle?] → pickup → shop. */
+  mapRoute() {
+    const o = this.active && this.guideOrder();
+    if (!o) return null;
+    return { color: o.color, points: o.state === 'pickup' ? [o.from, o.to] : [o.to] };
   }
 
   guideStop() {
@@ -360,40 +405,39 @@ export class BeerRun {
 
   /** Everything the HUD shows, already formatted. */
   hud(p, heading) {
-    const g = this.guideStop();
-    let guide = null;
-    if (g) {
+    const o = this.guideOrder();
+    let mission = null;
+    if (o) {
+      const g = o.state === 'pickup' ? o.from : o.to;
       const dx = g.x - p.x;
       const dz = g.z - p.z;
       const bearing = (THREE.MathUtils.radToDeg(Math.atan2(dx, -dz)) + 360) % 360;
-      const o = this.guideOrder();
-      guide = {
-        rel: bearing - heading,
-        text: `${o.state === 'pickup' ? 'Load at' : 'Deliver to'} ${g.name}`,
+      mission = {
+        id: o.id, letter: o.letter, color: o.color, rel: bearing - heading,
+        step: o.state === 'pickup' ? `LOAD ${o.kegs}× ${o.from.beer}` : `DELIVER ${o.kegs}× ${o.from.beer}`,
+        where: g.name,
         dist: fmtDist(Math.hypot(dx, dz)),
-        color: COLORS[g.use?.kind || 'pickup'],
+        next: o.state === 'pickup' ? `then deliver to ${o.to.name}` : `from ${o.from.name}`,
+        time: fmtTime(Math.max(0, o.timeLeft)), frac: o.timeLeft / o.time, hurry: o.timeLeft < 20,
+        pay: fmt(o.pay * 1.5 + o.tip), tag: o.vip ? 'VIP' : o.rush ? 'RUSH' : '',
       };
     }
     return {
       cash: fmt(this.cash),
       clock: fmtTime(this.timeLeft),
       hurry: this.timeLeft < 30,
-      combo: this.combo > 1 ? `streak ×${this.combo.toFixed(2).replace(/0$/, '')}` : '',
-      happy: this.happy > 0 ? `🍻 Happy Hour ${Math.ceil(this.happy)}s` : '',
+      combo: this.combo > 1 ? `×${this.combo.toFixed(2).replace(/0$/, '')}` : '',
+      happy: this.happy > 0 ? `🍻 ${Math.ceil(this.happy)}s` : '',
       hold: { loaded: this.loaded, capacity: this.capacity },
       dwell: this.dwellStop ? this.dwell / DWELL : 0,
       dwellText: this.dwellStop ? (this.dwellStop.kind === 'brewery' ? 'Loading…' : 'Unloading…') : '',
-      guide,
-      orders: [...this.orders].sort((a, b) => a.timeLeft - b.timeLeft).map((o) => ({
-        id: o.id,
-        guided: o === this.guideOrder(),
-        state: o.state,
-        text: `${o.kegs}× ${o.from.beer}`,
-        route: `${o.from.name} → ${o.to.name}`,
-        pay: fmt(o.pay * 1.5 + o.tip),
-        tag: o.vip ? 'VIP' : o.rush ? 'RUSH' : '',
-        frac: o.timeLeft / o.time,
-        time: fmtTime(Math.max(0, o.timeLeft)),
+      mission,
+      orders: [...this.orders].sort((a, b) => a.letter.localeCompare(b.letter)).map((x) => ({
+        id: x.id, letter: x.letter, color: x.color, guided: x === o, state: x.state,
+        text: `${x.kegs}× ${x.from.beer}`,
+        route: x.state === 'pickup' ? `🏭 ${x.from.name} → ${x.to.name}` : `🏪 → ${x.to.name}`,
+        pay: fmt(x.pay * 1.5 + x.tip), tag: x.vip ? 'VIP' : x.rush ? 'RUSH' : '',
+        frac: x.timeLeft / x.time, time: fmtTime(Math.max(0, x.timeLeft)), hurry: x.timeLeft < 20,
       })),
     };
   }

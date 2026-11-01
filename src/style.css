@@ -1492,13 +1492,17 @@ a.link-btn {
 }
 
 /* ---------- Beer Run (Fort Collins) */
+/* A compact strip at the top center (clear of the touch controls): money, clock
+   and hold, the order you're following, and chips for the other orders. */
 #beerHud {
   position: fixed;
-  top: 168px;
-  left: 12px;
-  width: min(320px, 44vw);
+  top: max(8px, env(safe-area-inset-top));
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(520px, calc(100vw - 420px));
+  min-width: 300px;
   display: grid;
-  gap: 6px;
+  gap: 4px;
   pointer-events: none;
   font-variant-numeric: tabular-nums;
 }
@@ -1506,25 +1510,26 @@ a.link-btn {
 .beer-bar {
   display: flex;
   align-items: center;
-  gap: 10px;
+  justify-content: center;
+  gap: 12px;
   background: var(--panel);
   border-radius: 10px;
-  padding: 6px 12px;
+  padding: 3px 12px;
 }
 
 .beer-cash {
-  font-size: 22px;
+  font-size: 20px;
   font-weight: 800;
   color: #7ee08a;
 }
 
 .beer-clock {
-  font-size: 18px;
+  font-size: 17px;
   font-weight: 800;
 }
 
-.beer-clock.hurry {
-  color: #ff6b5b;
+.hurry {
+  color: #ff6b5b !important;
   animation: beerPulse 0.6s infinite alternate;
 }
 
@@ -1535,39 +1540,148 @@ a.link-btn {
 }
 
 .beer-hold {
-  margin-left: auto;
-  letter-spacing: 1px;
-  font-size: 15px;
+  font-size: 14px;
+  font-weight: 800;
 }
 
-.beer-extra {
-  display: flex;
-  gap: 8px;
+.beer-pill {
   font-weight: 800;
   font-size: 13px;
+  border-radius: 999px;
+  padding: 1px 8px;
+  background: rgba(255, 255, 255, 0.14);
 }
 
-.beer-extra span:empty {
+.beer-pill:empty {
   display: none;
 }
 
-.beer-extra span {
-  background: var(--panel);
-  border-radius: 999px;
-  padding: 3px 10px;
-}
-
-#beerHappy {
+.beer-pill.happy {
   background: #e8590c;
 }
 
+.beer-mission {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--panel);
+  border: 3px solid var(--c);
+  border-radius: 12px;
+  padding: 5px 10px 7px 6px;
+}
+
+.beer-letter {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  background: var(--c);
+  color: #fff;
+  font-weight: 900;
+  font-size: 18px;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+}
+
+.beer-what {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  line-height: 1.2;
+  font-size: 14px;
+}
+
+.beer-what .step {
+  color: var(--c);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+}
+
+.beer-what .where {
+  font-weight: 800;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.beer-what .next {
+  color: #cfd6dc;
+  font-size: 11.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.beer-go {
+  flex: none;
+  display: grid;
+  justify-items: center;
+  font-weight: 800;
+  font-size: 13px;
+  line-height: 1.15;
+}
+
+.beer-go .arrow {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--c);
+  font-size: 16px;
+}
+
+.beer-go .time {
+  font-size: 11px;
+  color: #cfd6dc;
+}
+
+.beer-mbar {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 3px;
+  background: var(--c);
+}
+
+.beer-others {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  pointer-events: auto;
+}
+
+.beer-others:empty {
+  display: none;
+}
+
+.beer-chip {
+  font: inherit;
+  font-weight: 800;
+  font-size: 12px;
+  color: #fff;
+  background: var(--panel);
+  border: 2px solid var(--c);
+  border-radius: 999px;
+  padding: 2px 9px;
+  cursor: pointer;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Computers: every order spelled out on the left, under the instruments. */
 #beerOrders {
+  position: fixed;
+  top: 168px;
+  left: 12px;
+  width: 290px;
   list-style: none;
   margin: 0;
   padding: 0;
   display: grid;
   gap: 4px;
-  pointer-events: auto;
 }
 
 #beerOrders li {
@@ -1575,7 +1689,7 @@ a.link-btn {
   overflow: hidden;
   background: var(--panel);
   border-radius: 8px;
-  padding: 5px 10px 7px;
+  padding: 5px 10px 7px 6px;
   border-left: 5px solid var(--c);
   font-size: 13px;
   line-height: 1.3;
@@ -1583,13 +1697,21 @@ a.link-btn {
 }
 
 #beerOrders li.guided {
-  outline: 2px solid #fff;
+  outline: 2px solid var(--c);
 }
 
 #beerOrders .top {
   display: flex;
+  align-items: center;
   gap: 6px;
   font-weight: 800;
+}
+
+#beerOrders .beer-letter {
+  width: 20px;
+  height: 20px;
+  font-size: 12px;
+  border-radius: 5px;
 }
 
 #beerOrders .pay {
@@ -1598,7 +1720,7 @@ a.link-btn {
 }
 
 #beerOrders .tag {
-  background: var(--c);
+  background: #ffd700;
   color: var(--ink);
   border-radius: 4px;
   padding: 0 4px;
@@ -1620,14 +1742,19 @@ a.link-btn {
   background: var(--c);
 }
 
-.beer-guide {
-  justify-self: start;
-  max-width: 100%;
+body.is-touch #beerOrders {
+  display: none;
 }
 
-.beer-guide .txt {
-  overflow: hidden;
-  text-overflow: ellipsis;
+/* During a shift the strip takes the top center: "Over …" steps aside and
+   other players' chips move below it. */
+body.beer #over {
+  display: none;
+}
+
+/* Other players' chips move below the Beer Run strip. */
+body.beer #buddies {
+  top: 150px;
 }
 
 #beerDwell {
@@ -1667,12 +1794,24 @@ a.link-btn {
 
 .label.beer {
   background: var(--pin);
-  color: var(--ink);
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
   box-shadow: 0 2px 0 rgba(0, 0, 0, 0.35);
 }
 
 .label.beer::after {
   border-top-color: var(--pin);
+}
+
+.label.beer.guided {
+  font-size: 15px;
+  padding: 5px 10px;
+  outline: 3px solid #fff;
+}
+
+.label.beer.later {
+  opacity: 0.75 !important;
+  font-weight: 700;
 }
 
 /* Menu: the Beer Run explainer and this week's top three. */
@@ -1827,19 +1966,69 @@ a.link-btn {
 
 @media (max-height: 500px) {
   #beerHud {
-    top: 120px;
-    width: min(260px, 40vw);
+    width: min(440px, calc(100vw - 300px));
+    min-width: 260px;
+    gap: 3px;
   }
 
-  #beerOrders li:nth-child(n + 3) {
-    display: none;
+  .beer-bar {
+    gap: 9px;
+    padding: 2px 10px;
   }
 
   .beer-cash {
-    font-size: 18px;
+    font-size: 16px;
+  }
+
+  .beer-clock {
+    font-size: 14px;
+  }
+
+  .beer-hold,
+  .beer-pill {
+    font-size: 12px;
+  }
+
+  .beer-mission {
+    gap: 7px;
+    padding: 3px 8px 5px 4px;
+    border-width: 2px;
+  }
+
+  .beer-letter,
+  .beer-go .arrow {
+    width: 24px;
+    height: 24px;
+    font-size: 14px;
+  }
+
+  .beer-what {
+    font-size: 12px;
+  }
+
+  .beer-what .step {
+    font-size: 10.5px;
+  }
+
+  .beer-what .next {
+    font-size: 10px;
+  }
+
+  .beer-chip {
+    font-size: 11px;
+    padding: 1px 7px;
+  }
+
+  body.beer #buddies {
+    top: 112px;
   }
 
   #beerDwell {
     top: 55%;
+  }
+
+  .label.beer.guided {
+    font-size: 12px;
+    padding: 3px 7px;
   }
 }

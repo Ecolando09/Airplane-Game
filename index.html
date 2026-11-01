@@ -28,11 +28,18 @@
           <span class="beer-cash" id="beerCash">$0</span>
           <span class="beer-clock" id="beerClock">5:00</span>
           <span class="beer-hold" id="beerHold" title="Kegs on board"></span>
+          <span class="beer-pill" id="beerCombo" title="On-time streak"></span>
+          <span class="beer-pill happy" id="beerHappy"></span>
         </div>
-        <div class="beer-extra"><span id="beerCombo"></span><span id="beerHappy"></span></div>
-        <ol id="beerOrders"></ol>
-        <div class="buddy beer-guide" id="beerGuide"><span class="arrow">▲</span><span class="txt"><span class="who"></span> <span class="far"></span></span></div>
+        <div class="beer-mission" id="beerMission">
+          <span class="beer-letter"></span>
+          <span class="beer-what"><b class="step"></b> <span class="where"></span><small class="next"></small></span>
+          <span class="beer-go"><span class="arrow">▲</span><span class="dist"></span><span class="time"></span></span>
+          <span class="beer-mbar"></span>
+        </div>
+        <div class="beer-others" id="beerOthers" aria-label="Other orders (tap to follow)"></div>
       </div>
+      <ol id="beerOrders" hidden></ol>
       <div id="beerDwell" hidden><svg viewBox="0 0 44 44"><circle cx="22" cy="22" r="19" /><circle id="beerDwellArc" cx="22" cy="22" r="19" /></svg><span id="beerDwellText"></span></div>
       <button id="autoLandBtn" class="big go" hidden>🛬 Auto-land at <span id="autoLandName"></span><kbd>L</kbd></button>
       <div id="crashBox" hidden>

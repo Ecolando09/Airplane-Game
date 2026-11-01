@@ -585,27 +585,46 @@ function drawMinimap() {
     }
   }
 
-  // Beer Run stops: amber to load, green to deliver; the guided one bigger.
+  // Beer Run: the followed order's route as a dashed line, then each stop in
+  // its order's color with the letter (squares load, circles deliver).
+  const route = beerRun?.mapRoute();
+  if (route) {
+    mctx.setLineDash([10, 8]);
+    mctx.lineWidth = 4;
+    mctx.strokeStyle = route.color;
+    mctx.beginPath();
+    mctx.moveTo(W / 2, W / 2);
+    for (const pt of route.points) mctx.lineTo(...toMap(pt.x, pt.z));
+    mctx.stroke();
+    mctx.setLineDash([]);
+  }
   for (const m of beerRun?.mapMarks() || []) {
     let [x, y] = toMap(m.x, m.z);
-    const off = x < 12 || y < 12 || x > W - 12 || y > W - 12;
+    const off = x < 14 || y < 14 || x > W - 14 || y > W - 14;
     if (off && !m.guide) continue;
     if (off) {
       const dx = x - W / 2;
       const dy = y - W / 2;
-      const f = (W / 2 - 14) / Math.max(Math.abs(dx), Math.abs(dy));
+      const f = (W / 2 - 16) / Math.max(Math.abs(dx), Math.abs(dy));
       x = W / 2 + dx * f;
       y = W / 2 + dy * f;
     }
+    const r = m.guide ? 15 : 11;
+    mctx.globalAlpha = m.later ? 0.6 : 1;
     mctx.fillStyle = m.color;
-    mctx.strokeStyle = '#1b2a34';
+    mctx.strokeStyle = m.guide ? '#fff' : '#1b2a34';
     mctx.lineWidth = 3;
-    const r = m.guide ? 13 : 9;
     mctx.beginPath();
     if (m.kind === 'brewery') mctx.rect(x - r, y - r, r * 2, r * 2);
     else mctx.arc(x, y, r, 0, Math.PI * 2);
     mctx.fill();
     mctx.stroke();
+    mctx.fillStyle = '#fff';
+    mctx.font = `900 ${m.guide ? 17 : 13}px system-ui, sans-serif`;
+    mctx.textBaseline = 'middle';
+    mctx.fillText(m.letter, x, y + 1);
+    mctx.textBaseline = 'alphabetic';
+    mctx.globalAlpha = 1;
   }
 
   // Other players
@@ -890,11 +909,13 @@ function start(airborne) {
   if (beerOn()) {
     beerRun.start(isHeli ? 4 : 6);
     message(`🍺 Shift started! Head for the <span style="color:#ffb300">amber beams</span><small>${isHeli ? 4 : 6} kegs fit in your ${isHeli ? 'copter' : 'plane'}</small>`, 4);
-    $('beerHud').hidden = false;
+    $('beerHud').hidden = $('beerOrders').hidden = false;
+    document.body.classList.add('beer');
     return;
   }
   beerRun?.stop();
-  $('beerHud').hidden = true;
+  $('beerHud').hidden = $('beerOrders').hidden = true;
+  document.body.classList.remove('beer');
   message(airborne ? `Welcome to ${data.name.split(',')[0]}!`
     : isHeli ? (input.isTouch ? 'Push LIFT up to take off!' : 'Hold W to lift off, Shift for speed!')
       : `Runway ${world.runway.names?.[0] ?? ''} — full throttle to take off!`, 3);
@@ -1147,39 +1168,71 @@ function updateBeerHud() {
   $('beerClock').textContent = `⏱ ${h.clock}`;
   $('beerClock').classList.toggle('hurry', h.hurry);
   $('beerHold').textContent = `🛢️ ${h.hold.loaded}/${h.hold.capacity}`;
-  $('beerCombo').textContent = h.combo && `🔥 ${h.combo}`;
+  $('beerCombo').textContent = h.combo && `🔥${h.combo}`;
   $('beerHappy').textContent = h.happy;
+  // The order you're working on: which step, where, which way and how long.
+  const m = h.mission;
+  const mi = $('beerMission');
+  mi.hidden = !m;
+  if (m) {
+    mi.style.setProperty('--c', m.color);
+    mi.querySelector('.beer-letter').textContent = m.letter;
+    mi.querySelector('.step').textContent = m.tag ? `${m.step} · ${m.tag}` : m.step;
+    mi.querySelector('.where').textContent = `${m.step.startsWith('LOAD') ? 'at' : 'to'} ${m.where}`;
+    mi.querySelector('.next').textContent = `${m.next} · up to ${m.pay}`;
+    mi.querySelector('.arrow').style.transform = `rotate(${m.rel}deg)`;
+    mi.querySelector('.dist').textContent = m.dist;
+    mi.querySelector('.time').textContent = m.time;
+    mi.querySelector('.time').classList.toggle('hurry', m.hurry);
+    mi.querySelector('.beer-mbar').style.width = `${Math.max(0, m.frac) * 100}%`;
+  }
+  // Other orders as small letter chips: tap one to follow it instead.
+  const others = h.orders.filter((o) => !o.guided);
+  const box = $('beerOthers');
+  while (box.children.length > others.length) box.lastChild.remove();
+  while (box.children.length < others.length) {
+    const b = document.createElement('button');
+    b.className = 'beer-chip';
+    b.onclick = () => {
+      beerRun.guideId = Number(b.dataset.id);
+      updateBeerHud();
+    };
+    box.appendChild(b);
+  }
+  others.forEach((o, i) => {
+    const b = box.children[i];
+    b.dataset.id = o.id;
+    b.style.setProperty('--c', o.color);
+    b.classList.toggle('hurry', o.hurry);
+    b.textContent = `${o.letter} ${o.state === 'pickup' ? '🏭' : '🏪'} ${o.time}${o.tag ? ` ${o.tag}` : ''}`;
+    b.title = `${o.text}: ${o.route} (tap to follow)`;
+  });
+  // Computers: every order spelled out on the left.
   const list = $('beerOrders');
   while (list.children.length > h.orders.length) list.lastChild.remove();
   while (list.children.length < h.orders.length) {
     const li = document.createElement('li');
-    li.innerHTML = '<div class="top"><span class="what"></span><span class="tag"></span><span class="pay"></span></div><div class="route"></div><div class="bar"></div>';
-    li.onclick = () => (beerRun.guideId = Number(li.dataset.id)); // steer the guide arrow to this order
+    li.innerHTML = '<div class="top"><span class="beer-letter"></span><span class="what"></span><span class="tag"></span><span class="pay"></span></div><div class="route"></div><div class="bar"></div>';
+    li.onclick = () => (beerRun.guideId = Number(li.dataset.id));
     list.appendChild(li);
   }
   h.orders.forEach((o, i) => {
     const li = list.children[i];
     li.dataset.id = o.id;
     li.classList.toggle('guided', o.guided);
-    li.style.setProperty('--c', BEER_COLORS[o.tag] || BEER_COLORS[o.state === 'pickup' ? 'pickup' : 'drop']);
-    li.querySelector('.what').textContent = `${o.state === 'pickup' ? '📦' : '🛢️'} ${o.text}`;
+    li.style.setProperty('--c', o.color);
+    li.querySelector('.beer-letter').textContent = o.letter;
+    li.querySelector('.what').textContent = `${o.state === 'pickup' ? 'Load' : 'Deliver'} ${o.text}`;
     li.querySelector('.tag').textContent = o.tag;
     li.querySelector('.tag').hidden = !o.tag;
-    li.querySelector('.pay').textContent = `up to ${o.pay}`;
+    li.querySelector('.pay').textContent = o.pay;
     li.querySelector('.route').textContent = `${o.route} · ${o.time}`;
     li.querySelector('.bar').style.width = `${Math.max(0, o.frac) * 100}%`;
   });
-  const g = h.guide;
-  $('beerGuide').hidden = !g;
-  if (g) {
-    $('beerGuide').style.setProperty('--c', g.color);
-    $('beerGuide').querySelector('.arrow').style.transform = `rotate(${g.rel}deg)`;
-    $('beerGuide').querySelector('.who').textContent = g.text;
-    $('beerGuide').querySelector('.far').textContent = g.dist;
-  }
   $('beerDwell').hidden = !h.dwell;
   if (h.dwell) {
     $('beerDwellArc').style.strokeDashoffset = String(119.4 * (1 - Math.min(1, h.dwell)));
+    $('beerDwellArc').style.stroke = m?.color || '#ffb300';
     $('beerDwellText').textContent = h.dwellText;
   }
 }
@@ -1190,7 +1243,8 @@ function endShift(stats) {
   running = false;
   pausedFlight = false;
   $('hud').hidden = $('touch').hidden = $('labels').hidden = true;
-  $('beerHud').hidden = $('beerDwell').hidden = true;
+  $('beerHud').hidden = $('beerDwell').hidden = $('beerOrders').hidden = true;
+  document.body.classList.remove('beer');
   sound.blip('cash');
   $('beerEndCash').textContent = `$${stats.cash.toLocaleString()}`;
   $('beerEndTitle').textContent = `🏅 ${stats.title}`;
