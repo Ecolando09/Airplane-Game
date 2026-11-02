@@ -331,13 +331,20 @@ const camPos = new THREE.Vector3();
 const camLook = new THREE.Vector3();
 const camOff = new THREE.Vector3();
 const camLookOff = new THREE.Vector3();
+const camFwd = new THREE.Vector3(0, 0, -1);
 let camInit = false;
 function updateCamera(dt) {
   const mode = CAMS[camMode];
   const p = plane.group.position;
-  const f = flight.forward.clone();
   const up = flight.up.clone();
-  const flatF = new THREE.Vector3(f.x, 0, f.z).normalize();
+  const flatF = flight.forward.clone().setY(0).normalize();
+  // The chase camera follows a smoothed nose direction, so a quick pitch change
+  // glides instead of jerking the view. The copter's lean is just for show: its
+  // camera stays level and only follows the heading.
+  const wantF = isHeli ? flatF : flight.forward;
+  if (!camInit) camFwd.copy(wantF);
+  camFwd.lerp(wantF, 1 - Math.exp(-dt * 3)).normalize();
+  const f = camFwd.clone();
   let want;
   let look;
   if (window.__game?.photo) {
@@ -397,7 +404,7 @@ function updateCamera(dt) {
     camPos.y = Math.max(camPos.y, ground);
   }
   camera.position.copy(camPos);
-  camera.up.set(0, 1, 0).lerp(up, 0.25).normalize();
+  camera.up.set(0, 1, 0).lerp(up, isHeli ? 0.08 : 0.25).normalize();
   camera.lookAt(camLook);
 }
 

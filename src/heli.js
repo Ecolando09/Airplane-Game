@@ -168,6 +168,7 @@ export function createGhostSpiderHeli() {
 const X = new THREE.Vector3(1, 0, 0);
 const Y = new THREE.Vector3(0, 1, 0);
 const Z = new THREE.Vector3(0, 0, 1);
+const MAX_ACCEL = 9; // m/s² of forward/back speed change (about 0 to 85 mph in 4 s)
 
 /**
  * Arcade helicopter flight. Same interface as Flight so the rest of the game
@@ -291,8 +292,16 @@ export class HeliFlight {
     const tx = fx * wantF + rx * wantS;
     const tz = fz * wantF + rz * wantS;
     const accel = 1 - Math.exp(-dt * (0.9 + 0.4 * this.turboNow));
-    const ax = (tx - this.vel.x) * accel;
-    const az = (tz - this.vel.z) * accel;
+    let ax = (tx - this.vel.x) * accel;
+    let az = (tz - this.vel.z) * accel;
+    // Speed changes ease in: a big jump on the speed slider (or turbo) can't
+    // yank the copter; it gathers speed at most MAX_ACCEL (more in turbo).
+    const maxDv = MAX_ACCEL * (0.6 + 0.4 * this.turboNow) * dt;
+    const dv = Math.hypot(ax, az);
+    if (dv > maxDv) {
+      ax *= maxDv / dv;
+      az *= maxDv / dv;
+    }
     this.vel.x += ax;
     this.vel.z += az;
     let wantVy = climb * 11;
@@ -302,12 +311,13 @@ export class HeliFlight {
     this.vel.y += (wantVy - this.vel.y) * (1 - Math.exp(-dt * 2.5));
     if (this.onGround && this.vel.y < 0) this.vel.y = 0;
 
-    // Tilt the body into the motion: nose down when speeding up, bank into turns.
+    // Lean the body gently into the motion: a little nose down while speeding up
+    // and when fast, bank into turns. Small and slow, so it never jerks.
     const fwdAcc = (ax * fx + az * fz) / Math.max(dt, 1e-3);
     const sideAcc = (ax * rx + az * rz) / Math.max(dt, 1e-3);
-    const tk = 1 - Math.exp(-dt * 4);
-    const wantPitch = this.onGround ? 0 : THREE.MathUtils.clamp(-fwdAcc * 0.035 - (wantF / maxFwd) * 0.12, -0.45, 0.35);
-    const wantRoll = this.onGround ? 0 : THREE.MathUtils.clamp(-sideAcc * 0.035 + c.roll * -0.25 * Math.min(1, this.speed / 20), -0.5, 0.5);
+    const tk = 1 - Math.exp(-dt * 2.5);
+    const wantPitch = this.onGround ? 0 : THREE.MathUtils.clamp(-fwdAcc * 0.02 - (this.speed / maxFwd) * 0.1, -0.25, 0.15);
+    const wantRoll = this.onGround ? 0 : THREE.MathUtils.clamp(-sideAcc * 0.02 + c.roll * -0.25 * Math.min(1, this.speed / 20), -0.4, 0.4);
     this.tilt.pitch += (wantPitch - this.tilt.pitch) * tk;
     this.tilt.roll += (wantRoll - this.tilt.roll) * tk;
     this._updateQuat();
