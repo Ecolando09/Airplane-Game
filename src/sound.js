@@ -47,12 +47,14 @@ export class EngineSound {
       cash: [[988, 0], [1319, 0.07], [1568, 0.14], [2093, 0.21]],
       miss: [[392, 0], [311, 0.12]],
       break: [[180, 0], [120, 0.06], [90, 0.12]],
+      throw: [[620, 0], [440, 0.06]],
+      transform: [[196, 0], [294, 0.07], [392, 0.14], [587, 0.21], [784, 0.28]],
     }[kind] || [];
     const t0 = this.ctx.currentTime;
     for (const [f, at] of notes) {
       const o = this.ctx.createOscillator();
       const g = this.ctx.createGain();
-      o.type = kind === 'break' ? 'sawtooth' : 'triangle';
+      o.type = kind === 'break' || kind === 'transform' ? 'sawtooth' : 'triangle';
       o.frequency.value = f;
       g.gain.setValueAtTime(0.0001, t0 + at);
       g.gain.exponentialRampToValueAtTime(0.12, t0 + at + 0.01);

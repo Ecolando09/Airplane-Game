@@ -44,7 +44,11 @@ function connect() {
         state.lift = isHeli ? 0 : undefined;
         setLiftUi(0);
       }
-      if (m.turbo) $('turboBtn').textContent = `Turbo ${m.turbo === 1 ? '1X' : `T${m.turbo}X`}`;
+      // Robot mode: the same buttons jump, grab and smash.
+      $('turboBtn').textContent = m.bot ? 'Smash' : `Turbo ${m.turbo === 1 ? '1X' : `T${m.turbo}X`}`;
+      $('floatsBtn').textContent = m.bot ? 'Grab / throw' : 'Floats';
+      $('brake').textContent = m.bot ? 'Jump' : 'Brake';
+      $('botBtn').textContent = m.bot ? '✈️ Vehicle' : '🤖 Robot';
       $('menuButtons').hidden = !m.menu;
       $('flyButtons').hidden = m.menu;
       if (m.crashed && !wasCrashed) navigator.vibrate?.([120, 60, 240]);

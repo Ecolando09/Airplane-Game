@@ -100,6 +100,7 @@ export class Multiplayer {
       name: String(m.name || 'Pilot').slice(0, 16), city: m.city, vehicle: m.vehicle === 'heli' ? 'heli' : 'plane',
       speed: +m.speed || 0, turbo: +m.turbo || 1, floats: !!m.floats, crashed: !!m.crashed, seen: performance.now(),
       cash: Number.isFinite(m.cash) ? m.cash : null, // Beer Run money, while they're on a shift
+      bot: !!m.bot, // walking around as a robot
     });
     if (p.isNew) {
       p.isNew = false;
@@ -145,6 +146,7 @@ export class Multiplayer {
         x: +g.position.x.toFixed(2), y: +g.position.y.toFixed(2), z: +g.position.z.toFixed(2),
         qx: +g.quaternion.x.toFixed(4), qy: +g.quaternion.y.toFixed(4), qz: +g.quaternion.z.toFixed(4), qw: +g.quaternion.w.toFixed(4),
         speed: +me.speed.toFixed(1), turbo: me.turbo, floats: me.floats, crashed: me.crashed,
+        ...(me.bot ? { bot: true } : {}),
         ...(Number.isFinite(me.cash) ? { cash: Math.round(me.cash) } : {}),
       }));
     }
@@ -152,10 +154,11 @@ export class Multiplayer {
     const k = 1 - Math.exp(-dt * 8);
     for (const p of this.players.values()) {
       const show = p.city === me.city && performance.now() - p.seen < 5000 && !p.crashed;
-      if (show && (!p.model || p.model.vehicle !== p.vehicle)) {
+      const shape = p.bot ? `bot-${p.vehicle}` : p.vehicle;
+      if (show && (!p.model || p.model.vehicle !== shape)) {
         if (p.model) this.scene.remove(p.model.group);
-        p.model = this.makeVehicle(p.vehicle);
-        p.model.vehicle = p.vehicle;
+        p.model = this.makeVehicle(shape);
+        p.model.vehicle = shape;
         this.scene.add(p.model.group);
       }
       if (!p.model) continue;
@@ -166,6 +169,7 @@ export class Multiplayer {
       p.quat.slerp(p.target.quat, k);
       p.model.group.position.copy(p.pos);
       p.model.group.quaternion.copy(p.quat);
+      if (p.bot) p.model.animate({ speed: p.speed, onGround: true, vy: 0 }, dt);
       if (p.model.propeller) {
         if (p.vehicle === 'heli') p.model.propeller.rotation.y += 30 * dt;
         else p.model.propeller.rotation.z += (10 + p.speed) * dt;

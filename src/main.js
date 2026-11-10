@@ -12,6 +12,9 @@ import { RemoteLink } from './remote.js';
 import { Traffic } from './traffic.js';
 import { Multiplayer, randomRoomCode } from './multiplayer.js';
 import { BeerRun } from './beerrun.js';
+import { createRobot, RobotWalk } from './robot.js';
+import { Props } from './props.js';
+import { Rampage } from './rampage.js';
 
 const $ = (id) => document.getElementById(id);
 const SKY = 0x9fd0ff;
@@ -97,11 +100,19 @@ let labelEls = [];
 let pinEls = [];
 let worldObjects = [];
 let beerRun = null; // the Beer Run game, in cities that have one
+let props = null; // loose objects lying around the city
+let rampage = null; // robot-mode destruction
+// Robot mode: `plane` and `flight` point at the robot while it's out, and the
+// vehicle waits in `vehicle` until you change back.
+let isBot = false;
+let bot = null; // { model, walk }
+let vehicle = null; // { model, flight } while in robot mode
+let morph = null; // shape change in progress: { t, from, to }
 const input = new Input();
 const sound = new EngineSound();
 const mp = new Multiplayer({
   scene,
-  makeVehicle: (v) => (v === 'heli' ? createGhostSpiderHeli() : createLegoPlane()),
+  makeVehicle: (v) => (v.startsWith('bot-') ? createRobot(v.slice(4)) : v === 'heli' ? createGhostSpiderHeli() : createLegoPlane()),
   onChange: () => updateMpUi(),
   onJoin: (p) => toast(`👋 ${p.name} joined${p.city !== settings.city ? ` (in ${CITIES[p.city] || 'another city'})` : ''}`, p.color),
   onLeave: (p) => toast(`${p.name} left the room`, '#868e96'),
@@ -188,6 +199,12 @@ async function buildWorld() {
   const before = new Set(scene.children);
   world = new World(scene, data, { satImage });
   traffic = new Traffic(scene, world, IS_TOUCH ? 900 : 2500);
+  props = new Props(scene, world);
+  rampage = new Rampage(scene, world, traffic, props, {
+    message: (t) => message(t, 2),
+    sound: (k) => sound.blip(k),
+    canBreak: () => !google,
+  });
   beerRun?.dispose();
   beerRun = data.beerRun ? new BeerRun(scene, world, $('labels'), {
     toast,
@@ -233,12 +250,19 @@ async function buildWorld() {
 }
 
 function buildVehicle() {
+  leaveBot();
+  if (bot) disposeObjects([bot.model.group]);
   if (plane) disposeObjects([plane.group]);
   clearDebris();
   isHeli = settings.vehicle === 'heli';
   plane = isHeli ? createGhostSpiderHeli() : createLegoPlane();
   scene.add(plane.group);
   flight = isHeli ? new HeliFlight(world, plane) : new Flight(world, plane);
+  const model = createRobot(settings.vehicle);
+  model.group.visible = false;
+  scene.add(model.group);
+  bot = { model, walk: new RobotWalk(world, model) };
+  bot.walk.onSlam = (speed) => rampage.slam(bot.walk, speed) && updateBotHud();
   input.heliMode = isHeli;
   document.body.classList.toggle('heli', isHeli);
   $('throttleLabel').textContent = isHeli ? 'SPEED' : 'THROTTLE';
@@ -261,6 +285,7 @@ function toggleFloats() {
   message(flight.floats ? 'Floats down 🛶 — you can land on water' : `Floats up — ${isHeli ? 'legs' : 'wheels'} only`, 2);
 }
 function updateFloats(dt) {
+  if (isBot) return;
   floatsAnim += ((flight.floats ? 1 : 0) - floatsAnim) * (1 - Math.exp(-dt * 4));
   plane.floats.visible = floatsAnim > 0.02;
   plane.floats.scale.setScalar(Math.max(0.001, floatsAnim));
@@ -272,6 +297,7 @@ function updateFloats(dt) {
 let boosterLevel = 0;
 let boosterColor = 2;
 function updateBoosters(dt) {
+  if (isBot) return;
   const on = flight.turbo > 1 && !flight.crashed;
   if (on) boosterColor = flight.turbo;
   boosterLevel += ((on ? 1 : 0) - boosterLevel) * (1 - Math.exp(-dt * 5));
@@ -341,7 +367,7 @@ function updateCamera(dt) {
   // The chase camera follows a smoothed nose direction, so a quick pitch change
   // glides instead of jerking the view. The copter's lean is just for show: its
   // camera stays level and only follows the heading.
-  const wantF = isHeli ? flatF : flight.forward;
+  const wantF = isHeli || isBot ? flatF : flight.forward;
   if (!camInit) camFwd.copy(wantF);
   camFwd.lerp(wantF, 1 - Math.exp(-dt * 3)).normalize();
   const f = camFwd.clone();
@@ -358,7 +384,7 @@ function updateCamera(dt) {
   }
   for (const m of plane.cockpitHidden) m.visible = mode !== 'cockpit';
   // From the cockpit only the spinning-prop blur shows, not the solid blades.
-  if (!isHeli) for (const c of plane.propeller.children) if (c !== plane.propDisc) c.visible = mode !== 'cockpit';
+  if (!isHeli && !isBot) for (const c of plane.propeller.children) if (c !== plane.propDisc) c.visible = mode !== 'cockpit';
   if (mode === 'cockpit') {
     plane.group.updateMatrixWorld();
     camera.position.copy(plane.cockpitEye).applyMatrix4(plane.group.matrixWorld);
@@ -367,7 +393,12 @@ function updateCamera(dt) {
     camInit = false;
     return;
   }
-  if (mode === 'chase') {
+  if (isBot) {
+    // Over the robot's shoulder, far enough back to see what it's about to hit.
+    const back = mode === 'chase' ? 36 : 80;
+    want = p.clone().addScaledVector(flatF, -back).add(new THREE.Vector3(0, mode === 'chase' ? 19 : 42, 0));
+    look = p.clone().addScaledVector(flatF, 14).add(new THREE.Vector3(0, 9, 0));
+  } else if (mode === 'chase') {
     want = p.clone().addScaledVector(f, -24).addScaledVector(flatF, -2).add(new THREE.Vector3(0, 7, 0));
     look = p.clone().addScaledVector(f, 12);
   } else {
@@ -703,6 +734,7 @@ function updateHud(dt) {
 
   if (!flight.crashed) {
     const agl = p.y - plane.gearHeight - world.heightAt(p.x, p.z);
+    if (isBot) wasOnGround.v = flight.onGround; // a robot jumping isn't a takeoff or a landing
     if (wasOnGround.v && !flight.onGround && agl > 1) message('Airborne! 🛫', 2);
     if (!wasOnGround.v && flight.onGround) {
       const hp = data.helipad;
@@ -881,6 +913,9 @@ function airborneRestart() {
 function start(airborne) {
   // Runs inside the tap, so the motion-sensor permission prompt is allowed here.
   if (input.isTouch) input.setTilt(phoneSteering === 'tilt').then((on) => on && message('Tilt to steer — tap CENTER to re-center', 3));
+  leaveBot();
+  rampage.reset(); // a fresh start puts the city back together
+  updateBotHud();
   clearDebris();
   autoLand = null;
   trail = [];
@@ -1400,7 +1435,8 @@ setInterval(() => {
     menu: !running,
     spd: Math.round(flight.speed * 1.944),
     alt: Math.round((p.y - plane.gearHeight + world.baseElevation) * 3.281),
-    gear: flight.floats ? 'FLOATS' : isHeli ? 'LEGS' : 'WHEELS',
+    gear: isBot ? 'ROBOT' : flight.floats ? 'FLOATS' : isHeli ? 'LEGS' : 'WHEELS',
+    bot: isBot,
     turbo: flight.turbo,
     vehicle: isHeli ? 'heli' : 'plane',
     crashed: flight.crashed,
@@ -1409,22 +1445,22 @@ setInterval(() => {
 }, 200);
 
 input.on('cam', () => (camMode = (camMode + 1) % CAMS.length));
-input.on('autoland', () => running && startAutoLand());
+input.on('autoland', () => running && !isBot && startAutoLand());
 $('autoLandBtn').onclick = () => startAutoLand();
-input.on('floats', toggleFloats);
+input.on('floats', () => (isBot ? botGrab() : toggleFloats()));
 // Turbo modes: 1X normal, T2X and T3X multiply top speed by 2 and 3.
 const turboName = (t) => (t === 1 ? '1X' : `T${t}X`);
 function setTurbo(t) {
-  if (!running) return;
+  if (!running || isBot) return;
   flight.turbo = t;
   $('turboChip').textContent = t === 1 ? 'TURBO' : turboName(t);
   $('turboChip').classList.toggle('on', t > 1);
   message(t === 1 ? 'Turbo off — normal speed' : `🚀 ${turboName(t)} — ${t}× speed!`, 1.8);
 }
-input.on('turbo', () => setTurbo((flight.turbo % 3) + 1));
-input.on('turbo1', () => setTurbo(1));
-input.on('turbo2', () => setTurbo(2));
-input.on('turbo3', () => setTurbo(3));
+input.on('turbo', () => (isBot ? botSmash() : setTurbo((flight.turbo % 3) + 1)));
+input.on('turbo1', () => !isBot && setTurbo(1));
+input.on('turbo2', () => !isBot && setTurbo(2));
+input.on('turbo3', () => !isBot && setTurbo(3));
 input.on('map', toggleMap);
 input.on('menuStart', () => !running && start(false));
 input.on('menuAir', () => !running && start(true));
@@ -1434,6 +1470,127 @@ input.on('mute', () => sound.toggle());
 input.on('pause', () => (running ? $('helpBtn').onclick() : pausedFlight && $('resumeBtn').onclick()));
 input.on('invert', () => message(input.invertPitch ? 'Pitch inverted (flight-sim style)' : 'Pitch normal', 1.5));
 
+// ------------------------------------------------------------------ robot mode
+// F (or the 🤖 button) unfolds the vehicle into a giant robot and back. On the
+// ground the robot walks; changing in the air drops it, and it lands with a
+// stomp. Changing back on the ground parks the vehicle there; in the air (off a
+// jump or a rooftop) it flies off.
+const Y_AXIS = new THREE.Vector3(0, 1, 0);
+function transform() {
+  if (!running || autoLand || (!isBot && flight.crashed)) return;
+  if (morph) finishMorph(); // changing again mid-change: skip to the end of the first
+  const from = plane.group;
+  if (!isBot) {
+    const p = flight.pos;
+    const yaw = -THREE.MathUtils.degToRad(flight.heading);
+    bot.walk.place(new THREE.Vector3(p.x, p.y - plane.gearHeight, p.z), yaw, flight.vel);
+    vehicle = { model: plane, flight };
+    plane = bot.model;
+    flight = bot.walk;
+    isBot = true;
+    message(input.isTouch ? '🤖 Robot mode! SMASH buildings, GRAB things and throw them'
+      : '🤖 Robot mode!<small>X smash · G grab and throw · Space jump (hold for jets) · Shift run · F change back</small>', 4);
+  } else {
+    rampage.release(flight);
+    const p = flight.pos;
+    const yaw = flight.yaw;
+    const parked = flight.onGround && p.y - world.heightAt(p.x, p.z) < 1.5;
+    const { turbo } = vehicle.flight;
+    plane = vehicle.model;
+    flight = vehicle.flight;
+    vehicle = null;
+    isBot = false;
+    parked ? flight.reset() : flight.resetAirborne();
+    flight.turbo = turbo || 1;
+    flight.pos.set(p.x, p.y + plane.gearHeight + (parked ? 0 : 3), p.z);
+    if (isHeli) {
+      flight.yaw = yaw;
+      flight._updateQuat();
+    } else {
+      flight.quat.setFromAxisAngle(Y_AXIS, yaw);
+      tilt = parked ? GROUND_TILT : 0;
+    }
+    if (parked && world.isWater(p.x, p.z)) flight.floats = true; // changing back in a lake: floats out
+    input.syncThrottle(flight.throttle);
+    input.resetLift();
+    wasOnGround.v = flight.onGround;
+    message(parked ? 'Back to the vehicle. Ready for takeoff!' : 'Back to the vehicle. Fly!', 2);
+  }
+  morph = { t: 0, from, to: plane.group };
+  plane.group.visible = true;
+  camInit = false;
+  trail = [];
+  sound.blip('transform');
+  setBotUi();
+  if (window.__game) Object.assign(window.__game, { flight, plane });
+}
+
+function finishMorph() {
+  if (!morph) return;
+  morph.from.visible = false;
+  morph.from.scale.setScalar(1);
+  morph.to.scale.setScalar(1);
+  morph = null;
+}
+
+/** Back to the vehicle at once, with no animation (restarts, menu changes). */
+function leaveBot() {
+  finishMorph();
+  if (!isBot) return;
+  rampage?.release(flight);
+  bot.model.group.visible = false;
+  plane = vehicle.model;
+  flight = vehicle.flight;
+  plane.group.visible = true;
+  vehicle = null;
+  isBot = false;
+  setBotUi();
+  if (window.__game) Object.assign(window.__game, { flight, plane });
+}
+
+/** The shape change: the old shape spins and shrinks while the new one grows. */
+function updateMorph(dt) {
+  morph.t = Math.min(1, morph.t + dt / 0.55);
+  const u = morph.t * morph.t * (3 - 2 * morph.t);
+  morph.from.position.copy(plane.group.position);
+  morph.from.scale.setScalar(Math.max(0.001, 1 - u));
+  morph.from.rotation.y += dt * 14;
+  morph.to.scale.setScalar(Math.max(0.001, u));
+  if (morph.t >= 1) finishMorph();
+}
+
+function setBotUi() {
+  document.body.classList.toggle('bot', isBot);
+  input.botMode = isBot;
+  for (const [act, label] of [['brake', ['BRAKE', 'JUMP']], ['floats', ['FLOATS', 'GRAB']]]) {
+    document.querySelector(`#touchButtons [data-act=${act}]`).textContent = label[+isBot];
+  }
+  $('turboChip').textContent = isBot ? 'SMASH' : flight.turbo > 1 ? turboName(flight.turbo) : 'TURBO';
+  $('turboChip').classList.toggle('on', !isBot && flight.turbo > 1);
+  $('botChip').classList.toggle('on', isBot);
+  updateBotHud();
+}
+
+function updateBotHud() {
+  const n = rampage?.total || 0;
+  $('botHud').hidden = !isBot && !n;
+  $('botHud').textContent = `🤖 💥 ${n} smashed${rampage?.held ? ` · holding ${props.info(rampage.held.item.kind).name}` : ''}`;
+}
+function botSmash() {
+  if (!running || !isBot) return;
+  rampage.smash(flight);
+  setTimeout(updateBotHud, 300);
+}
+function botGrab() {
+  if (!running || !isBot) return;
+  rampage.grabOrThrow(flight);
+  updateBotHud();
+}
+input.on('transform', transform);
+input.on('smash', botSmash);
+input.on('grab', botGrab);
+setInterval(() => isBot && updateBotHud(), 500);
+
 // ------------------------------------------------------------------ airplane pose
 // Tail-dragger: sits nose-up on the ground and lifts its tail as it speeds up.
 // The tilt pivots around the main wheels' contact point so they stay on the ground.
@@ -1441,6 +1598,12 @@ let tilt = 0;
 const tiltQ = new THREE.Quaternion();
 const AXIS_X = new THREE.Vector3(1, 0, 0);
 function poseAirplane(dt) {
+  if (isBot) {
+    plane.group.position.copy(flight.pos);
+    plane.group.quaternion.copy(flight.quat);
+    plane.animate({ speed: flight.speed, onGround: flight.onGround, vy: flight.vel.y, wading: flight.onWater, carrying: !!rampage.held }, dt);
+    return;
+  }
   if (isHeli) {
     plane.group.position.copy(flight.pos);
     plane.group.quaternion.copy(flight.quat);
@@ -1476,7 +1639,7 @@ function recordTrail(dt) {
 }
 
 function respawnHere() {
-  if (!running || !flight.crashed) return;
+  if (!running || !flight.crashed || isBot) return;
   // About 3 seconds before the crash (or the oldest point we have).
   const snap = trail[Math.max(0, trail.length - 7)] || { pos: flight.pos.clone(), heading: flight.heading };
   const { floats, turbo } = flight;
@@ -1553,6 +1716,7 @@ function findLandingSpot(l) {
 }
 
 function startAutoLand() {
+  if (isBot) return;
   const l = autoLandTarget;
   if (!l || autoLand || flight.crashed || flight.onGround) return;
   const spot = findLandingSpot(l);
@@ -1623,7 +1787,7 @@ function updateAutoLand(dt) {
 }
 
 function updateAutoLandButton() {
-  const l = !autoLand && !flight.crashed && !flight.onGround ? nearestLandmark() : null;
+  const l = !isBot && !autoLand && !flight.crashed && !flight.onGround ? nearestLandmark() : null;
   if (l !== autoLandTarget) {
     autoLandTarget = l;
     if (l) $('autoLandName').textContent = l.name;
@@ -1636,7 +1800,7 @@ function updateAutoLandButton() {
 // off from Google's real 3D ground (and the tiles load after the start). While
 // the vehicle is parked or rolling (not climbing), keep it on the real surface.
 function snapToGoogleGround() {
-  if (!google || flight.crashed || !flight.onGround || flight.verticalSpeed > 0.05) return;
+  if (!google || isBot || flight.crashed || !flight.onGround || flight.verticalSpeed > 0.05) return;
   const g = google.heightAt(flight.pos.x, flight.pos.z);
   if (g !== null) flight.pos.y = g + plane.gearHeight;
 }
@@ -1655,12 +1819,13 @@ function frame() {
   if (plane && mp.room) {
     mp.update(dt, {
       group: plane.group, city: settings.city, vehicle: settings.vehicle, speed: flight.speed,
-      turbo: flight.turbo || 1, floats: !!flight.floats, crashed: flight.crashed,
+      turbo: flight.turbo || 1, floats: !!flight.floats, crashed: flight.crashed, bot: isBot,
       cash: beerRun?.active ? beerRun.cash : undefined,
     });
   }
   if (running) {
     const ctl = input.read();
+    if (morph) updateMorph(dt);
     if (autoLand) {
       updateAutoLand(dt);
     } else if (!flight.crashed) {
@@ -1687,7 +1852,9 @@ function frame() {
     updateFloats(dt);
     updateBoosters(dt);
     poseAirplane(dt);
-    if (!isHeli) {
+    rampage.update(dt, isBot ? flight : null);
+    if (google) props.settle(flight.pos.x, flight.pos.z, 500);
+    if (!isHeli && !isBot) {
       const rpm = 8 + flight.throttle * 60;
       plane.propeller.rotation.z += rpm * dt;
       plane.propDisc.material.opacity = flight.throttle * 0.25;
@@ -1703,15 +1870,15 @@ function frame() {
     if (!building && plane) {
       snapToGoogleGround();
       poseAirplane(dt);
-      if (!isHeli) plane.propeller.rotation.z += 10 * dt;
+      if (!isHeli && !isBot) plane.propeller.rotation.z += 10 * dt;
       const t = timer.getElapsed() * 0.18;
       const p = plane.group.position;
-      const r = isHeli ? 22 : 26;
-      camera.position.set(p.x + Math.cos(t) * r, p.y + 7, p.z + Math.sin(t) * r);
+      const r = isBot ? 40 : isHeli ? 22 : 26;
+      camera.position.set(p.x + Math.cos(t) * r, p.y + (isBot ? 16 : 7), p.z + Math.sin(t) * r);
       const ground = world.heightAt(camera.position.x, camera.position.z) + 2;
       camera.position.y = Math.max(camera.position.y, ground);
       camera.up.set(0, 1, 0);
-      camera.lookAt(p.x, p.y + 1, p.z);
+      camera.lookAt(p.x, p.y + (isBot ? 7 : 1), p.z);
       const side = $('menuPanel').getBoundingClientRect().width;
       const wide = innerWidth > side * 1.6;
       if (wide) camera.setViewOffset(innerWidth, innerHeight, -side / 2, 0, innerWidth, innerHeight);
@@ -1736,7 +1903,7 @@ frame();
 
 // Test hook: ?debug exposes the simulation for automated checks.
 if (new URLSearchParams(location.search).has('debug')) {
-  window.__game = { world, flight, plane, start, google, mp, camera, autoLandApi: { start: (l) => { autoLandTarget = l; startAutoLand(); }, step: (dt) => autoLand && updateAutoLand(dt), active: () => !!autoLand }, step: (dt, ctl) => flight.update(dt, ctl), beer: () => beerRun };
+  window.__game = { world, flight, plane, start, google, mp, camera, autoLandApi: { start: (l) => { autoLandTarget = l; startAutoLand(); }, step: (dt) => autoLand && updateAutoLand(dt), active: () => !!autoLand }, step: (dt, ctl) => flight.update(dt, ctl), beer: () => beerRun, transform, bot: () => ({ isBot, walk: bot.walk, rampage, props }), botSmash, botGrab };
   window.__tilt = input.tilt;
   window.__traffic = traffic;
 }

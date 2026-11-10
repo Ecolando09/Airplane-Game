@@ -1998,3 +1998,38 @@ body.beer #buddies {
     top: 58%;
   }
 }
+
+/* ---------- robot mode */
+#botHud {
+  position: fixed;
+  left: 12px;
+  bottom: 44px;
+  font-weight: 800;
+  font-size: 14px;
+  padding: 6px 12px;
+}
+
+body.is-touch #botHud {
+  left: 50%;
+  bottom: 62px;
+  transform: translateX(-50%);
+  font-size: 12px;
+  padding: 3px 10px;
+}
+
+/* The robot walks by stick: no throttle, lift or rudder, and the stick shows even in tilt mode. */
+body.bot #throttleTouch,
+body.bot #liftTouch,
+body.bot #rudderTouch,
+body.bot #recenter,
+body.bot #touchButtons [data-act='tilt'] {
+  display: none !important;
+}
+
+body.bot #stick[hidden] {
+  display: block !important;
+}
+
+#botChip.on {
+  background: #4fd8ff;
+}

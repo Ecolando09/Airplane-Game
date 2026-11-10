@@ -73,7 +73,8 @@ export class Traffic {
     this.wheels = new THREE.InstancedMesh(wheelGeo, legoMaterial({ color: LEGO.black }), n);
     const c = new THREE.Color();
     this.cars.forEach((car, i) => {
-      this.body.setColorAt(i, c.setHex(car.truck ? LEGO.lightGray : COLORS[Math.floor(rand() * COLORS.length)]));
+      car.color = car.truck ? LEGO.lightGray : COLORS[Math.floor(rand() * COLORS.length)];
+      this.body.setColorAt(i, c.setHex(car.color));
     });
     for (const m of [this.body, this.cabin, this.wheels]) {
       m.castShadow = true;
@@ -92,6 +93,7 @@ export class Traffic {
   update(dt) {
     const { _m: m, _q: q, _p: p, _s: sc } = this;
     this.cars.forEach((car, i) => {
+      if (car.gone) return;
       const r = car.road;
       car.s += car.speed * dt * car.dir;
       if (car.s > r.len) {
@@ -123,6 +125,10 @@ export class Traffic {
       const x = x0 + (x1 - x0) * t - dz * lane;
       const z = z0 + (z1 - z0) * t + dx * lane;
       p.set(x, this.world.heightAt(x, z) + 0.2, z);
+      car.x = x;
+      car.z = z;
+      car.y = p.y;
+      car.yaw = Math.atan2(-dx, -dz);
       q.setFromAxisAngle(this._up, Math.atan2(-dx, -dz));
       // Slightly chunkier than life so they read from the air.
       sc.set(1.3, car.truck ? 1.75 : 1.3, car.truck ? 2.2 : 1.3);
@@ -134,5 +140,26 @@ export class Traffic {
     this.body.instanceMatrix.needsUpdate = true;
     this.cabin.instanceMatrix.needsUpdate = true;
     this.wheels.instanceMatrix.needsUpdate = true;
+  }
+
+  /** Cars within `r` of (x, z) that are still driving. */
+  near(x, z, r) {
+    return this.cars.filter((car) => !car.gone && car.x !== undefined && Math.hypot(car.x - x, car.z - z) < r);
+  }
+
+  /** Take a car off the road (grabbed, kicked or squashed). */
+  remove(car) {
+    car.gone = true;
+    const i = this.cars.indexOf(car);
+    this._m.makeScale(0, 0, 0);
+    for (const m of [this.body, this.cabin, this.wheels]) {
+      m.setMatrixAt(i, this._m);
+      m.instanceMatrix.needsUpdate = true;
+    }
+  }
+
+  /** Put every removed car back on its street. */
+  restore() {
+    for (const car of this.cars) car.gone = false;
   }
 }

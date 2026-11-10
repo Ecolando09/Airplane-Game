@@ -5,6 +5,7 @@ import { buildLandmark } from './landmarks.js';
 
 const CHUNK = 1600; // meters per culling chunk
 const GRID = 200; // meters per collision cell
+const RUBBLE = 2.2; // height of the slab a knocked-down building leaves, above its base
 
 const canvasTex = (w, h, draw) => {
   const cv = document.createElement('canvas');
@@ -50,6 +51,7 @@ export class World {
     this.rand = rng(42);
     this.colliders = new Map();
     this.animate = []; // per-frame updates for moving landmarks: fn(time)
+    this._collapses = []; // buildings on their way down
 
     this._setupElevation();
     this._buildWaterMask();
@@ -149,6 +151,7 @@ export class World {
       l.pin.position.y = 110 + Math.sin(t * 2) * 5;
     }
     for (const fn of this.animate) fn(t);
+    this._updateCollapses(t);
   }
 
   // ---------------------------------------------------------------- terrain
@@ -431,7 +434,7 @@ export class World {
     const chunks = new Map();
     const chunk = (x, z) => {
       const k = this._chunkKey(x, z);
-      if (!chunks.has(k)) chunks.set(k, { boxes: [], roofs: [], polys: [] });
+      if (!chunks.has(k)) chunks.set(k, { boxes: [], roofs: [], polys: [], polyCols: [] });
       return chunks.get(k);
     };
 
@@ -455,7 +458,8 @@ export class World {
       q.setFromAxisAngle(up, -ang);
       m.compose(new THREE.Vector3(x, base, z), q, new THREE.Vector3(w, top - base, d));
       const ch = chunk(x, z);
-      ch.boxes.push([m.clone(), col.setHex(pick(house ? WALLS : BIG, r())).clone()]);
+      const cl = { t: 'box', x, z, c, s, hw: w / 2, hd: d / 2, base, h: top - base };
+      ch.boxes.push([m.clone(), col.setHex(pick(house ? WALLS : BIG, r())).clone(), cl, 'wall']);
       let roofTop = top;
       if (house) {
         const rh = Math.min(w, d) * 0.42;
@@ -464,12 +468,12 @@ export class World {
         q.setFromAxisAngle(up, -ang + (ridgeAlongW ? 0 : Math.PI / 2));
         m.compose(new THREE.Vector3(x, top, z), q,
           new THREE.Vector3(ridgeAlongW ? w + 0.6 : d + 0.6, rh, ridgeAlongW ? d + 0.6 : w + 0.6));
-        ch.roofs.push([m.clone(), col.setHex(pick(ROOFS, r())).clone()]);
+        ch.roofs.push([m.clone(), col.setHex(pick(ROOFS, r())).clone(), cl, 'roof']);
         roofTop += rh;
       }
       const R = Math.hypot(w, d) / 2;
-      this._addCollider({ t: 'box', x, z, c, s, hw: w / 2, hd: d / 2, top: roofTop },
-        x - R + this.halfX, z - R + this.halfZ, x + R + this.halfX, z + R + this.halfZ);
+      cl.top = roofTop;
+      this._addCollider(cl, x - R + this.halfX, z - R + this.halfZ, x + R + this.halfX, z + R + this.halfZ);
     }
 
     for (const { p, h } of this.data.polys) {
@@ -500,9 +504,12 @@ export class World {
       const colors = new Float32Array(geo.attributes.position.count * 3);
       for (let i = 0; i < colors.length; i += 3) col.toArray(colors, i);
       geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-      chunk((minx + maxx) / 2, (minz + maxz) / 2).polys.push(geo);
-      this._addCollider({ t: 'poly', p, top, minx, minz, maxx, maxz },
-        minx + this.halfX, minz + this.halfZ, maxx + this.halfX, maxz + this.halfZ);
+      const cl = { t: 'poly', p, top, base, h: top - base, minx, minz, maxx, maxz, color: col.getHex(),
+        x: (minx + maxx) / 2, z: (minz + maxz) / 2 };
+      const pc = chunk(cl.x, cl.z);
+      pc.polys.push(geo);
+      pc.polyCols.push(cl);
+      this._addCollider(cl, minx + this.halfX, minz + this.halfZ, maxx + this.halfX, maxz + this.halfZ);
     }
 
     const polyMat = legoMaterial({ studs: 2.4, windows: true, vertexColors: true });
@@ -510,9 +517,11 @@ export class World {
       for (const [list, geo, mat] of [[ch.boxes, boxGeo, wallMat], [ch.roofs, roofGeo, roofMat]]) {
         if (!list.length) continue;
         const im = new THREE.InstancedMesh(geo, mat, list.length);
-        list.forEach(([mm, cc], i) => {
+        list.forEach(([mm, cc, cl, part], i) => {
           im.setMatrixAt(i, mm);
           im.setColorAt(i, cc);
+          cl[part] = [im, i]; // so the building can be knocked down later
+          if (part === 'wall') cl.color = cc.getHex();
         });
         im.computeBoundingSphere();
         im.castShadow = im.receiveShadow = true;
@@ -521,6 +530,11 @@ export class World {
       }
       if (ch.polys.length) {
         const mesh = new THREE.Mesh(mergeGeometries(ch.polys), polyMat);
+        let v0 = 0;
+        ch.polys.forEach((g, i) => {
+          Object.assign(ch.polyCols[i], { mesh, v0, vn: g.attributes.position.count });
+          v0 += g.attributes.position.count;
+        });
         mesh.castShadow = mesh.receiveShadow = true;
         this.scene.add(mesh);
         this.meshes.push(mesh);
@@ -552,10 +566,10 @@ export class World {
       q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), r() * Math.PI);
       m.compose(new THREE.Vector3(x, y, z), q, new THREE.Vector3(s, s, s));
       const c = col.setHex(pick(LEAVES, r())).clone();
-      ch.trunk.push([m.clone()]);
-      (pine ? ch.pine : ch.round).push([m.clone(), c]);
-      this._addCollider({ t: 'tree', x, z, rad: 3.5 * s, top: y + 13 * s },
-        x - 4 + this.halfX, z - 4 + this.halfZ, x + 4 + this.halfX, z + 4 + this.halfZ);
+      const cl = { t: 'tree', x, z, rad: 3.5 * s, top: y + 13 * s, base: y, h: 13 * s, color: c.getHex(), parts: [] };
+      ch.trunk.push([m.clone(), null, cl]);
+      (pine ? ch.pine : ch.round).push([m.clone(), c, cl]);
+      this._addCollider(cl, x - 4 + this.halfX, z - 4 + this.halfZ, x + 4 + this.halfX, z + 4 + this.halfZ);
     }
     for (const ch of chunks.values()) {
       const parts = [[ch.trunk, trunkGeo, trunkMat], [ch.round, roundGeo, leafMat],
@@ -563,9 +577,10 @@ export class World {
       for (const [list, geo, mat] of parts) {
         if (!list.length) continue;
         const im = new THREE.InstancedMesh(geo, mat, list.length);
-        list.forEach(([mm, cc], i) => {
+        list.forEach(([mm, cc, cl], i) => {
           im.setMatrixAt(i, mm);
           if (cc) im.setColorAt(i, cc);
+          cl.parts.push([im, i]);
         });
         im.computeBoundingSphere();
         im.castShadow = true;
@@ -787,6 +802,150 @@ export class World {
     return { ...p, heading };
   }
 
+  // -------------------------------------------------------------- knocking things down
+  // Buildings and trees from the map data can be destroyed (robot mode, thrown
+  // objects). A building sinks into a low slab of rubble; a tree falls over.
+  // Hand-modeled landmarks have no entry here and always stand.
+
+  /** Can this collider be knocked down? */
+  breakable(c) {
+    return !c.dead && !!(c.wall || c.mesh || c.parts);
+  }
+
+  /** Live colliders whose grid cells are within `r` of (x, z). */
+  collidersNear(x, z, r) {
+    const out = new Set();
+    const gx0 = Math.floor((x - r + this.halfX) / GRID);
+    const gx1 = Math.floor((x + r + this.halfX) / GRID);
+    const gz0 = Math.floor((z - r + this.halfZ) / GRID);
+    const gz1 = Math.floor((z + r + this.halfZ) / GRID);
+    for (let gx = gx0; gx <= gx1; gx++) {
+      for (let gz = gz0; gz <= gz1; gz++) {
+        for (const c of this.colliders.get(gx * 100000 + gz) || []) if (!c.dead) out.add(c);
+      }
+    }
+    return out;
+  }
+
+  /** Is (x, z) within `rad` of the collider's footprint? */
+  inFootprint(c, x, z, rad = 0) {
+    if (c.t === 'box') {
+      const dx = x - c.x;
+      const dz = z - c.z;
+      return Math.abs(dx * c.c + dz * c.s) < c.hw + rad && Math.abs(-dx * c.s + dz * c.c) < c.hd + rad;
+    }
+    if (c.t === 'tree') return Math.hypot(x - c.x, z - c.z) < c.rad * 0.5 + rad;
+    if (x < c.minx - rad || x > c.maxx + rad || z < c.minz - rad || z > c.maxz + rad) return false;
+    if (pointInPoly(x, z, c.p)) return true;
+    if (!rad) return false;
+    return [[rad, 0], [-rad, 0], [0, rad], [0, -rad]].some(([a, b]) => pointInPoly(x + a, z + b, c.p));
+  }
+
+  /** For walking: a wall in the way at (x, z) for something whose feet are at feetY? */
+  blockedAt(x, z, feetY, rad, height) {
+    for (const c of this.colliders.get(Math.floor((x + this.halfX) / GRID) * 100000 + Math.floor((z + this.halfZ) / GRID)) || []) {
+      if (c.dead || c.t === 'tree') continue;
+      if (c.top < feetY + 2.5 || (c.bottom ?? -Infinity) > feetY + height) continue; // low enough to step on, or overhead
+      if (this.inFootprint(c, x, z, rad)) return c;
+    }
+    return null;
+  }
+
+  /** For walking: the height to stand at, counting roofs that are at or below step height. */
+  standHeight(x, z, feetY) {
+    let y = this.heightAt(x, z);
+    for (const c of this.colliders.get(Math.floor((x + this.halfX) / GRID) * 100000 + Math.floor((z + this.halfZ) / GRID)) || []) {
+      if (c.dead || c.t === 'tree' || c.bottom !== undefined) continue;
+      if (c.top > y && c.top <= feetY + 2.5 && this.inFootprint(c, x, z)) y = c.top;
+    }
+    return y;
+  }
+
+  /**
+   * Knock down a building or tree. `dir` (x, z) is the way a tree falls.
+   * Returns false for things that can't break (landmarks).
+   */
+  destroy(c, dir = { x: 1, z: 0 }) {
+    if (!this.breakable(c)) return false;
+    c.dead = true;
+    this.destroyed ||= [];
+    const saved = { c, instances: [] };
+    const m = new THREE.Matrix4();
+    const pos = new THREE.Vector3();
+    const quat = new THREE.Quaternion();
+    const scale = new THREE.Vector3();
+    const keep = (im, i) => {
+      im.getMatrixAt(i, m);
+      saved.instances.push([im, i, m.clone()]);
+      m.decompose(pos, quat, scale);
+    };
+    if (c.t === 'tree') {
+      // Fall flat, away from whatever hit it.
+      const fall = new THREE.Quaternion().setFromAxisAngle(
+        new THREE.Vector3(dir.z, 0, -dir.x).normalize(), Math.PI / 2 - 0.08);
+      for (const [im, i] of c.parts) {
+        keep(im, i);
+        im.setMatrixAt(i, m.compose(pos, fall.clone().multiply(quat), scale));
+        im.instanceMatrix.needsUpdate = true;
+      }
+    } else if (c.t === 'box') {
+      keep(...c.wall);
+      this._collapses.push({ im: c.wall[0], i: c.wall[1], pos: pos.clone(), quat: quat.clone(), scale: scale.clone(), t0: null });
+      if (c.roof) {
+        keep(...c.roof);
+        c.roof[0].setMatrixAt(c.roof[1], m.makeScale(0, 0, 0));
+        c.roof[0].instanceMatrix.needsUpdate = true;
+      }
+    } else {
+      // Part of a merged mesh: squash its vertices down to a rubble slab.
+      const attr = c.mesh.geometry.attributes.position;
+      saved.ys = new Float32Array(c.vn);
+      const top = c.base + RUBBLE;
+      for (let k = 0; k < c.vn; k++) {
+        const y = attr.getY(c.v0 + k);
+        saved.ys[k] = y;
+        if (y > top) attr.setY(c.v0 + k, top);
+      }
+      attr.needsUpdate = true;
+    }
+    this.destroyed.push(saved);
+    return true;
+  }
+
+  /** Buildings sink into their rubble slab over half a second. */
+  _updateCollapses(t) {
+    if (!this._collapses.length) return;
+    const m = new THREE.Matrix4();
+    const s = new THREE.Vector3();
+    this._collapses = this._collapses.filter((k) => {
+      k.t0 ??= t;
+      const u = Math.min(1, (t - k.t0) / 0.5);
+      const h = k.scale.y + (RUBBLE - k.scale.y) * u * u;
+      k.im.setMatrixAt(k.i, m.compose(k.pos, k.quat, s.set(k.scale.x, Math.min(k.scale.y, h), k.scale.z)));
+      k.im.instanceMatrix.needsUpdate = true;
+      return u < 1 && !k.cancel;
+    });
+  }
+
+  /** Put every knocked-down building and tree back. */
+  repair() {
+    for (const k of this._collapses) k.cancel = true;
+    this._collapses = [];
+    for (const { c, instances, ys } of this.destroyed || []) {
+      c.dead = false;
+      for (const [im, i, m] of instances) {
+        im.setMatrixAt(i, m);
+        im.instanceMatrix.needsUpdate = true;
+      }
+      if (ys) {
+        const attr = c.mesh.geometry.attributes.position;
+        for (let k = 0; k < c.vn; k++) attr.setY(c.v0 + k, ys[k]);
+        attr.needsUpdate = true;
+      }
+    }
+    this.destroyed = [];
+  }
+
   // -------------------------------------------------------------- collision
   /** True if a sphere at `p` with radius `rad` touches a building or tree. */
   hitsObstacle(p, rad) {
@@ -795,6 +954,7 @@ export class World {
     );
     if (!list) return false;
     for (const c of list) {
+      if (c.dead) continue; // knocked down
       if (p.y - rad > c.top || p.y + rad < c.bottom) continue; // bottom: open space under bridges and arches
       if (c.t === 'box') {
         const dx = p.x - c.x;

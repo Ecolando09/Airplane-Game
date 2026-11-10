@@ -17,6 +17,7 @@ export class Input {
 
     const actions = {
       KeyC: 'cam', KeyR: 'reset', KeyM: 'mute', KeyI: 'invert', KeyB: 'floats', KeyN: 'map',
+      KeyF: 'transform', KeyG: 'grab', KeyX: 'smash',
       KeyT: 'turbo', KeyL: 'autoland', Enter: 'respawn', NumpadEnter: 'respawn', Digit1: 'turbo1', Digit2: 'turbo2', Digit3: 'turbo3', Escape: 'pause',
     };
     addEventListener('keydown', (e) => {
@@ -50,8 +51,8 @@ export class Input {
     let liftSet;
     let brake = k('Space') === 1;
 
-    // Touch: tilt steering or the on-screen stick
-    if (this.tilt.active) {
+    // Touch: tilt steering or the on-screen stick (the robot always walks by stick)
+    if (this.tilt.active && !this.botMode) {
       roll = this.tilt.roll;
       pitch = this.tilt.pitch;
     } else if (this.touchStick.x || this.touchStick.y) {
@@ -95,7 +96,7 @@ export class Input {
       if (gp.buttons[0]?.pressed) brake = true;
     }
 
-    if (this.invertPitch) pitch = -pitch;
+    if (this.invertPitch && !this.botMode) pitch = -pitch;
     return { pitch, roll, yaw, throttle, throttleSet, liftSet, brake };
   }
 
@@ -225,13 +226,13 @@ export class Input {
   }
 
   /**
-   * Gamepad buttons that trigger actions (Xbox layout): B floats, Y camera,
-   * RB turbo, Menu restart, View big map, A starts from the menu. Call once per frame.
+   * Gamepad buttons that trigger actions (Xbox layout): B floats (robot: grab),
+   * X robot mode, Y camera, RB turbo (robot: smash), Menu restart, View big map, A starts from the menu. Call once per frame.
    */
   pollButtons(inMenu) {
     const gp = navigator.getGamepads?.().find((g) => g);
     if (!gp) return;
-    const map = inMenu ? { 0: 'menuStart', 3: 'menuAir' } : { 1: 'floats', 3: 'cam', 5: 'turbo', 9: 'reset', 8: 'map' };
+    const map = inMenu ? { 0: 'menuStart', 3: 'menuAir' } : { 1: 'floats', 2: 'transform', 3: 'cam', 5: 'turbo', 9: 'reset', 8: 'map' };
     this._prevButtons ||= [];
     gp.buttons.forEach((b, i) => {
       if (b.pressed && !this._prevButtons[i] && map[i]) this.emit(map[i]);

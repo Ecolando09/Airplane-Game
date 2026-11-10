@@ -20,6 +20,7 @@
         <div class="stat"><b id="hdg">N</b><span id="hdgDeg">000°</span></div>
       </div>
       <div id="buddies" aria-live="polite"></div>
+      <div id="botHud" class="panel" hidden></div>
       <div class="panel" id="over"></div>
       <canvas id="minimap" width="480" height="480" title="Tap to enlarge (N)"></canvas>
       <div id="message"></div>
@@ -63,6 +64,7 @@
       <div id="touchButtons">
         <button class="chip" data-act="tilt">TILT</button>
         <button class="chip" data-act="recenter" id="recenter" hidden>CENTER</button>
+        <button class="chip" id="botChip" data-act="transform">🤖</button>
         <button class="chip" data-act="cam">CAM</button>
         <button class="chip" data-act="brake">BRAKE</button>
         <button class="chip" data-act="floats">FLOATS</button>
@@ -196,14 +198,18 @@
             <div><kbd>B</kbd> floats (land on water) &nbsp; <kbd>T</kbd> turbo (or <kbd>1</kbd><kbd>2</kbd><kbd>3</kbd>)</div>
             <div><kbd>C</kbd> camera &nbsp; <kbd>N</kbd> big map &nbsp; <kbd>R</kbd> restart &nbsp; <kbd>Esc</kbd> menu</div>
             <div><kbd>L</kbd> auto-land (within 500 ft of a landmark)</div>
+            <div><kbd>F</kbd> robot mode: <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> walk · <kbd>Shift</kbd> run · <kbd>Space</kbd> jump (hold for jets)</div>
+            <div>Robot: <kbd>X</kbd> smash · <kbd>G</kbd> grab a car, boat or boulder, <kbd>G</kbd> again to throw it</div>
             <div><kbd>I</kbd> invert pitch &nbsp; <kbd>M</kbd> sound</div>
           </div>
           <p class="tip heli-only">Push LIFT up (or hold W) to take off, then raise SPEED to fly. To land, stop and
             bring LIFT down; the copter cushions the touchdown.</p>
           <p class="tip plane-only">Takeoff: full throttle, gently pull up at about 55 kt. Landing: line up with the
             runway, ease the throttle back and descend gently; the plane cushions itself near the ground.</p>
+          <p class="tip">🤖 Tap the robot button (or press F) any time to turn into a giant robot. Smash buildings, stomp
+            by jumping from high up, and throw cars. Restarting puts the city back together.</p>
           <p class="tip menu-tip-keys">Xbox controller: left stick to fly, triggers for throttle, A brakes, B floats,
-            Y camera, RB turbo<span class="heli-only">, right stick lift</span>.</p>
+            X robot (then A jump, B grab, RB smash), Y camera, RB turbo<span class="heli-only">, right stick lift</span>.</p>
         </details>
 
         <p class="credit">Map data © OpenStreetMap contributors, Overture Maps Foundation. Elevation: Mapzen
