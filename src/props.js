@@ -35,9 +35,9 @@ const wheels = (xs, zs, r = 0.5) => xs.flatMap((x) => zs.map((z) => cyl(r, 0.4, 
 // name: what the game calls it; r: rough radius in meters (for grabbing and
 // hitting things); tint: comes in several colors.
 const KINDS = {
-  car: { name: 'car', r: 3.2, tint: true, make: () => [
+  car: { drive: true, name: 'car', r: 3.2, tint: true, make: () => [
     box(3.1, 1.4, 6.8, WHITE, 0, 1.2, 0), box(2.7, 1.2, 3.4, 0x2a3d4d, 0, 2.5, 0.4), ...wheels([-1.5, 1.5], [-2.2, 2.2], 0.6)] },
-  bus: { name: 'school bus', r: 5.5, make: () => [
+  bus: { drive: true, name: 'school bus', r: 5.5, make: () => [
     box(3.4, 3.2, 11, LEGO.yellow, 0, 2.4, 0), box(3.5, 0.9, 9, 0x2a3d4d, 0, 3.1, 0.6), box(3.4, 1.6, 1.6, LEGO.yellow, 0, 1.6, -6.2),
     box(3.5, 0.3, 11, LEGO.black, 0, 1.5, 0), ...wheels([-1.6, 1.6], [-4, 3.6], 0.8)] },
   container: { name: 'shipping container', r: 5, tint: true, make: () => [
@@ -50,7 +50,7 @@ const KINDS = {
   boulder: { name: 'boulder', r: 2.6, make: () => [part(new THREE.DodecahedronGeometry(2.6, 0), 0x8d8f8a, 0, 1.9, 0)] },
   log: { name: 'log', r: 3, make: () => [cyl(0.9, 7, LEGO.reddishBrown, 0, 0.9, 0, 'x'), cyl(0.7, 0.2, LEGO.tan, 3.55, 0.9, 0, 'x'), cyl(0.7, 0.2, LEGO.tan, -3.55, 0.9, 0, 'x')] },
   hay: { name: 'hay bale', r: 2, make: () => [cyl(1.8, 2.6, 0xd8b84a, 0, 1.8, 0, 'x'), cyl(1.85, 0.2, 0xb8962a, 0, 1.8, 0, 'x')] },
-  cart: { name: 'golf cart', r: 2, make: () => [
+  cart: { drive: true, name: 'golf cart', r: 2, make: () => [
     box(1.8, 0.7, 3.2, LEGO.white, 0, 0.9, 0), box(1.8, 0.15, 2.6, LEGO.green, 0, 2.6, 0.1), box(0.12, 1.6, 0.12, LEGO.black, -0.8, 1.8, -1), box(0.12, 1.6, 0.12, LEGO.black, 0.8, 1.8, -1),
     box(0.12, 1.6, 0.12, LEGO.black, -0.8, 1.8, 1.2), box(0.12, 1.6, 0.12, LEGO.black, 0.8, 1.8, 1.2), ...wheels([-0.9, 0.9], [-1.1, 1.1], 0.4)] },
   ball: { name: 'giant soccer ball', r: 2.2, bouncy: true, make: () => [
@@ -65,11 +65,11 @@ const KINDS = {
   plane: { name: 'parked plane', r: 5, tint: true, make: () => [
     box(1.6, 1.6, 8, LEGO.white, 0, 2, 0), box(11, 0.3, 2, WHITE, 0, 2.9, -1), box(4, 0.25, 1.2, WHITE, 0, 2.2, 3.6),
     box(0.25, 1.8, 1.4, WHITE, 0, 3.2, 3.6), box(0.2, 2.6, 0.3, LEGO.black, 0, 2, -4.2), ...wheels([-1.2, 1.2], [-1.2], 0.5)] },
-  tanker: { name: 'fuel truck', r: 4.5, make: () => [
+  tanker: { drive: true, name: 'fuel truck', r: 4.5, make: () => [
     box(2.8, 2.4, 2.4, LEGO.red, 0, 1.9, -3.4), cyl(1.5, 6, LEGO.lightGray, 0, 2.3, 0.8, 'z'), box(2.8, 0.5, 9, LEGO.darkGray, 0, 0.9, 0),
     ...wheels([-1.4, 1.4], [-3.2, 1, 3.2], 0.7)] },
   marble: { name: 'marble block', r: 2.4, make: () => [box(3.4, 2.6, 3.4, 0xf2f1ec, 0, 1.3, 0), box(3.45, 0.15, 3.45, 0xd9d6cc, 0, 1.6, 0)] },
-  truck: { name: 'ice cream truck', r: 3.6, make: () => [
+  truck: { drive: true, name: 'ice cream truck', r: 3.6, make: () => [
     box(3, 3.2, 6.4, LEGO.white, 0, 2.2, 0.4), box(3, 2, 1.8, LEGO.medAzure, 0, 1.6, -3.6), box(3.1, 0.5, 6.4, 0xff8fc7, 0, 3.9, 0.4),
     part(new THREE.ConeGeometry(0.8, 1.8, 8), LEGO.tan, 0, 4.9, 0.4).rotateX(0), part(new THREE.SphereGeometry(0.9, 8, 6), 0xff8fc7, 0, 6.1, 0.4),
     ...wheels([-1.5, 1.5], [-2.6, 2.4], 0.6)] },
@@ -207,7 +207,8 @@ export class Props {
   _write(it) {
     const k = this.kinds[it.kind];
     this._q.setFromAxisAngle(this._up, it.yaw);
-    k.im.setMatrixAt(it.idx, it.held ? this._m.makeScale(0, 0, 0) : this._m.compose(new THREE.Vector3(it.x, it.y, it.z), this._q, new THREE.Vector3(1, 1, 1)));
+    const sc = it.scale || 1;
+    k.im.setMatrixAt(it.idx, it.held ? this._m.makeScale(0, 0, 0) : this._m.compose(new THREE.Vector3(it.x, it.y, it.z), this._q, new THREE.Vector3(sc, sc, sc)));
     k.im.instanceMatrix.needsUpdate = true;
   }
 
@@ -215,7 +216,7 @@ export class Props {
   add(kind, x, z, yaw = 0, tint = LEGO.white) {
     const k = this.kinds[kind];
     if (k.im.count >= k.cap) return null;
-    const it = { kind, x, z, y: this.world.heightAt(x, z), yaw, tint, idx: k.im.count++, held: false };
+    const it = { kind, x, z, y: this.world.heightAt(x, z), yaw, tint, idx: k.im.count++, held: false, scale: 1 };
     k.im.setColorAt(it.idx, new THREE.Color(k.tint ? tint : 0xffffff));
     k.im.instanceColor.needsUpdate = true;
     this.items.push(it);
@@ -229,7 +230,7 @@ export class Props {
     let bestD = r;
     for (const it of this.items) {
       if (it.held) continue;
-      const dd = Math.hypot(it.x - x, it.z - z) - this.kinds[it.kind].r;
+      const dd = Math.hypot(it.x - x, it.z - z) - this.radius(it);
       if (dd < bestD) {
         bestD = dd;
         best = it;
@@ -240,14 +241,27 @@ export class Props {
 
   /** Objects lying within `r` of (x, z). */
   within(x, z, r) {
-    return this.items.filter((it) => !it.held && Math.hypot(it.x - x, it.z - z) < r + this.kinds[it.kind].r);
+    return this.items.filter((it) => !it.held && Math.hypot(it.x - x, it.z - z) < r + this.radius(it));
+  }
+
+  /** An object's size in meters (its kind's radius times how supersized it is). */
+  radius(it) {
+    return this.kinds[it.kind].r * (it.scale || 1);
   }
 
   /** Take an object off the ground; returns a loose mesh of it to carry or throw. */
   lift(it) {
     it.held = true;
     this._write(it);
-    return this.mesh(it.kind, it.tint);
+    const m = this.mesh(it.kind, it.tint);
+    m.scale.setScalar(it.scale || 1);
+    return m;
+  }
+
+  /** Supersize or shrink an object lying on the ground. */
+  resize(it, scale) {
+    it.scale = scale;
+    if (!it.held) this._write(it);
   }
 
   /** A loose mesh of a kind (for carrying, throwing and other players' hands). */

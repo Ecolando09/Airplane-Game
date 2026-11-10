@@ -109,6 +109,7 @@ export function createRobot(kind) {
   group.add(hands);
 
   let phase = 0;
+  let stepSide = 0;
   let punch = 0; // 1 -> 0 as the swing plays
   let carry = 0;
   /** Pose for this frame. s: { speed, onGround, vy, wading, carrying } */
@@ -124,6 +125,10 @@ export function createRobot(kind) {
     }
     const amount = Math.min(1, s.speed / 14);
     phase += dt * (3 + s.speed * 0.35) * (s.onGround ? 1 : 0.3);
+    // A foot comes down twice per cycle.
+    const side = Math.floor(phase / Math.PI) % 2;
+    if (side !== stepSide && s.onGround && s.speed > 4) api.onStep?.();
+    stepSide = side;
     const swing = s.onGround ? Math.sin(phase) * 0.7 * amount : 0.35;
     legs[0].rotation.x = swing;
     legs[1].rotation.x = s.onGround ? -swing : -0.5;
@@ -139,8 +144,10 @@ export function createRobot(kind) {
     spinner.rotation[spinner.userData.axis] += dt * 18;
   }
 
-  return {
+  const api = {
     group,
+    body,
+    onStep: null,
     kind: 'robot',
     hands,
     animate,
@@ -150,6 +157,7 @@ export function createRobot(kind) {
     gearHeight: 0,
     radius: 2.4,
   };
+  return api;
 }
 
 const Y = new THREE.Vector3(0, 1, 0);
@@ -187,6 +195,9 @@ export class RobotWalk {
     this.ctrl = { pitch: 0, roll: 0, yaw: 0 };
     this.jet = 0;
     this.onSlam = null; // (impact speed) when landing hard
+    this.driving = 0; // size of the supersized car being driven, or 0
+    this.onRam = null; // (collider) while driving: return true if it was knocked down
+    this.onExit = null; // jump pressed while driving
     this._fwd = new THREE.Vector3();
     this._right = new THREE.Vector3();
   }
@@ -219,6 +230,7 @@ export class RobotWalk {
   }
 
   update(dt, input) {
+    if (this.driving) return this._drive(dt, input);
     const w = this.world;
     const c = this.ctrl;
     const k = 1 - Math.exp(-dt * 10);
@@ -230,7 +242,7 @@ export class RobotWalk {
 
     // Walk: ease toward the wanted speed (less grip in the air, slower in water).
     this.onWater = w.isWater(this.pos.x, this.pos.z) && this.pos.y - w.heightAt(this.pos.x, this.pos.z) < 1;
-    const top = (input.throttle > 0 ? RUN : WALK) * (this.onWater ? 0.6 : 1);
+    const top = ((input.run ?? input.throttle > 0) ? RUN : WALK) * (this.onWater ? 0.6 : 1);
     const f = this.forward;
     const r = this.right;
     const wantX = f.x * c.pitch * top + r.x * c.yaw * 12;
@@ -294,6 +306,49 @@ export class RobotWalk {
     }
     this.speed = Math.hypot(this.vel.x, this.vel.z);
     this.verticalSpeed = this.vel.y;
+  }
+
+  /**
+   * Driving a supersized car: `this.driving` is its size (2 to 4). Stick or W/S
+   * for gas and reverse, A/D steer, jump to get out. Nothing stops it: whatever
+   * it runs into is handed to onRam (which knocks it down).
+   */
+  _drive(dt, input) {
+    const w = this.world;
+    const c = this.ctrl;
+    const k = 1 - Math.exp(-dt * 8);
+    c.pitch += (input.pitch - c.pitch) * k;
+    c.roll += (input.roll - c.roll) * k;
+    if (input.brake) return this.onExit?.();
+    const top = Math.min(75, 24 * this.driving);
+    const f0 = this.forward;
+    let along = this.vel.x * f0.x + this.vel.z * f0.z;
+    along += (c.pitch * top - along) * (1 - Math.exp(-dt * 1.6));
+    this.yaw -= c.roll * 1.5 * THREE.MathUtils.clamp(along / 10, -1, 1) * dt;
+    this.quat.setFromAxisAngle(Y, this.yaw);
+    const f = this.forward;
+    const rad = 2 * this.driving;
+    const steps = Math.max(1, Math.ceil((Math.abs(along) * dt) / 1.5));
+    for (let i = 0; i < steps; i++) {
+      const nx = this.pos.x + (f.x * along * dt) / steps;
+      const nz = this.pos.z + (f.z * along * dt) / steps;
+      const hit = w.blockedAt(nx, nz, this.pos.y, rad, 4 * this.driving);
+      if (hit && !this.onRam?.(hit)) {
+        along *= -0.3; // a landmark: bounce off
+        break;
+      }
+      if (hit) along *= 0.9;
+      this.pos.x = nx;
+      this.pos.z = nz;
+    }
+    this.pos.x = THREE.MathUtils.clamp(this.pos.x, -w.halfX - 1400, w.halfX + 1400);
+    this.pos.z = THREE.MathUtils.clamp(this.pos.z, -w.halfZ - 1400, w.halfZ + 1400);
+    this.vel.set(f.x * along, 0, f.z * along);
+    this.pos.y = w.heightAt(this.pos.x, this.pos.z);
+    this.onGround = true;
+    this.onWater = false;
+    this.speed = Math.abs(along);
+    this.verticalSpeed = 0;
   }
 
   // The flight models' API, for code that treats every vehicle alike.

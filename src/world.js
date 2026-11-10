@@ -50,6 +50,7 @@ export class World {
     this.halfZ = this.sizeZ / 2;
     this.rand = rng(42);
     this.colliders = new Map();
+    this.byId = [];
     this.animate = []; // per-frame updates for moving landmarks: fn(time)
     this._collapses = []; // buildings on their way down
 
@@ -403,6 +404,10 @@ export class World {
   }
 
   _addCollider(c, minx, minz, maxx, maxz) {
+    // Every collider gets a number in build order: the same in every player's
+    // game, so a room can tell each other what was knocked down.
+    c.id = this.byId.length;
+    this.byId.push(c);
     for (let gx = Math.floor(minx / GRID); gx <= Math.floor(maxx / GRID); gx++) {
       for (let gz = Math.floor(minz / GRID); gz <= Math.floor(maxz / GRID); gz++) {
         const k = gx * 100000 + gz;

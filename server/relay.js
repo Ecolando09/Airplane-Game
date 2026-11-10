@@ -16,7 +16,7 @@
 //   the open rooms change, so the menu can list them with a Join button.
 //
 // Beer Run leaderboard (the Fort Collins delivery game):
-//   board -> ws(s)://HOST/ws?role=board
+//   board -> ws(s)://HOST/ws?role=board&game=beer | rings:<city> | rampage:<city>
 //   Gets {t:'board', week:[...], all:[...]} (top 10 each: {name, score, deliveries, vehicle, when})
 //   now and whenever it changes. Send {t:'score', name, score, deliveries, vehicle}
 //   after a shift to get {t:'placed', week, all} (your ranks) back.
@@ -36,7 +36,7 @@ wss.on('connection', (ws, req) => {
   const role = url.searchParams.get('role');
   const code = (url.searchParams.get('room') || '').toUpperCase();
   if (role === 'lobby') return joinLobby(ws);
-  if (role === 'board') return joinBoard(ws);
+  if (role === 'board') return joinBoard(ws, (url.searchParams.get('game') || 'beer').slice(0, 40));
   if (!/^[A-Z]{4}$/.test(code) || !['game', 'pad', 'mp'].includes(role)) {
     ws.close(1008, 'bad room or role');
     return;
@@ -187,27 +187,32 @@ let scores = [];
 try {
   scores = JSON.parse(fs.readFileSync(BOARD_FILE, 'utf8'));
 } catch {}
-const watchers = new Set();
+const watchers = new Map(); // ws -> game
 
-function boards() {
+/** Top tens for one game ('beer', 'rings:<city>', 'rampage:<city>'). Old entries without a game are Beer Run's. */
+function boards(game) {
   const byScore = (a, b) => b.score - a.score;
   const since = Date.now() - WEEK;
-  return { week: scores.filter((s) => s.when > since).sort(byScore).slice(0, 10), all: [...scores].sort(byScore).slice(0, 10) };
+  const mine = scores.filter((s) => (s.game || 'beer') === game);
+  return { game, week: mine.filter((s) => s.when > since).sort(byScore).slice(0, 10), all: mine.sort(byScore).slice(0, 10) };
 }
 
 function saveScores() {
-  // Keep the best 200 ever plus everything from the last week.
+  // Keep each game's best 100 ever plus everything from the last week.
   const since = Date.now() - WEEK;
-  const best = new Set([...scores].sort((a, b) => b.score - a.score).slice(0, 200));
+  const best = new Set();
+  for (const g of new Set(scores.map((s) => s.game || 'beer'))) {
+    for (const s of scores.filter((x) => (x.game || 'beer') === g).sort((a, b) => b.score - a.score).slice(0, 100)) best.add(s);
+  }
   scores = scores.filter((s) => best.has(s) || s.when > since);
   fs.mkdir(STATE_DIR, { recursive: true }, () => {
     fs.writeFile(BOARD_FILE + '.tmp', JSON.stringify(scores), (err) => !err && fs.rename(BOARD_FILE + '.tmp', BOARD_FILE, () => {}));
   });
 }
 
-function joinBoard(ws) {
-  watchers.add(ws);
-  ws.send(JSON.stringify({ t: 'board', ...boards() }));
+function joinBoard(ws, game) {
+  watchers.set(ws, game);
+  ws.send(JSON.stringify({ t: 'board', ...boards(game) }));
   let last = 0;
   ws.on('message', (data, isBinary) => {
     if (isBinary || Date.now() - last < 10000) return; // one score per shift, not a flood
@@ -218,20 +223,21 @@ function joinBoard(ws) {
       return;
     }
     const score = Math.round(Number(m.score));
-    if (m.t !== 'score' || !(score > 0 && score < 100000)) return;
+    if (m.t !== 'score' || !(score > 0 && score < 1000000)) return;
     last = Date.now();
     const entry = {
-      name: String(m.name || 'Pilot').slice(0, 16), score, when: last,
+      name: String(m.name || 'Pilot').slice(0, 16), score, when: last, game,
+      note: String(m.note || '').slice(0, 24),
       deliveries: Math.max(0, Math.min(999, Math.round(Number(m.deliveries) || 0))),
       vehicle: m.vehicle === 'heli' ? 'heli' : 'plane',
     };
     scores.push(entry);
     saveScores();
-    const b = boards();
+    const b = boards(game);
     const rank = (list) => list.indexOf(entry) + 1 || null;
     ws.send(JSON.stringify({ t: 'placed', week: rank(b.week), all: rank(b.all) }));
     const msg = JSON.stringify({ t: 'board', ...b });
-    for (const w of watchers) if (w.readyState === 1) w.send(msg);
+    for (const [w, g] of watchers) if (g === game && w.readyState === 1) w.send(msg);
   });
   ws.on('close', () => watchers.delete(ws));
 }

@@ -74,6 +74,7 @@ export class Multiplayer {
         }
         this.onChange?.();
       } else if (m.t === 'state') this._onState(m);
+      else if (m.t !== 'leave') this.onEvent?.(m); // room games: races, tag, smashing
       else if (m.t === 'leave') this._remove(m.id);
     };
     ws.onclose = () => {
@@ -120,6 +121,11 @@ export class Multiplayer {
     this.players.delete(id);
     if (this.room) this.onLeave?.(p);
     this.onChange?.();
+  }
+
+  /** Send something to everyone else in the room (they get it with our id on it). */
+  send(msg) {
+    if (this.status === 'on' && this.ws?.readyState === 1) this.ws.send(JSON.stringify(msg));
   }
 
   /** Drop all remote models (after the look changes) so they are rebuilt in the new style. */

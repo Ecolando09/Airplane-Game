@@ -6,6 +6,7 @@ export class Input {
     this.keys = new Set();
     this.handlers = {};
     this.invertPitch = false;
+    this.sens = 1; // steering sensitivity, 0.5 to 1.5
     this.isTouch = matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window;
     this.touchStick = { x: 0, y: 0 };
     this.touchThrottle = null;
@@ -17,7 +18,7 @@ export class Input {
 
     const actions = {
       KeyC: 'cam', KeyR: 'reset', KeyM: 'mute', KeyI: 'invert', KeyB: 'floats', KeyN: 'map',
-      KeyP: 'potty', KeyF: 'transform', KeyG: 'grab', KeyX: 'smash',
+      KeyP: 'potty', Period: 'bigger', Comma: 'smaller', KeyF: 'transform', KeyG: 'grab', KeyX: 'smash',
       KeyT: 'turbo', KeyL: 'autoland', Enter: 'respawn', NumpadEnter: 'respawn', Digit1: 'turbo1', Digit2: 'turbo2', Digit3: 'turbo3', Escape: 'pause',
     };
     addEventListener('keydown', (e) => {
@@ -97,7 +98,13 @@ export class Input {
     }
 
     if (this.invertPitch && !this.botMode) pitch = -pitch;
-    return { pitch, roll, yaw, throttle, throttleSet, liftSet, brake };
+    // Robot: Shift, or the stick pushed all the way, runs.
+    const run = throttle > 0 || Math.hypot(this.touchStick.x, this.touchStick.y) > 0.93
+      || (gp && Math.hypot(gp.axes[0], gp.axes[1]) > 0.93);
+    // Steering sensitivity (Settings): gentler or sharper stick, tilt and keys.
+    const sens = this.sens ?? 1;
+    const lim = (v) => Math.max(-1, Math.min(1, v * sens));
+    return { pitch: lim(pitch), roll: lim(roll), yaw, throttle, throttleSet, liftSet, brake, run };
   }
 
   _setupTouch() {
@@ -232,7 +239,7 @@ export class Input {
   pollButtons(inMenu) {
     const gp = navigator.getGamepads?.().find((g) => g);
     if (!gp) return;
-    const map = inMenu ? { 0: 'menuStart', 3: 'menuAir' } : { 1: 'floats', 2: 'transform', 3: 'cam', 5: 'turbo', 9: 'reset', 8: 'map' };
+    const map = inMenu ? { 0: 'menuStart', 3: 'menuAir' } : { 1: 'floats', 2: 'transform', 3: 'cam', 5: 'turbo', 9: 'reset', 8: 'map', 12: 'bigger', 13: 'smaller' };
     this._prevButtons ||= [];
     gp.buttons.forEach((b, i) => {
       if (b.pressed && !this._prevButtons[i] && map[i]) this.emit(map[i]);

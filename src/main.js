@@ -3,7 +3,7 @@ import { World } from './world.js';
 import { createLegoPlane, GROUND_TILT, MAIN_CONTACT } from './airplane.js';
 import { createGhostSpiderHeli, HeliFlight } from './heli.js';
 import { GoogleWorld } from './google3d.js';
-import { setLook } from './lego.js';
+import { setLook, NIGHT } from './lego.js';
 import { Flight } from './flight.js';
 import { Input } from './input.js';
 import { EngineSound } from './sound.js';
@@ -15,6 +15,7 @@ import { BeerRun } from './beerrun.js';
 import { createRobot, RobotWalk } from './robot.js';
 import { Props } from './props.js';
 import { Rampage } from './rampage.js';
+import { RingRace, RampageGame } from './games.js';
 
 const $ = (id) => document.getElementById(id);
 const SKY = 0x9fd0ff;
@@ -29,7 +30,20 @@ const CITIES = {
 };
 const VEHICLE_NAMES = { plane: 'Bush Plane', heli: 'Ghost-Spider Copter' };
 const LOOK_NAMES = { lego: 'Lego', real: 'Realistic', google: 'Google 3D' };
-const MODES = { free: 'Free flight', beer: 'Beer Run' }; // Beer Run: only in cities that have it (Fort Collins)
+const MODES = { free: 'Free flight', rings: 'Ring Race', rampage: 'Rampage', beer: 'Beer Run' }; // Beer Run: only in Fort Collins
+// Preferences that stay on this device (not shared with a room).
+const prefs = { sens: 100, invert: false, sound: true, music: false, low: false, sky: 'day', paint: 'classic', ...(() => {
+  try {
+    return JSON.parse(localStorage.getItem('legosky.prefs') || '{}');
+  } catch {
+    return {};
+  }
+})() };
+function savePrefs() {
+  try {
+    localStorage.setItem('legosky.prefs', JSON.stringify(prefs));
+  } catch {}
+}
 const CONFIG = window.LEGOSKY_CONFIG || {};
 const HAS_GOOGLE = !!CONFIG.googleMapsKey;
 const settings = (() => {
@@ -70,7 +84,8 @@ scene.fog = new THREE.Fog(SKY, 2500, 11000);
 
 const camera = new THREE.PerspectiveCamera(65, innerWidth / innerHeight, 0.3, 40000);
 
-scene.add(new THREE.HemisphereLight(0xdff0ff, 0x6a8a50, 1.6));
+const hemi = new THREE.HemisphereLight(0xdff0ff, 0x6a8a50, 1.6);
+scene.add(hemi);
 const sun = new THREE.DirectionalLight(0xfff4e0, 2.2);
 sun.castShadow = true;
 sun.shadow.mapSize.setScalar(IS_TOUCH ? 1024 : 2048);
@@ -108,6 +123,10 @@ let isBot = false;
 let bot = null; // { model, walk }
 let vehicle = null; // { model, flight } while in robot mode
 let morph = null; // shape change in progress: { t, from, to }
+let shake = 0; // camera shake, fading
+let hitStop = 0; // seconds the action freezes after a punch lands
+let game = null; // the game being played (Ring Race, Rampage), if any
+let mpSendSmash = () => {}; // set by the multiplayer code: tell the room what broke
 const input = new Input();
 const sound = new EngineSound();
 const mp = new Multiplayer({
@@ -198,13 +217,32 @@ async function buildWorld() {
   data = cityData;
   const before = new Set(scene.children);
   world = new World(scene, data, { satImage });
-  traffic = new Traffic(scene, world, IS_TOUCH ? 900 : 2500);
+  traffic = new Traffic(scene, world, prefs.low ? 350 : IS_TOUCH ? 900 : 2500);
   props = new Props(scene, world);
   rampage = new Rampage(scene, world, traffic, props, {
-    message: (t) => message(t, 2),
+    message: (t) => message(t, 2.5),
     sound: (k) => sound.blip(k),
     canBreak: () => !google,
+    // Every explosion: a boom and a camera shake, both fading with distance.
+    boom: (size, x, z) => {
+      const d = Math.hypot(x - flight.pos.x, z - flight.pos.z);
+      const k = Math.min(1, size / 20) / (1 + d / 120);
+      sound.noiseHit('boom', 0.3 + k);
+      shake = Math.min(1.6, shake + k * 1.2);
+    },
+    hit: () => (hitStop = 0.07), // a punch that connects freezes the action for a beat
+    scored: (pts, what) => {
+      game?.onScore?.(pts, what);
+      if (++logbook.smashed % 10 === 0) {
+        saveLogbook();
+        checkUnlocks();
+      }
+    },
+    wrecked: (c) => mpSendSmash(c),
+    threw: () => {},
   });
+  game?.dispose();
+  game = null;
   beerRun?.dispose();
   beerRun = data.beerRun ? new BeerRun(scene, world, $('labels'), {
     toast,
@@ -227,7 +265,7 @@ async function buildWorld() {
   camera.far = google ? 60000 : 40000;
   camera.updateProjectionMatrix();
   scene.fog.near = google ? 6000 : data.fog?.[0] ?? 2500;
-  scene.fog.far = google ? 30000 : data.fog?.[1] ?? 11000;
+  scene.fog.far = (google ? 30000 : data.fog?.[1] ?? 11000) * (prefs.low ? 0.6 : 1);
   worldObjects = scene.children.filter((o) => !before.has(o) && o !== google?.tiles.group);
 
   labelEls = world.landmarks.map((l) => {
@@ -261,8 +299,15 @@ function buildVehicle() {
   const model = createRobot(settings.vehicle);
   model.group.visible = false;
   scene.add(model.group);
+  applyPaint(plane);
+  applyPaint(model);
   bot = { model, walk: new RobotWalk(world, model) };
   bot.walk.onSlam = (speed) => rampage.slam(bot.walk, speed) && updateBotHud();
+  model.onStep = () => {
+    if (!running || !isBot) return;
+    sound.noiseHit('step', 0.5 + flight.speed / 40);
+    shake = Math.min(1, shake + 0.08);
+  };
   input.heliMode = isHeli;
   document.body.classList.toggle('heli', isHeli);
   $('throttleLabel').textContent = isHeli ? 'SPEED' : 'THROTTLE';
@@ -395,7 +440,7 @@ function updateCamera(dt) {
   }
   if (isBot) {
     // Over the robot's shoulder, far enough back to see what it's about to hit.
-    const back = mode === 'chase' ? 36 : 80;
+    const back = (mode === 'chase' ? 36 : 80) * (1 + 0.35 * (flight.driving || 0));
     want = p.clone().addScaledVector(flatF, -back).add(new THREE.Vector3(0, mode === 'chase' ? 19 : 42, 0));
     look = p.clone().addScaledVector(flatF, 14).add(new THREE.Vector3(0, 9, 0));
     if (potty.sitting > 0) {
@@ -440,6 +485,12 @@ function updateCamera(dt) {
     camPos.y = Math.max(camPos.y, ground);
   }
   camera.position.copy(camPos);
+  if (shake > 0.01) {
+    camera.position.x += (Math.random() - 0.5) * shake * 2.4;
+    camera.position.y += (Math.random() - 0.5) * shake * 2.4;
+    camera.position.z += (Math.random() - 0.5) * shake * 2.4;
+    shake *= Math.exp(-dt * 6);
+  }
   camera.up.set(0, 1, 0).lerp(up, isHeli ? 0.08 : 0.25).normalize();
   camera.lookAt(camLook);
 }
@@ -578,7 +629,7 @@ function drawMinimap() {
 
   // Pins (address, Denny's) and the runway; arrows at the edge when off the map.
   // (During a Beer Run shift only the delivery target is marked.)
-  const pins = beerRun?.active ? [] : [...world.locators.map((l) => ({ x: l.x, z: l.z, color: '#' + l.color.toString(16).padStart(6, '0'), name: l.name })),
+  const pins = play() ? [] : [...world.locators.map((l) => ({ x: l.x, z: l.z, color: '#' + l.color.toString(16).padStart(6, '0'), name: l.name })),
     { x: rw.x, z: rw.z, color: '#1b2a34', name: 'Airport' }];
   mctx.font = '700 14px system-ui, sans-serif';
   for (const pin of pins) {
@@ -629,9 +680,21 @@ function drawMinimap() {
     }
   }
 
+  // Robot mode: things to grab show as small yellow squares.
+  if (isBot) {
+    mctx.fillStyle = '#ffe14d';
+    mctx.strokeStyle = '#1b2a34';
+    mctx.lineWidth = 1.5;
+    for (const it of rampage.mapMarks(p.x, p.z, range / 2)) {
+      const [x, y] = toMap(it.x, it.z);
+      mctx.fillRect(x - 4, y - 4, 8, 8);
+      mctx.strokeRect(x - 4, y - 4, 8, 8);
+    }
+  }
+
   // Beer Run: the followed order's route as a dashed line, then each stop in
   // its order's color with the letter (squares load, circles deliver).
-  const route = beerRun?.mapRoute();
+  const route = play()?.mapRoute();
   if (route) {
     mctx.setLineDash([10, 8]);
     mctx.lineWidth = 4;
@@ -642,7 +705,7 @@ function drawMinimap() {
     mctx.stroke();
     mctx.setLineDash([]);
   }
-  for (const m of beerRun?.mapMarks() || []) {
+  for (const m of play()?.mapMarks() || []) {
     let [x, y] = toMap(m.x, m.z);
     const off = x < 14 || y < 14 || x > W - 14 || y > W - 14;
     if (off && !m.guide) continue;
@@ -716,6 +779,7 @@ function message(html, seconds = 3) {
   msgTimer = seconds;
 }
 const wasOnGround = { v: true };
+const touch = { vy: 0 }; // sink rate just before touching down
 function updateHud(dt) {
   const p = plane.group.position;
   $('spd').textContent = Math.round(flight.speed * 2.237); // m/s -> mph
@@ -723,6 +787,7 @@ function updateHud(dt) {
   const hdg = Math.round(flight.heading) % 360;
   $('hdg').textContent = compass(hdg);
   $('hdgDeg').textContent = `${String(hdg).padStart(3, '0')}°`;
+  $('thrFill').style.width = `${Math.round((flight.throttle || 0) * 100)}%`;
   updateBuddies();
   updateAutoLandButton();
 
@@ -736,7 +801,16 @@ function updateHud(dt) {
     }
   }
   $('over').textContent = best ? `Over ${best.name}` : '';
+  // Logbook: flying (or walking) within 250 m of a landmark finds it.
+  if (best && bestD < 250 && !logbook.landmarks[`${settings.city}:${best.name}`]) {
+    logbook.landmarks[`${settings.city}:${best.name}`] = 1;
+    saveLogbook();
+    const here = world.landmarks.filter((l) => logbook.landmarks[`${settings.city}:${l.name}`]).length;
+    if (!play()) toast(`📍 Found ${best.name} (${here} of ${world.landmarks.length} here)`, '#f2cd37');
+    checkUnlocks();
+  }
 
+  if (!flight.onGround) touch.vy = flight.verticalSpeed;
   if (!flight.crashed) {
     const agl = p.y - plane.gearHeight - world.heightAt(p.x, p.z);
     if (isBot) wasOnGround.v = flight.onGround; // a robot jumping isn't a takeoff or a landing
@@ -744,8 +818,23 @@ function updateHud(dt) {
     if (!wasOnGround.v && flight.onGround) {
       const hp = data.helipad;
       const onPad = isHeli && hp && Math.hypot(p.x - hp.x, p.z - hp.z) < 14;
-      message(onPad ? 'Right on the helipad! 🚁' : flight.onWater ? 'Splashdown! 🌊 Nice water landing!'
-        : world.isOnRunway(p.x, p.z) ? 'Nice landing! 🛬' : 'Landed in a field!', 3);
+      // Rate the touchdown: how gently, and (on the runway) how close to the centerline.
+      const rw = world.runway;
+      const onRunway = world.isOnRunway(p.x, p.z);
+      const off = Math.abs(-(p.x - rw.x) * rw.fz + (p.z - rw.z) * rw.fx);
+      const sink = Math.abs(touch.vy);
+      let stars = sink < 2 ? 3 : sink < 5 ? 2 : 1;
+      if (onRunway && off > rw.width * 0.3 && stars > 1) stars--;
+      const word = ['', 'Firm one!', 'Smooth!', 'Butter!'][stars];
+      const where = onPad ? 'Right on the helipad! 🚁' : flight.onWater ? 'Splashdown! 🌊' : onRunway ? 'On the runway 🛬' : 'Landed in a field';
+      message(`${where} ${'★'.repeat(stars)}${'☆'.repeat(3 - stars)} ${word}<small>${(sink * 197).toFixed(0)} ft/min${onRunway ? ` · ${off.toFixed(0)} m off the centerline` : ''}</small>`, 4);
+      if (flight.onWater) sound.noiseHit('splash');
+      if (stars === 3) {
+        logbook.butter++;
+        saveLogbook();
+        sound.blip('star');
+        checkUnlocks();
+      }
     }
     if (flight.canStall !== false && !flight.onGround && flight.speed < 26 && flight.forward.y > -0.3) {
       message('STALL — lower the nose!', 0.3);
@@ -824,7 +913,7 @@ function updateLabels() {
   const p = plane.group.position;
   const maxDist = innerHeight < 500 ? 2500 : 5000;
   const items = [];
-  const shift = !!beerRun?.active; // during a shift the target is the only place tagged
+  const shift = !!play() && gameMode() !== 'rampage'; // during a game the target is the only place tagged
   world.locators.forEach((l, i) => {
     if (shift) return void (pinEls[i].style.display = 'none');
     const d = Math.hypot(l.x - p.x, l.z - p.z);
@@ -837,6 +926,14 @@ function updateLabels() {
     items.push({ el: labelEls[i], x: l.x, y: l.y + 40 + d * 0.01, z: l.z, d, pin: false, hide: d > maxDist });
   });
   if (beerRun) items.push(...beerRun.labelItems(p));
+  if (game) items.push(...game.labelItems(p));
+  if (race) {
+    const d = Math.hypot(race.target.x - p.x, race.target.z - p.z);
+    raceLabel.textContent = `🏁 ${race.target.name} · ${fmtDist(d)}`;
+    items.push({ el: raceLabel, x: race.target.x, y: race.target.y + 120, z: race.target.z, d, pin: true });
+  } else {
+    raceLabel.style.display = 'none';
+  }
   if (potty.need) {
     const t = nearestToilet();
     const d = Math.hypot(t.x - p.x, t.z - p.z);
@@ -862,6 +959,10 @@ function updateLabels() {
   // Other players' name tags first (always shown), then map pins, then nearest landmarks.
   items.sort((a, b) => (!!b.player - !!a.player) || (b.pin - a.pin) || a.d - b.d);
   const placed = [];
+  if (msgTimer > 0 && $('message').textContent) {
+    const r = $('message').getBoundingClientRect(); // keep tags out from under the big message
+    placed.push([r.left, r.top, r.right, r.bottom]);
+  }
   const veh = running && CAMS[camMode] !== 'cockpit' ? vehicleScreenRect() : null;
   const hit = (r, q) => r[0] < q[2] && r[2] > q[0] && r[1] < q[3] && r[3] > q[1];
   for (const it of items) {
@@ -923,9 +1024,9 @@ function airborneRestart() {
   boosterLevel = 0;
 }
 
-function start(airborne) {
+function start(airborne, { lesson = false } = {}) {
   // Runs inside the tap, so the motion-sensor permission prompt is allowed here.
-  if (input.isTouch) input.setTilt(phoneSteering === 'tilt').then((on) => on && message('Tilt to steer — tap CENTER to re-center', 3));
+  if (input.isTouch) input.setTilt(phoneSteering === 'tilt').then((on) => on && !isBot && !coach && message('Tilt to steer — tap CENTER to re-center', 3));
   leaveBot();
   potty.sitting = 0;
   rampage.reset(); // a fresh start puts the city back together
@@ -961,16 +1062,19 @@ function start(airborne) {
   sound.start();
   running = true;
   $('beerEnd').hidden = true;
-  if (beerOn()) {
-    beerRun.start(isHeli ? 4 : 6);
-    message(`🍺 Shift started! Head for the <span style="color:#ffb300">amber beams</span><small>${isHeli ? 4 : 6} kegs fit in your ${isHeli ? 'copter' : 'plane'}</small>`, 4);
-    $('beerHud').hidden = false;
-    document.body.classList.add('beer');
+  logbook.cities[settings.city] = 1;
+  saveLogbook();
+  if (startGame()) {
+    if (coach) endCoach(false);
     return;
   }
-  beerRun?.stop();
-  $('beerHud').hidden = true;
-  document.body.classList.remove('beer');
+  // First time (or from Settings): the flying lesson walks you through it.
+  let seen = true;
+  try {
+    seen = !!localStorage.getItem('legosky.lesson');
+  } catch {}
+  if (lesson || (!seen && !airborne && !new URLSearchParams(location.search).has('debug'))) return startCoach();
+  if (coach) endCoach(false);
   message(airborne ? `Welcome to ${data.name.split(',')[0]}!`
     : isHeli ? (input.isTouch ? 'Push LIFT up to take off!' : 'Hold W to lift off, Shift for speed!')
       : `Runway ${world.runway.names?.[0] ?? ''} — full throttle to take off!`, 3);
@@ -1001,20 +1105,29 @@ function updateMenu() {
     }
   }
   $('roomLock').hidden = !(mp.room && mp.settings);
-  // Beer Run: only where the city has it.
-  $('modeSection').hidden = !data.beerRun;
+  // Games: Beer Run only where the city has it.
+  const mode = gameMode();
   for (const b of $('segMode').querySelectorAll('button')) {
-    const on = b.dataset.v === (beerOn() ? 'beer' : 'free');
+    const on = b.dataset.v === mode;
     b.classList.toggle('on', on);
     b.setAttribute('aria-pressed', String(on));
     b.disabled = building;
+    if (b.dataset.v === 'beer') b.hidden = !data.beerRun;
   }
-  $('beerIntro').hidden = !beerOn();
-  if (beerOn() && !pausedFlight) {
-    $('startRunway').textContent = `🍺 Start a shift from ${base}`;
+  $('beerIntro').hidden = mode === 'free';
+  $('modeIntro').innerHTML = MODE_INTRO[mode] || '';
+  $('startAir').hidden = mode === 'rampage' || mode === 'rings';
+  if (mode !== 'free' && !pausedFlight) {
+    $('startRunway').textContent = { beer: `🍺 Start a shift from ${base}`, rings: '⭕ Start the Ring Race', rampage: '🤖 Start the Rampage' }[mode];
     $('startAir').textContent = '🍺 Start a shift in the air';
   }
-  if (beerOn()) watchBoard();
+  if (mode !== 'free') watchBoard();
+  renderLogbook();
+  for (const b of $('segSky').querySelectorAll('button')) {
+    b.classList.toggle('on', b.dataset.v === prefs.sky);
+    b.setAttribute('aria-pressed', String(b.dataset.v === prefs.sky));
+  }
+  $('segCity').querySelector('.on')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
   $('previewText').textContent = `${VEHICLE_NAMES[settings.vehicle]} · ${LOOK_NAMES[settings.look]} · ${CITIES[settings.city]}`;
   $('previewBusy').hidden = !building;
   $('startRunway').disabled = $('startAir').disabled = building;
@@ -1065,6 +1178,10 @@ async function applySettings(changes, { force = false } = {}) {
 }
 for (const [id, key] of SEGS) {
   for (const b of $(id).querySelectorAll('button')) b.onclick = () => applySetting(key, b.dataset.v);
+}
+// City cards show a satellite picture of their downtown.
+for (const b of $('segCity').querySelectorAll('button')) {
+  b.style.setProperty('--img', `url("${new URL(`cities/thumbs/${b.dataset.v}.jpg`, location.href).href}")`);
 }
 for (const b of $('segMode').querySelectorAll('button')) {
   b.onclick = () => {
@@ -1211,22 +1328,87 @@ $('helpBtn').onclick = () => {
   updateMenu();
 };
 
-// ------------------------------------------------------------------ Beer Run
-// The Fort Collins delivery game (src/beerrun.js). Here: the HUD, the end of
-// the shift, and the shared leaderboard on the relay server.
-const beerOn = () => !!beerRun && settings.mode === 'beer';
-const BEER_COLORS = { pickup: '#ffb300', drop: '#2ecc71', RUSH: '#ffd700', VIP: '#ff5fa2' };
+// ------------------------------------------------------------------ games
+// Beer Run (Fort Collins, src/beerrun.js), Ring Race and Rampage (src/games.js).
+// Here: starting them, the shared HUD strip, the end card, personal bests and
+// the leaderboards kept on the relay server (one per game and city).
+const gameMode = () => (settings.mode === 'beer' && !data?.beerRun ? 'free' : settings.mode);
+const beerOn = () => !!beerRun && gameMode() === 'beer';
+/** The game in progress, if any. */
+const play = () => (beerRun?.active ? beerRun : game?.active ? game : null);
+const gameKey = (mode = gameMode()) => (mode === 'beer' ? 'beer' : `${mode}:${settings.city}`);
+const GAME_UI = {
+  beer: { over: "🍺 Shift's over!", fmt: (n) => `$${n.toLocaleString()}`, again: 'Run another shift' },
+  rings: { over: '⭕ Race finished!', fmt: (n) => `${n.toLocaleString()} pts`, again: 'Race again' },
+  rampage: { over: '🤖 Rampage over!', fmt: (n) => `${n.toLocaleString()} pts`, again: 'Rampage again' },
+};
+const MODE_INTRO = {
+  beer: `Five-minute shift, one delivery at a time. Fly low through the brewery's <b class="amber">amber beam</b> (or land in it) to
+    load kegs, then drop them at the shop's <b class="green">green beam</b> before the timer runs out. Early deliveries and
+    on-time streaks pay more; crashing breaks your kegs.`,
+  rings: `Fly through every ring in order, as fast as you can. The course runs from the airport around the city's landmarks.
+    Beat the par time for ★★★.`,
+  rampage: `Two minutes as a giant robot downtown. Smash buildings (taller pays more), throw cars, stomp from jet-jumps, and
+    keep hitting things to build your combo.`,
+};
+
+/** Start the chosen game right after a normal start (called from start()). */
+function startGame() {
+  game?.stop();
+  game?.dispose();
+  game = null;
+  const mode = gameMode();
+  const hooks = { toast, sound: (k) => sound.blip(k) };
+  document.body.classList.toggle('beer', mode !== 'free');
+  $('beerHud').hidden = mode === 'free';
+  if (mode === 'beer') {
+    beerRun.start(isHeli ? 4 : 6);
+    message(`🍺 Shift started! Head for the <span style="color:#ffb300">amber beam</span><small>${isHeli ? 4 : 6} kegs fit in your ${isHeli ? 'copter' : 'plane'}</small>`, 4);
+    return true;
+  }
+  beerRun?.stop();
+  if (mode === 'rings') {
+    game = new RingRace(scene, world, $('labels'), { ...hooks, onEnd: (r) => endGame('rings', r.score, {
+      title: r.stars ? `${'★'.repeat(r.stars)}${'☆'.repeat(3 - r.stars)}` : 'Not finished', stars: r.stars,
+      chips: [`⏱ ${fmtClock(r.time)} (par ${fmtClock(r.par)})`, `⭕ ${r.rings}/${r.total} rings`], note: fmtClock(r.time),
+    }) });
+    game.start(flight.pos, flight.heading, !isHeli);
+    message(`⭕ Ring Race! ${game.rings.length} rings<small>Fly through the yellow ring, then the next. Par ${fmtClock(game.par)}</small>`, 4);
+    return true;
+  }
+  if (mode === 'rampage') {
+    game = new RampageGame(rampage, { ...hooks, onEnd: (r) => endGame('rampage', r.score, {
+      title: r.stars ? `${'★'.repeat(r.stars)}${'☆'.repeat(3 - r.stars)}` : 'Nothing smashed!', stars: r.stars,
+      chips: [`🏢 ${r.buildings} buildings`, `🚗 ${r.cars} cars`, `🌲 ${r.trees} trees`, `🎯 ${r.thrown} thrown`, `🔥 best combo ×${r.bestCombo.toFixed(1)}`],
+      note: `${r.buildings} buildings`,
+    }) });
+    // Drop in downtown as the robot.
+    const sq = world.landmarks[0];
+    transform();
+    finishMorph();
+    flight.place(new THREE.Vector3(sq.x + 20, world.heightAt(sq.x + 20, sq.z + 20), sq.z + 20), 0, null);
+    camInit = false;
+    game.start();
+    message('🤖 RAMPAGE! Two minutes: smash everything<small>Taller buildings pay more. Keep hitting to build your combo</small>', 4);
+    return true;
+  }
+  return false;
+}
+const fmtClock = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 
 function updateBeerHud() {
-  const h = beerRun.hud(flight.pos, flight.heading);
-  const stats = `${h.cash} · ⏱ ${h.clock} · 🛢️ ${h.hold.loaded}/${h.hold.capacity}`;
+  const g = play();
+  if (!g) return;
+  const h = g.hud(flight.pos, flight.heading);
+  const hold = h.hold ? `🛢️ ${h.hold.loaded}/${h.hold.capacity}` : '';
+  const stats = [h.cash, `⏱ ${h.clock}`, hold].filter(Boolean).join(' · ');
   $('beerCash').textContent = h.cash;
   $('beerClock').textContent = `⏱ ${h.clock}`;
   $('beerClock').classList.toggle('hurry', h.hurry);
-  $('beerHold').textContent = `🛢️ ${h.hold.loaded}/${h.hold.capacity}`;
+  $('beerHold').textContent = hold;
   $('beerCombo').textContent = h.combo && `🔥${h.combo}`;
   $('beerHappy').textContent = h.happy;
-  // The one delivery: what to do, where, which way and how long it has left.
+  // What to do now: the step, where, which way and how long it has left.
   const m = h.mission;
   const mi = $('beerMission');
   mi.classList.toggle('waiting', !m);
@@ -1236,17 +1418,18 @@ function updateBeerHud() {
     mi.querySelector('.step').textContent = m.step;
     mi.querySelector('.where').textContent = m.where;
     mi.querySelector('.next').textContent = m.next;
-    mi.querySelector('.mini').textContent = `${stats} · ${m.next}`;
+    mi.querySelector('.mini').textContent = `${stats}${m.next ? ` · ${m.next}` : ''}`;
     mi.querySelector('.arrow').style.transform = `rotate(${m.rel}deg)`;
     mi.querySelector('.dist').textContent = m.dist;
     mi.querySelector('.time').textContent = m.time;
     mi.querySelector('.time').classList.toggle('hurry', m.hurry);
     mi.querySelector('.beer-mbar').style.width = `${Math.max(0, m.frac) * 100}%`;
   } else {
-    mi.style.setProperty('--c', '#868e96');
-    mi.querySelector('.beer-letter').textContent = '📋';
-    mi.querySelector('.step').textContent = 'NEXT DELIVERY';
-    mi.querySelector('.where').textContent = 'Coming in…';
+    const idle = h.idle || { icon: '📋', step: 'NEXT DELIVERY', where: 'Coming in…' };
+    mi.style.setProperty('--c', h.idle ? '#ff5fa2' : '#868e96');
+    mi.querySelector('.beer-letter').textContent = idle.icon;
+    mi.querySelector('.step').textContent = idle.step;
+    mi.querySelector('.where').textContent = idle.where;
     mi.querySelector('.next').textContent = '';
     mi.querySelector('.mini').textContent = stats;
     mi.querySelector('.dist').textContent = mi.querySelector('.time').textContent = '';
@@ -1261,49 +1444,59 @@ function updateBeerHud() {
 }
 
 let lastShift = null;
+/** Beer Run's end of shift. */
 function endShift(stats) {
-  lastShift = { ...stats, vehicle: settings.vehicle, posted: false };
-  running = false;
-  pausedFlight = false;
-  $('hud').hidden = $('touch').hidden = $('labels').hidden = true;
-  $('beerHud').hidden = $('beerDwell').hidden = true;
-  document.body.classList.remove('beer');
-  sound.blip('cash');
-  $('beerEndCash').textContent = `$${stats.cash.toLocaleString()}`;
-  $('beerEndTitle').textContent = `🏅 ${stats.title}`;
-  let best = 0;
-  try {
-    best = Number(localStorage.getItem('legosky.beerBest')) || 0;
-    if (stats.cash > best) localStorage.setItem('legosky.beerBest', String(stats.cash));
-  } catch {}
-  $('beerEndBest').textContent = stats.cash > best ? (best ? `New personal best! (was $${best.toLocaleString()})` : 'Your first shift: now beat it!')
-    : `Personal best: $${best.toLocaleString()}`;
-  $('beerEndBest').classList.toggle('new', stats.cash > best);
   const chips = [
     `🚚 ${stats.deliveries} deliver${stats.deliveries === 1 ? 'y' : 'ies'}`, `🛢️ ${stats.kegs} kegs`, `🔥 best streak ×${stats.bestCombo.toFixed(2).replace(/0$/, '')}`,
     stats.rush && `⚡ ${stats.rush} rush`, stats.vip && `⭐ ${stats.vip} VIP ($${stats.tips} tips)`,
     stats.missed && `⌛ ${stats.missed} missed`, stats.broken && `💥 ${stats.broken} kegs broken`,
   ].filter(Boolean);
+  endGame('beer', stats.cash, { title: `🏅 ${stats.title}`, chips, note: `${stats.deliveries} deliveries`, stars: stats.cash >= 1500 ? 3 : stats.cash >= 600 ? 2 : stats.cash > 0 ? 1 : 0 });
+}
+/** The end card for any game: score, stars, personal best, the room, the leaderboard. */
+function endGame(mode, score, { title, chips, note, stars = 0 }) {
+  const ui = GAME_UI[mode];
+  const key = gameKey(mode);
+  lastShift = { cash: score, note, vehicle: settings.vehicle, posted: false, key, mode };
+  running = false;
+  pausedFlight = false;
+  leaveBot();
+  $('hud').hidden = $('touch').hidden = $('labels').hidden = true;
+  $('beerHud').hidden = $('beerDwell').hidden = true;
+  document.body.classList.remove('beer');
+  sound.blip(stars ? 'star' : 'cash');
+  $('beerEnd').querySelector('h2').textContent = ui.over;
+  $('beerEndCash').textContent = ui.fmt(score);
+  $('beerEndTitle').textContent = title;
+  $('beerAgain').textContent = ui.again;
+  const best = logbook.best[key] || 0;
+  if (score > best) logbook.best[key] = score;
+  if (stars > (logbook.stars[key] || 0)) logbook.stars[key] = stars;
+  saveLogbook();
+  $('beerEndBest').textContent = score > best ? (best ? `New personal best! (was ${ui.fmt(best)})` : 'Your first try: now beat it!')
+    : `Personal best: ${ui.fmt(best)}`;
+  $('beerEndBest').classList.toggle('new', score > best);
   $('beerEndStats').replaceChildren(...chips.map((t) => Object.assign(document.createElement('li'), { textContent: t })));
-  // Flying with others: how everyone on a shift is doing right now.
+  // Flying with others: how everyone playing is doing right now.
   const others = [...mp.players.values()].filter((pl) => pl.cash != null);
   $('beerEndRoom').hidden = !others.length;
-  $('beerEndRoom').replaceChildren(...[{ name: `${mp.name || 'You'} (you)`, cash: stats.cash, color: '#c91a09' }, ...others]
-    .sort((a, b) => b.cash - a.cash)
+  $('beerEndRoom').replaceChildren(...[{ name: `${mp.name || 'You'} (you)`, cash: score, color: '#c91a09' }, ...others]
+    .sort((x, y) => y.cash - x.cash)
     .map((pl, i) => {
       const li = document.createElement('li');
       li.style.setProperty('--c', pl.color);
-      li.textContent = `${i + 1}. ${pl.name} · $${pl.cash.toLocaleString()}`;
+      li.textContent = `${i + 1}. ${pl.name} · ${ui.fmt(pl.cash)}`;
       return li;
     }));
   $('beerName').value = mp.name || mpName || '';
-  $('beerPost').hidden = !BOARD_OK || stats.cash <= 0;
+  $('beerPost').hidden = !BOARD_OK || score <= 0;
   $('beerSubmit').disabled = false;
   $('beerSubmit').textContent = 'Post my score';
   $('beerPlaced').hidden = true;
   watchBoard();
   renderBoard();
   $('beerEnd').hidden = false;
+  checkUnlocks();
 }
 $('beerAgain').onclick = () => start(false);
 $('beerMenu').onclick = () => {
@@ -1312,15 +1505,23 @@ $('beerMenu').onclick = () => {
   updateMenu();
 };
 
-// Leaderboard: this week's and all-time best shifts, shared by everyone on the server.
+// Leaderboards: this week's and all-time best, shared by everyone on the server.
 const BOARD_OK = !/claude\.ai|claudeusercontent/.test(location.host) && location.protocol !== 'file:';
 let board = null;
 let boardTab = 'week';
 let boardWs = null;
+let boardKey = null;
 function watchBoard() {
-  if (!BOARD_OK || boardWs) return;
+  const key = lastShift && !$('beerEnd').hidden ? lastShift.key : gameKey();
+  if (!BOARD_OK || (boardWs && boardKey === key)) return;
+  if (boardWs) {
+    boardWs.onclose = null;
+    boardWs.close();
+  }
+  board = null;
+  boardKey = key;
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-  const ws = (boardWs = new WebSocket(`${proto}://${location.host}/ws?role=board`));
+  const ws = (boardWs = new WebSocket(`${proto}://${location.host}/ws?role=board&game=${encodeURIComponent(key)}`));
   ws.onmessage = (e) => {
     let m;
     try {
@@ -1335,28 +1536,29 @@ function watchBoard() {
       const r = m.week || m.all;
       $('beerPlaced').hidden = false;
       $('beerPlaced').textContent = m.week ? `🏆 You're #${m.week} this week${m.all ? ` and #${m.all} of all time` : ''}!`
-        : r ? `🏆 #${r} of all time!` : 'Posted! Not in the top 10 yet. Run another shift!';
+        : r ? `🏆 #${r} of all time!` : 'Posted! Not in the top 10 yet. Try again!';
     }
   };
   ws.onclose = () => {
     boardWs = null;
-    setTimeout(() => !$('beerEnd').hidden || beerOn() ? watchBoard() : null, 5000);
+    setTimeout(() => (!$('beerEnd').hidden || gameMode() !== 'free' ? watchBoard() : null), 5000);
   };
 }
 function renderBoard() {
+  const fmt = GAME_UI[(boardKey || 'beer').split(':')[0]]?.fmt || ((n) => String(n));
   const list = board?.[boardTab] || [];
   const me = lastShift?.posted && lastShift;
   $('beerBoard').replaceChildren(...(list.length ? list.map((e) => {
     const li = document.createElement('li');
     const sc = document.createElement('span');
     sc.className = 'sc';
-    sc.textContent = `$${e.score.toLocaleString()}`;
-    li.append(`${e.name} ${e.vehicle === 'heli' ? '🕷️' : '✈️'} · ${e.deliveries} deliver${e.deliveries === 1 ? 'y' : 'ies'}`, sc);
+    sc.textContent = fmt(e.score);
+    li.append(`${e.name} ${e.vehicle === 'heli' ? '🕷️' : '✈️'}${e.note ? ` · ${e.note}` : e.deliveries ? ` · ${e.deliveries} deliveries` : ''}`, sc);
     if (me && e.name === me.postedName && e.score === me.cash) li.className = 'me';
     return li;
-  }) : [Object.assign(document.createElement('li'), { className: 'muted', textContent: board ? 'No shifts yet. Be the first!' : 'Leaderboard needs the game server.' })]));
+  }) : [Object.assign(document.createElement('li'), { className: 'muted', textContent: board ? 'No scores yet. Be the first!' : 'Leaderboard needs the game server.' })]));
   const top = board?.week?.slice(0, 3) || [];
-  $('beerTop3').textContent = top.length ? `🏆 This week: ${top.map((e, i) => `${i + 1}. ${e.name} $${e.score.toLocaleString()}`).join('  ')}` : '';
+  $('beerTop3').textContent = top.length ? `🏆 This week: ${top.map((e, i) => `${i + 1}. ${e.name} ${fmt(e.score)}`).join('  ')}` : '';
 }
 for (const b of document.querySelectorAll('.beer-tabs button')) {
   b.onclick = () => {
@@ -1371,7 +1573,7 @@ for (const b of document.querySelectorAll('.beer-tabs button')) {
 $('beerSubmit').onclick = () => {
   const name = $('beerName').value.trim().slice(0, 16) || 'Pilot';
   if (!lastShift || lastShift.posted || boardWs?.readyState !== 1) return;
-  boardWs.send(JSON.stringify({ t: 'score', name, score: lastShift.cash, deliveries: lastShift.deliveries, vehicle: lastShift.vehicle }));
+  boardWs.send(JSON.stringify({ t: 'score', name, score: lastShift.cash, note: lastShift.note, vehicle: lastShift.vehicle }));
   lastShift.posted = true;
   lastShift.postedName = name;
   try {
@@ -1380,6 +1582,196 @@ $('beerSubmit').onclick = () => {
   $('beerSubmit').disabled = true;
   $('beerSubmit').textContent = 'Posted ✓';
 };
+
+// ------------------------------------------------------------------ logbook and paint jobs
+// The logbook remembers (on this device) where you've been and what you've done;
+// its totals unlock paint jobs for the vehicle and its robot.
+const logbook = { cities: {}, landmarks: {}, stars: {}, best: {}, smashed: 0, butter: 0, ...(() => {
+  try {
+    return JSON.parse(localStorage.getItem('legosky.log') || '{}');
+  } catch {
+    return {};
+  }
+})() };
+function saveLogbook() {
+  try {
+    localStorage.setItem('legosky.log', JSON.stringify(logbook));
+  } catch {}
+}
+const logCount = () => ({
+  cities: Object.keys(logbook.cities).length, landmarks: Object.keys(logbook.landmarks).length,
+  stars: Object.values(logbook.stars).reduce((a, n) => a + n, 0), smashed: logbook.smashed, butter: logbook.butter,
+});
+const PAINTS = [
+  { id: 'classic', name: 'Classic', color: null, need: () => true, how: '' },
+  { id: 'red', name: 'Fire Red', color: 0xd01712, need: (c) => c.landmarks >= 5, how: 'Find 5 landmarks' },
+  { id: 'blue', name: 'Sky Blue', color: 0x2f7fe0, need: (c) => c.cities >= 3, how: 'Fly in 3 cities' },
+  { id: 'green', name: 'Racing Green', color: 0x1f8a43, need: (c) => c.stars >= 5, how: 'Earn 5 ★ in games' },
+  { id: 'black', name: 'Stealth', color: 0x23272b, need: (c) => c.smashed >= 100, how: 'Smash 100 things as the robot' },
+  { id: 'silver', name: 'Chrome', color: 0xc9d0d6, need: (c) => c.butter >= 1, how: 'Make a ★★★ butter landing' },
+  { id: 'purple', name: 'Royal Purple', color: 0x7a3fd0, need: (c) => c.landmarks >= 25, how: 'Find 25 landmarks' },
+  { id: 'gold', name: 'Gold', color: 0xe8b923, need: (c) => c.stars >= 15, how: 'Earn 15 ★ in games' },
+];
+const ACCENT = { plane: 0xf2cd37, heli: 0xf0368f }; // the part of each vehicle that takes the paint
+/** Repaint a model's accent-colored parts. */
+function applyPaint(model) {
+  const paint = PAINTS.find((x) => x.id === prefs.paint);
+  if (!paint?.color || !paint.need(logCount())) return;
+  const from = new THREE.Color(ACCENT[settings.vehicle]);
+  model.group.traverse((o) => {
+    for (const m of o.material ? (Array.isArray(o.material) ? o.material : [o.material]) : []) {
+      if (m.color && Math.abs(m.color.r - from.r) + Math.abs(m.color.g - from.g) + Math.abs(m.color.b - from.b) < 0.02) m.color.setHex(paint.color);
+    }
+  });
+}
+let unlockedBefore = null;
+/** Announce paint jobs that just unlocked, and refresh the menu's logbook. */
+function checkUnlocks() {
+  const c = logCount();
+  const now = PAINTS.filter((x) => x.need(c)).map((x) => x.id);
+  if (unlockedBefore) {
+    for (const id of now) {
+      if (!unlockedBefore.includes(id)) {
+        toast(`🎨 New paint job unlocked: ${PAINTS.find((x) => x.id === id).name}! (Menu → Fly)`, '#e8b923');
+        sound.blip('star');
+      }
+    }
+  }
+  unlockedBefore = now;
+}
+function renderLogbook() {
+  const c = logCount();
+  const here = world.landmarks.filter((l) => logbook.landmarks[`${settings.city}:${l.name}`]).length;
+  $('logSummary').textContent = `· ${c.stars} ★ · ${c.landmarks} landmarks`;
+  const rows = [
+    ['Cities flown', `${c.cities} of ${Object.keys(CITIES).length}`], [`Landmarks found in ${CITIES[settings.city]}`, `${here} of ${world.landmarks.length}`],
+    ['Landmarks found everywhere', c.landmarks], ['Stars earned in games', `${c.stars} ★`], ['Things smashed as the robot', c.smashed.toLocaleString()],
+    ['Butter landings (★★★)', c.butter],
+  ];
+  $('logbook').replaceChildren(...rows.map(([k, v]) => {
+    const d = document.createElement('div');
+    d.className = 'row';
+    d.append(Object.assign(document.createElement('span'), { textContent: k }), Object.assign(document.createElement('b'), { textContent: String(v) }));
+    return d;
+  }));
+  $('paints').replaceChildren(...PAINTS.map((x) => {
+    const b = document.createElement('button');
+    const ok = x.need(c);
+    b.disabled = !ok || building;
+    b.title = ok ? x.name : `Locked: ${x.how}`;
+    b.classList.toggle('on', prefs.paint === x.id);
+    b.style.setProperty('--c', x.color ? `#${x.color.toString(16).padStart(6, '0')}` : `#${ACCENT[settings.vehicle].toString(16)}`);
+    b.append(document.createElement('i'), ok ? x.name : `🔒 ${x.how}`);
+    b.onclick = () => {
+      prefs.paint = x.id;
+      savePrefs();
+      buildVehicle();
+      updateMenu();
+    };
+    return b;
+  }));
+}
+
+// ------------------------------------------------------------------ room games
+// In a multiplayer room: races to a landmark, tag, and robots' destruction
+// shown to everyone. All of it rides on the room's connection as small messages.
+let race = null; // { target (landmark), by }
+let tagIt = null; // id of the player who is "it" ('me' for this player)
+let tagCool = 0;
+const raceLabel = document.createElement('div');
+raceLabel.className = 'label pin';
+raceLabel.style.setProperty('--pin', '#e8590c');
+raceLabel.style.display = 'none';
+$('labels').appendChild(raceLabel);
+const nameOf = (id) => mp.players.get(id)?.name || 'Someone';
+
+// Smashing: tell the room which buildings and trees went down (batched).
+let smashQueue = [];
+mpSendSmash = (c) => mp.room && smashQueue.push(c.id);
+setInterval(() => {
+  if (!smashQueue.length) return;
+  mp.send({ t: 'smash', city: settings.city, ids: smashQueue.splice(0, 60) });
+}, 300);
+
+function startRace(index, by) {
+  const target = world.landmarks[index];
+  if (!target) return;
+  race = { target, by };
+  toast(`🏁 ${by} started a race to ${target.name}! First one there wins`, '#e8590c');
+  sound.blip('load');
+}
+function endRace(winner) {
+  if (!race) return;
+  toast(`🏆 ${winner} won the race to ${race.target.name}!`, '#e8b923');
+  sound.blip('star');
+  race = null;
+}
+mp.onEvent = (m) => {
+  if (m.t === 'smash' && m.city === settings.city && Array.isArray(m.ids)) {
+    for (const id of m.ids.slice(0, 60)) {
+      const c = world.byId[id];
+      if (!c || !world.breakable(c) || google) continue;
+      world.destroy(c);
+      if (c.t !== 'tree' && Math.hypot(c.x - flight.pos.x, c.z - flight.pos.z) < 3000) rampage.explode(c.x, c.base + Math.min(c.h, 30) / 2, c.z, 14);
+    }
+  } else if (m.t === 'race') {
+    startRace(Number(m.lm), nameOf(m.id));
+  } else if (m.t === 'won') {
+    endRace(nameOf(m.id));
+  } else if (m.t === 'tag') {
+    tagIt = m.it === mp.myId ? 'me' : m.it;
+    tagCool = 3;
+    toast(tagIt === 'me' ? `🏷️ ${nameOf(m.id)} tagged you. You're IT!` : `🏷️ ${nameOf(tagIt)} is IT!`, '#c06bff');
+    sound.blip(tagIt === 'me' ? 'potty' : 'load');
+  }
+};
+$('mpRace').onclick = () => {
+  const p = flight.pos;
+  const far = world.landmarks.map((l, i) => [l, i]).filter(([l]) => Math.hypot(l.x - p.x, l.z - p.z) > 2500);
+  const pick = (far.length ? far : world.landmarks.map((l, i) => [l, i]))[Math.floor(Math.random() * (far.length || world.landmarks.length))];
+  mp.send({ t: 'race', lm: pick[1] });
+  startRace(pick[1], 'You');
+};
+$('mpTag').onclick = () => {
+  tagIt = 'me';
+  tagCool = 3;
+  mp.send({ t: 'tag', it: mp.myId });
+  toast("🏷️ Tag started. You're IT! Fly close to someone to tag them", '#c06bff');
+};
+/** Each frame while flying: has someone won the race, or been tagged? */
+function updateRoomGames(dt) {
+  if (!mp.room) race = tagIt = null;
+  const p = flight.pos;
+  const chip = [];
+  if (race) {
+    const d = Math.hypot(race.target.x - p.x, race.target.z - p.z);
+    chip.push(`🏁 Race to ${race.target.name}: ${fmtDist(d)}`);
+    if (d < 150) {
+      mp.send({ t: 'won' });
+      endRace('You');
+    }
+  }
+  if (tagIt) {
+    tagCool -= dt;
+    if (tagIt !== 'me' && !mp.players.has(tagIt)) tagIt = null; // they left
+    else if (tagIt === 'me') {
+      chip.push("🏷️ You're IT! Get within 200 ft of someone");
+      const near = tagCool <= 0 && mp.visible(settings.city).find((pl) => pl.pos.distanceTo(p) < 60);
+      if (near) {
+        tagIt = near.id;
+        tagCool = 3;
+        mp.send({ t: 'tag', it: near.id });
+        toast(`🏷️ You tagged ${near.name}!`, '#c06bff');
+        sound.blip('star');
+      }
+    } else {
+      const it = mp.players.get(tagIt);
+      chip.push(`🏷️ ${it.name} is IT (${fmtDist(it.pos.distanceTo(p))} away). Run!`);
+    }
+  }
+  $('roomGame').hidden = !chip.length;
+  $('roomGame').textContent = chip.join('  ·  ');
+}
 
 // ------------------------------------------------------------------ Android app
 // The app (android/) is a window onto this page and adds "LegoSkyApp/<version>" to
@@ -1480,9 +1872,7 @@ input.on('menuStart', () => !running && start(false));
 input.on('menuAir', () => !running && start(true));
 input.on('reset', () => running && start(false));
 input.on('air', () => running && start(true));
-input.on('mute', () => sound.toggle());
 input.on('pause', () => (running ? $('helpBtn').onclick() : pausedFlight && $('resumeBtn').onclick()));
-input.on('invert', () => message(input.invertPitch ? 'Pitch inverted (flight-sim style)' : 'Pitch normal', 1.5));
 
 // ------------------------------------------------------------------ robot mode
 // F (or the 🤖 button) unfolds the vehicle into a giant robot and back. On the
@@ -1588,7 +1978,7 @@ function setBotUi() {
 function updateBotHud() {
   const n = rampage?.total || 0;
   $('botHud').hidden = !isBot && !n;
-  $('botHud').textContent = `🤖 💥 ${n} smashed${rampage?.held ? ` · holding ${props.info(rampage.held.item.kind).name}` : ''}`;
+  $('botHud').textContent = `🤖 💥 ${n} smashed${rampage?.held ? ` · holding ${props.info(rampage.held.item.kind).name}` : ''}${rampage?.driving ? ` · driving ${props.info(rampage.driving.item.kind).name}` : ''}`;
 }
 function botSmash() {
   if (!running || !isBot) return;
@@ -1601,9 +1991,149 @@ function botGrab() {
   updateBotHud();
 }
 input.on('transform', transform);
+input.on('bigger', () => running && isBot && rampage.resize(flight, 2) && updateBotHud());
+input.on('smaller', () => running && isBot && rampage.resize(flight, 0.5) && updateBotHud());
 input.on('smash', botSmash);
 input.on('grab', botGrab);
 setInterval(() => isBot && updateBotHud(), 500);
+
+// ------------------------------------------------------------------ settings, sky, quality
+// Time of day: sky and fog color, light color and direction, and how lit the windows are.
+const SKIES = {
+  day: { sky: SKY, hemi: [0xdff0ff, 0x6a8a50, 1.6], sun: [0xfff4e0, 2.2], dir: [-0.45, 0.8, 0.35], night: 0 },
+  sunset: { sky: 0xf0a56c, hemi: [0xffd9b0, 0x6a5a48, 1.0], sun: [0xff9a4a, 1.9], dir: [-0.85, 0.22, 0.3], night: 0.35 },
+  night: { sky: 0x0b1430, hemi: [0x8fa8ff, 0x1c2433, 0.45], sun: [0xaab8ff, 0.55], dir: [0.4, 0.75, -0.3], night: 1 },
+};
+function applySky() {
+  const k = SKIES[prefs.sky] || SKIES.day;
+  scene.background.setHex(k.sky);
+  scene.fog.color.setHex(k.sky);
+  hemi.color.setHex(k.hemi[0]);
+  hemi.groundColor.setHex(k.hemi[1]);
+  hemi.intensity = k.hemi[2];
+  sun.color.setHex(k.sun[0]);
+  sun.intensity = k.sun[1];
+  SUN_DIR.set(...k.dir).normalize();
+  NIGHT.value = k.night;
+}
+for (const b of $('segSky').querySelectorAll('button')) {
+  b.onclick = () => {
+    prefs.sky = b.dataset.v;
+    savePrefs();
+    applySky();
+    updateMenu();
+  };
+}
+/** Low graphics: lower resolution, no shadows, nearer fog (and fewer cars from the next city load). */
+function applyQuality() {
+  renderer.setPixelRatio(prefs.low ? Math.min(window.devicePixelRatio, 1) * 0.8 : Math.min(window.devicePixelRatio, IS_TOUCH ? 1.25 : 2));
+  renderer.setSize(innerWidth, innerHeight);
+  renderer.shadowMap.enabled = !prefs.low;
+  sun.castShadow = !prefs.low;
+  if (world) scene.fog.far = (google ? 30000 : data.fog?.[1] ?? 11000) * (prefs.low ? 0.6 : 1);
+  scene.traverse((o) => o.material && (Array.isArray(o.material) ? o.material : [o.material]).forEach((m) => (m.needsUpdate = true)));
+}
+function applyPrefs() {
+  input.sens = prefs.sens / 100;
+  input.invertPitch = prefs.invert;
+  sound.muted = !prefs.sound;
+  sound.setMusic?.(prefs.music);
+  $('setSens').value = prefs.sens;
+  $('setSensOut').textContent = `${prefs.sens}%`;
+  $('setInvert').checked = prefs.invert;
+  $('setSound').checked = prefs.sound;
+  $('setMusic').checked = prefs.music;
+  $('setLow').checked = prefs.low;
+}
+$('setSens').oninput = () => {
+  prefs.sens = Number($('setSens').value);
+  savePrefs();
+  applyPrefs();
+};
+for (const [id, key] of [['setInvert', 'invert'], ['setSound', 'sound'], ['setMusic', 'music'], ['setLow', 'low']]) {
+  $(id).onchange = () => {
+    prefs[key] = $(id).checked;
+    savePrefs();
+    applyPrefs();
+    if (key === 'low') applyQuality();
+  };
+}
+input.on('invert', () => {
+  prefs.invert = input.invertPitch;
+  savePrefs();
+  applyPrefs();
+  message(input.invertPitch ? 'Pitch inverted (flight-sim style)' : 'Pitch normal', 1.5);
+});
+input.on('mute', () => {
+  prefs.sound = !prefs.sound;
+  savePrefs();
+  applyPrefs();
+});
+
+// ------------------------------------------------------------------ the flying lesson
+// A first-time player gets one instruction at a time until they have taken off,
+// steered, become a robot, smashed and thrown something, and changed back.
+let coach = null; // { steps, i, mark }
+function coachSteps() {
+  const t = input.isTouch;
+  const tiltOn = () => input.tilt.active;
+  const K = (k) => `<kbd>${k}</kbd>`;
+  const agl = () => flight.pos.y - plane.gearHeight - world.heightAt(flight.pos.x, flight.pos.z);
+  const fly = isHeli ? [
+    { text: () => (t ? 'Slide <b>LIFT</b> up to take off' : `Hold ${K('W')} to lift off`), done: () => !isBot && agl() > 20 },
+    { text: () => (t ? 'Slide <b>SPEED</b> up to fly forward' : `Hold ${K('Shift')} to fly forward`), done: () => flight.speed > 15 },
+  ] : [
+    { text: () => (t ? 'Slide the <b>THROTTLE</b> all the way up' : `Hold ${K('Shift')} until the throttle bar is full`), done: () => flight.throttle > 0.9 || !flight.onGround },
+    { text: () => (t ? (tiltOn() ? 'At 60 mph, tip the top of the phone toward you to lift off' : 'At 60 mph, push the stick up to lift off')
+      : `At 60 mph, hold ${K('W')} to lift off`), done: () => !isBot && agl() > 25 },
+  ];
+  return [
+    ...fly,
+    { text: () => (t ? (tiltOn() ? 'Tilt the phone like a steering wheel to turn' : 'Move the stick left or right to turn') : `Turn with ${K('A')} and ${K('D')}`),
+      start: () => (coach.mark = flight.heading), done: () => Math.abs(((flight.heading - coach.mark + 540) % 360) - 180) > 40 },
+    { text: () => (t ? 'Tap <b>🤖</b> to turn into a giant robot. It works in mid-air!' : `Press ${K('F')} to turn into a giant robot. It works in mid-air!`), done: () => isBot },
+    { text: () => (t ? 'Walk up to a building with the stick and tap <b>SMASH</b>' : `Walk up to a building (${K('W')}${K('A')}${K('S')}${K('D')}) and press ${K('X')} to smash it`), done: () => isBot && rampage.total > 0 },
+    { text: () => (t ? 'Find a car or boulder, tap <b>GRAB</b>, then <b>GRAB</b> again to throw it' : `Find a car or boulder, press ${K('G')} to grab it, and ${K('G')} again to throw`),
+      done: () => rampage.stats.thrown > 0 },
+    { text: () => (t ? 'Tap <b>🤖</b> again to change back, and fly!' : `Press ${K('F')} again to change back, and fly!`), done: () => !isBot },
+  ];
+}
+function startCoach() {
+  coach = { steps: coachSteps(), i: -1 };
+  nextCoach();
+}
+function nextCoach() {
+  coach.i++;
+  const step = coach.steps[coach.i];
+  if (!step) return endCoach(true);
+  step.start?.();
+  $('coach').hidden = false;
+  $('coachStep').textContent = `Step ${coach.i + 1} of ${coach.steps.length}`;
+}
+function endCoach(finished) {
+  coach = null;
+  $('coach').hidden = true;
+  try {
+    localStorage.setItem('legosky.lesson', '1');
+  } catch {}
+  if (finished) message('🎓 Lesson complete! Try a game from the menu', 4);
+}
+function updateCoach() {
+  if (!coach) return;
+  const step = coach.steps[coach.i];
+  $('coachText').innerHTML = step.text();
+  if (step.done()) {
+    sound.blip('load');
+    nextCoach();
+  }
+}
+$('coachSkip').onclick = () => coach && nextCoach();
+$('coachEnd').onclick = () => endCoach(false);
+$('tutorialBtn').onclick = () => {
+  settings.mode = 'free';
+  saveSettings();
+  start(false, { lesson: true });
+};
 
 // ------------------------------------------------------------------ potty breaks
 // Every few minutes of play the vehicle needs to go: a 💩 button pops up and a
@@ -1683,7 +2213,7 @@ function poseAirplane(dt) {
   if (isBot) {
     plane.group.position.copy(flight.pos);
     plane.group.quaternion.copy(flight.quat);
-    plane.animate({ sitting: potty.sitting > 0, speed: flight.speed, onGround: flight.onGround, vy: flight.vel.y, wading: flight.onWater, carrying: !!rampage.held }, dt);
+    plane.animate({ sitting: potty.sitting > 0, speed: flight.driving ? 0 : flight.speed, onGround: flight.onGround, vy: flight.vel.y, wading: flight.onWater, carrying: !!rampage.held }, dt);
     return;
   }
   if (isHeli) {
@@ -1902,21 +2432,27 @@ function frame() {
     mp.update(dt, {
       group: plane.group, city: settings.city, vehicle: settings.vehicle, speed: flight.speed,
       turbo: flight.turbo || 1, floats: !!flight.floats, crashed: flight.crashed, bot: isBot,
-      cash: beerRun?.active ? beerRun.cash : undefined,
+      cash: beerRun?.active ? beerRun.cash : game?.active ? Math.round(game.total ?? game.next * 100) : undefined,
     });
   }
   if (running) {
     const ctl = input.read();
     if (morph) updateMorph(dt);
     updatePotty(dt);
+    updateCoach();
+    updateRoomGames(dt);
     if (autoLand) {
       updateAutoLand(dt);
+    } else if (hitStop > 0) {
+      hitStop -= dt; // the beat after a punch lands
     } else if (potty.sitting > 0) {
       // Busy. Nobody moves until the flush.
     } else if (!flight.crashed) {
       flight.update(dt, ctl);
       if (flight.crashed) {
         explode();
+        sound.noiseHit(/Splash/.test(flight.crashReason) ? 'splash' : 'crash');
+        shake = 1.2;
         beerRun?.onCrash();
         crashTimer = 0;
         $('crashReason').textContent = `💥 ${flight.crashReason}`;
@@ -1925,6 +2461,10 @@ function frame() {
       }
     } else {
       crashTimer += dt;
+    }
+    if (game?.active) {
+      game.update(dt, { pos: flight.pos });
+      updateBeerHud();
     }
     if (beerRun?.active) {
       const p = flight.pos;
@@ -1978,6 +2518,10 @@ function frame() {
 // ------------------------------------------------------------------ start up
 $('loadText').textContent = `Loading ${CITIES[settings.city]}…`;
 building = true;
+applyPrefs();
+applySky();
+applyQuality();
+checkUnlocks();
 await buildWorld();
 buildVehicle();
 building = false;
@@ -1988,7 +2532,7 @@ frame();
 
 // Test hook: ?debug exposes the simulation for automated checks.
 if (new URLSearchParams(location.search).has('debug')) {
-  window.__game = { world, flight, plane, start, google, mp, camera, autoLandApi: { start: (l) => { autoLandTarget = l; startAutoLand(); }, step: (dt) => autoLand && updateAutoLand(dt), active: () => !!autoLand }, step: (dt, ctl) => flight.update(dt, ctl), beer: () => beerRun, potty, goPotty, transform, bot: () => ({ isBot, walk: bot.walk, rampage, props }), botSmash, botGrab };
+  window.__game = { world, flight, plane, start, google, mp, camera, autoLandApi: { start: (l) => { autoLandTarget = l; startAutoLand(); }, step: (dt) => autoLand && updateAutoLand(dt), active: () => !!autoLand }, step: (dt, ctl) => flight.update(dt, ctl), beer: () => beerRun, gameObj: () => game, potty, goPotty, transform, bot: () => ({ isBot, walk: bot.walk, rampage, props }), botSmash, botGrab };
   window.__tilt = input.tilt;
   window.__traffic = traffic;
 }

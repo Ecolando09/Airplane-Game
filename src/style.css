@@ -1087,10 +1087,6 @@ details.help .controls {
 
   /* Keep the start buttons in view: they stick to the bottom of the panel. */
   .actions {
-    position: sticky;
-    bottom: -18px;
-    background: rgba(255, 255, 255, 0.97);
-    padding: 6px 0 10px;
   }
 
   button.big {
@@ -2085,5 +2081,271 @@ body.bot #stick[hidden] {
 @media (prefers-reduced-motion: reduce) {
   #pottyBtn {
     animation: none;
+  }
+}
+
+/* ---------- menu v2: Play on top, cities as a swipeable row of pictures */
+.opt h2 .hint {
+  float: right;
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 600;
+  color: #9aa3ab;
+}
+
+.cards.cities {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  scroll-snap-type: x proximity;
+  padding: 2px 2px 8px;
+  margin: 0 -2px;
+  scrollbar-width: thin;
+}
+
+.cards.cities button {
+  flex: 0 0 128px;
+  height: 84px;
+  scroll-snap-align: start;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: flex-start;
+  gap: 0;
+  padding: 6px 8px;
+  border: 3px solid transparent;
+  background: linear-gradient(transparent 35%, rgba(10, 20, 30, 0.85)), var(--img) center / cover, #7a8a94;
+  color: #fff;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+}
+
+.cards.cities button b {
+  font-size: 13.5px;
+  line-height: 1.15;
+}
+
+.cards.cities button span {
+  color: #e3e8ec;
+  font-size: 11px;
+  display: block !important;
+}
+
+.cards.cities button.on {
+  border-color: var(--yellow);
+  box-shadow: 0 3px 0 #d9b42a;
+  background: linear-gradient(transparent 35%, rgba(10, 20, 30, 0.85)), var(--img) center / cover, #7a8a94;
+}
+
+#segSky {
+  margin-top: 6px;
+}
+
+#segSky button {
+  padding: 6px 8px;
+  text-align: center;
+}
+
+.menu-links {
+  display: grid;
+  gap: 4px;
+  justify-items: center;
+}
+
+.settings {
+  display: grid;
+  gap: 10px;
+  padding-top: 8px;
+  font-size: 13.5px;
+}
+
+.settings label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.settings input[type='range'] {
+  flex: 1;
+  min-width: 100px;
+}
+
+.settings input[type='checkbox'] {
+  width: 18px;
+  height: 18px;
+}
+
+.paints {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.paints button {
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 4px 9px 4px 6px;
+  border-radius: 999px;
+  border: 2px solid #e1e4e8;
+  background: #f6f7f8;
+  color: var(--ink);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.paints button i {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--c);
+  border: 1px solid rgba(0, 0, 0, 0.25);
+}
+
+.paints button.on {
+  border-color: var(--yellow);
+  background: #fff8d9;
+}
+
+.paints button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+#logbook {
+  font-size: 13px;
+  line-height: 1.5;
+  padding-top: 6px;
+}
+
+#logbook .row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+#logSummary {
+  font-weight: 600;
+  color: #6a7580;
+}
+
+/* Throttle gauge under the speed. */
+#thrGauge {
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.18);
+  overflow: hidden;
+  margin-top: 4px;
+}
+
+#thrFill {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: linear-gradient(90deg, var(--yellow), #ff7a1a);
+}
+
+body.bot #thrGauge {
+  visibility: hidden;
+}
+
+/* The flying lesson: one instruction at a time. */
+#coach {
+  position: fixed;
+  left: 50%;
+  bottom: 120px;
+  transform: translateX(-50%);
+  max-width: min(520px, 80vw);
+  background: #fff;
+  color: var(--ink);
+  border-radius: 14px;
+  border: 3px solid var(--yellow);
+  padding: 10px 14px;
+  font-size: 16px;
+  font-weight: 700;
+  text-align: center;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+}
+
+#coach small {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 4px;
+  font-weight: 600;
+  color: #6a7580;
+}
+
+#coach button {
+  font: inherit;
+  border: 0;
+  background: none;
+  color: var(--blue);
+  text-decoration: underline;
+  cursor: pointer;
+  padding: 0;
+}
+
+#coach kbd {
+  background: #eef0f2;
+  border-radius: 4px;
+  padding: 1px 6px;
+  border: 1px solid #c9ced3;
+}
+
+@media (max-height: 500px) {
+  #coach {
+    bottom: 60px;
+    font-size: 13px;
+    padding: 6px 10px;
+    max-width: 46vw;
+  }
+
+  .cards.cities button {
+    flex-basis: 108px;
+    height: 64px;
+  }
+
+  #startButtons {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  #startButtons #resumeBtn {
+    grid-column: 1 / -1;
+  }
+}
+
+body:not(.bot) .bot-only {
+  display: none;
+}
+
+/* Room games (race, tag): a chip under the other players' chips. */
+#roomGame {
+  position: fixed;
+  top: 100px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-weight: 800;
+  font-size: 14px;
+  padding: 5px 12px;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+body.beer #roomGame {
+  top: 190px;
+}
+
+@media (max-height: 500px) {
+  #roomGame {
+    top: 70px;
+    font-size: 12px;
+  }
+
+  body.beer #roomGame {
+    top: 140px;
   }
 }

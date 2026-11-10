@@ -18,9 +18,11 @@
         <div class="stat"><b id="spd">0</b><span>MPH</span></div>
         <div class="stat"><b id="alt">0</b><span>FT ELEV</span></div>
         <div class="stat"><b id="hdg">N</b><span id="hdgDeg">000°</span></div>
+        <div id="thrGauge" title="Throttle"><i id="thrFill"></i></div>
       </div>
       <div id="buddies" aria-live="polite"></div>
       <div id="botHud" class="panel" hidden></div>
+      <div id="roomGame" class="panel" hidden></div>
       <div class="panel" id="over"></div>
       <canvas id="minimap" width="480" height="480" title="Tap to enlarge (N)"></canvas>
       <div id="message"></div>
@@ -41,6 +43,7 @@
       </div>
       <div id="beerDwell" hidden><svg viewBox="0 0 44 44"><circle cx="22" cy="22" r="19" /><circle id="beerDwellArc" cx="22" cy="22" r="19" /></svg><span id="beerDwellText"></span></div>
       <button id="autoLandBtn" class="big go" hidden>🛬 Auto-land at <span id="autoLandName"></span><kbd>L</kbd></button>
+      <div id="coach" hidden><span id="coachText"></span><small><span id="coachStep"></span><button id="coachSkip">Skip this step</button><button id="coachEnd">End lesson</button></small></div>
       <button id="pottyBtn" class="big" hidden><span class="poo">💩</span><span id="pottyText">Potty time!</span></button>
       <div id="crashBox" hidden>
         <p id="crashReason">💥 Crashed!</p>
@@ -70,6 +73,8 @@
         <button class="chip" data-act="brake">BRAKE</button>
         <button class="chip" data-act="floats">FLOATS</button>
         <button class="chip" data-act="turbo" id="turboChip">TURBO</button>
+        <button class="chip bot-only" data-act="bigger">BIG</button>
+        <button class="chip bot-only" data-act="smaller">SMALL</button>
       </div>
     </div>
 
@@ -87,18 +92,30 @@
           <p class="sub" id="subtitle">Loading…</p>
         </header>
 
+        <div id="loading">
+          <div class="bar"><div id="loadBar"></div></div>
+          <p id="loadText">Loading…</p>
+        </div>
+
+        <!-- Play comes first; everything below changes what you play. -->
+        <div class="actions" id="startButtons" hidden>
+          <button class="big go" id="resumeBtn" hidden>▶ Resume flight</button>
+          <button class="big" id="startRunway">Take off</button>
+          <button class="big alt" id="startAir">Start in the air over downtown</button>
+        </div>
+
         <p class="room-lock" id="roomLock" hidden>🔒 Where and Look are set by your room so everyone flies the same world. Leave the room to change them.</p>
 
         <section class="opt" aria-labelledby="optCity">
-          <h2 id="optCity">Where</h2>
-          <div class="cards two cities" id="segCity" role="group" aria-labelledby="optCity">
+          <h2 id="optCity">Where <span class="hint">swipe for more →</span></h2>
+          <div class="cards cities" id="segCity" role="group" aria-labelledby="optCity">
             <button data-v="spartanburg"><b>Spartanburg</b><span>SC</span></button>
             <button data-v="fortcollins"><b>Fort Collins</b><span>CO</span></button>
             <button data-v="carbondale"><b>Carbondale–Marble</b><span>CO</span></button>
             <button data-v="denver"><b>Denver</b><span>CO</span></button>
             <button data-v="stlouis"><b>St. Louis</b><span>MO</span></button>
             <button data-v="sanfrancisco"><b>San Francisco</b><span>CA</span></button>
-            <button data-v="hongkong"><b>Hong Kong</b><span>&amp; Shenzhen</span></button>
+            <button data-v="hongkong"><b>Hong Kong</b><span>& Shenzhen</span></button>
             <button data-v="tokyo"><b>Tokyo</b><span>Japan</span></button>
             <button data-v="singapore"><b>Singapore</b><span>Asia</span></button>
           </div>
@@ -110,18 +127,19 @@
             <button data-v="plane"><b>✈️ Bush Plane</b><span>LEGO Technic 42198</span></button>
             <button data-v="heli"><b>🕷️ Ghost-Spider</b><span>Copter · hover &amp; land anywhere</span></button>
           </div>
+          <div class="paints" id="paints" role="group" aria-label="Paint job"></div>
         </section>
 
-        <section class="opt" id="modeSection" aria-labelledby="optMode" hidden>
+        <section class="opt" id="modeSection" aria-labelledby="optMode">
           <h2 id="optMode">Game</h2>
           <div class="cards two" id="segMode" role="group" aria-labelledby="optMode">
             <button data-v="free"><b>✈️ Free flight</b><span>Explore at your own pace</span></button>
+            <button data-v="rings"><b>⭕ Ring Race</b><span>Thread the rings, beat the clock</span></button>
+            <button data-v="rampage"><b>🤖 Rampage</b><span>2 minutes of robot smashing</span></button>
             <button data-v="beer"><b>🍺 Beer Run</b><span>Deliver kegs, beat the clock</span></button>
           </div>
           <div class="beer-intro" id="beerIntro" hidden>
-            <p>Five-minute shift. Fly low through a brewery's <b class="amber">amber beam</b> (or land in it) to
-              load kegs, then drop them at the shop's <b class="green">green beam</b> before time runs out. Early
-              deliveries and on-time streaks pay more; crashing breaks your kegs.</p>
+            <p id="modeIntro"></p>
             <p class="beer-top3" id="beerTop3"></p>
           </div>
         </section>
@@ -134,6 +152,11 @@
             <button data-v="google"><b>🌎 Google 3D</b><span>Real 3D city</span></button>
           </div>
           <p class="look-note" id="lookNote" hidden>Google 3D isn't set up on this server yet.</p>
+          <div class="cards three" id="segSky" role="group" aria-label="Time of day">
+            <button data-v="day"><b>☀️ Day</b></button>
+            <button data-v="sunset"><b>🌇 Sunset</b></button>
+            <button data-v="night"><b>🌙 Night</b></button>
+          </div>
         </section>
 
         <section class="opt" id="mpSection" aria-labelledby="optMp">
@@ -153,6 +176,11 @@
               <button class="small-btn" id="mpCopy">Copy invite link</button>
               <button class="small-btn ghost" id="mpLeave">Leave</button>
             </div>
+            <div class="mp-row">
+              <button class="small-btn" id="mpRace">🏁 Race to a landmark</button>
+              <button class="small-btn" id="mpTag">🏷️ Play tag</button>
+            </div>
+            <p class="look-note">Everyone in the room sees what the robots smash.</p>
             <ul id="mpList"></ul>
           </div>
           <p class="look-note" id="mpNote" hidden>Multiplayer works on play.latlas.lol (your own server).</p>
@@ -167,18 +195,22 @@
           </div>
         </div>
 
-        <div id="loading">
-          <div class="bar"><div id="loadBar"></div></div>
-          <p id="loadText">Loading…</p>
-        </div>
+        <details class="help" id="settingsBox">
+          <summary>Settings</summary>
+          <div class="settings">
+            <label>Steering sensitivity <input type="range" id="setSens" min="50" max="150" step="10" value="100" /><output id="setSensOut">100%</output></label>
+            <label class="check"><input type="checkbox" id="setInvert" /> Invert up/down (push forward to dive)</label>
+            <label class="check"><input type="checkbox" id="setSound" checked /> Sound effects</label>
+            <label class="check"><input type="checkbox" id="setMusic" /> Music</label>
+            <label class="check"><input type="checkbox" id="setLow" /> Low graphics (smoother on older phones)</label>
+            <button class="small-btn" id="tutorialBtn">Replay the flying lesson</button>
+          </div>
+        </details>
 
-        <div class="actions" id="startButtons" hidden>
-          <button class="big go" id="resumeBtn" hidden>▶ Resume flight</button>
-          <button class="big" id="startRunway">Take off</button>
-          <button class="big alt" id="startAir">Start in the air over downtown</button>
-          <button class="link-btn" id="phoneBtn">📱 Use my phone as the controller</button>
-          <a class="link-btn" id="androidLink" href="/#android" hidden>📲 Get the Android app</a>
-        </div>
+        <details class="help" id="logbookBox">
+          <summary>Pilot logbook <span id="logSummary"></span></summary>
+          <div id="logbook"></div>
+        </details>
 
         <details class="help">
           <summary>Controls &amp; tips</summary>
@@ -199,6 +231,7 @@
             <div><kbd>C</kbd> camera &nbsp; <kbd>N</kbd> big map &nbsp; <kbd>R</kbd> restart &nbsp; <kbd>Esc</kbd> menu</div>
             <div><kbd>L</kbd> auto-land (within 500 ft of a landmark)</div>
             <div><kbd>F</kbd> robot mode: <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> walk · <kbd>Shift</kbd> run · <kbd>Space</kbd> jump (hold for jets)</div>
+            <div>Supersizer: <kbd>.</kbd> makes the car (or anything) in front of you bigger, <kbd>,</kbd> smaller. Grab a supersized car to drive it</div>
             <div>Robot: <kbd>X</kbd> smash · <kbd>G</kbd> grab a car, boat or boulder, <kbd>G</kbd> again to throw it</div>
             <div><kbd>P</kbd> potty: when 💩 pops up, go to the 🚽 by the helipad or runway</div>
             <div><kbd>I</kbd> invert pitch &nbsp; <kbd>M</kbd> sound</div>
@@ -212,6 +245,11 @@
           <p class="tip menu-tip-keys">Xbox controller: left stick to fly, triggers for throttle, A brakes, B floats,
             X robot (then A jump, B grab, RB smash), Y camera, RB turbo<span class="heli-only">, right stick lift</span>.</p>
         </details>
+
+        <div class="menu-links">
+          <button class="link-btn" id="phoneBtn">📱 Use my phone as the controller</button>
+          <a class="link-btn" id="androidLink" href="/#android" hidden>📲 Get the Android app</a>
+        </div>
 
         <p class="credit">Map data © OpenStreetMap contributors, Overture Maps Foundation. Elevation: Mapzen
           Terrain Tiles. Satellite imagery contains modified Copernicus Sentinel data. Google 3D: © Google.</p>
