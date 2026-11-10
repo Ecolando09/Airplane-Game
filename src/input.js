@@ -17,7 +17,7 @@ export class Input {
 
     const actions = {
       KeyC: 'cam', KeyR: 'reset', KeyM: 'mute', KeyI: 'invert', KeyB: 'floats', KeyN: 'map',
-      KeyF: 'transform', KeyG: 'grab', KeyX: 'smash',
+      KeyP: 'potty', KeyF: 'transform', KeyG: 'grab', KeyX: 'smash',
       KeyT: 'turbo', KeyL: 'autoland', Enter: 'respawn', NumpadEnter: 'respawn', Digit1: 'turbo1', Digit2: 'turbo2', Digit3: 'turbo3', Escape: 'pause',
     };
     addEventListener('keydown', (e) => {

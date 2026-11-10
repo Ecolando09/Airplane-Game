@@ -2033,3 +2033,57 @@ body.bot #stick[hidden] {
 #botChip.on {
   background: #4fd8ff;
 }
+
+/* ---------- potty break */
+#pottyBtn {
+  position: fixed;
+  left: 50%;
+  bottom: 96px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #8a5a2b;
+  box-shadow: 0 4px 0 #5a3a18;
+  padding: 8px 18px;
+  font-size: 16px;
+  animation: pottyWiggle 0.9s infinite;
+}
+
+#pottyBtn .poo {
+  font-size: 30px;
+  line-height: 1;
+}
+
+#pottyBtn.ready {
+  background: #2f8a45;
+  box-shadow: 0 4px 0 #1d5a2c;
+}
+
+@keyframes pottyWiggle {
+  0%, 100% { transform: translateX(-50%) rotate(-3deg); }
+  50% { transform: translateX(-50%) rotate(3deg); }
+}
+
+.label.pin.potty {
+  --pin: #8a5a2b;
+  font-size: 15px;
+}
+
+@media (max-height: 500px) {
+  #pottyBtn {
+    bottom: 58px;
+    padding: 4px 12px;
+    font-size: 13px;
+  }
+
+  #pottyBtn .poo {
+    font-size: 22px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #pottyBtn {
+    animation: none;
+  }
+}

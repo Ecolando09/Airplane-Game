@@ -48,13 +48,15 @@ export class EngineSound {
       miss: [[392, 0], [311, 0.12]],
       break: [[180, 0], [120, 0.06], [90, 0.12]],
       throw: [[620, 0], [440, 0.06]],
+      potty: [[880, 0], [988, 0.12], [880, 0.24]], // "uh-oh" chime
+      flush: [[520, 0], [440, 0.1], [360, 0.2], [290, 0.3], [230, 0.4], [180, 0.5], [140, 0.6]],
       transform: [[196, 0], [294, 0.07], [392, 0.14], [587, 0.21], [784, 0.28]],
     }[kind] || [];
     const t0 = this.ctx.currentTime;
     for (const [f, at] of notes) {
       const o = this.ctx.createOscillator();
       const g = this.ctx.createGain();
-      o.type = kind === 'break' || kind === 'transform' ? 'sawtooth' : 'triangle';
+      o.type = kind === 'break' || kind === 'transform' || kind === 'flush' ? 'sawtooth' : 'triangle';
       o.frequency.value = f;
       g.gain.setValueAtTime(0.0001, t0 + at);
       g.gain.exponentialRampToValueAtTime(0.12, t0 + at + 0.01);

@@ -62,6 +62,7 @@ export class World {
     this._buildTrees();
     this._buildCustom();
     this._buildHelipad();
+    this._buildToilets();
     this._buildClouds();
     this.landmarks = data.landmarks.map((l) => ({ ...l, y: this.heightAt(l.x, l.z) }));
     this.locators = this._buildLocators(data.locators || []);
@@ -649,6 +650,58 @@ export class World {
     pad.receiveShadow = true;
     this.scene.add(pad);
     this.meshes.push(pad);
+  }
+
+  // ------------------------------------------------------- potty stops
+  /**
+   * A giant toilet beside the helipad and one beside the start of the runway,
+   * for when the vehicle needs to go (the 💩 button). Robot-sized: the seat is
+   * 4.5 m up. `this.toilets` lists them: { x, y, z, yaw } (yaw: the way a sitter faces).
+   */
+  _buildToilets() {
+    this.toilets = [];
+    const white = legoMaterial({ color: 0xf7f7f2 });
+    const seatMat = legoMaterial({ color: LEGO.lightGray });
+    const water = new THREE.MeshBasicMaterial({ color: 0x4fb8e8 });
+    const gold = legoMaterial({ color: LEGO.yellow });
+    const spots = [];
+    const hp = this.data.helipad;
+    if (hp) spots.push({ x: hp.x, z: hp.z, r: 32 });
+    const rw = this.runway;
+    const back = rw.length / 2 - 40;
+    spots.push({ x: rw.x - rw.fx * back - rw.fz * (rw.width / 2 + 55), z: rw.z - rw.fz * back + rw.fx * (rw.width / 2 + 55), r: 0 });
+    for (const sp of spots) {
+      // The first clear, dry spot around the pad.
+      let at = null;
+      for (let i = 0; i < 96 && !at; i++) {
+        const a = (i / 12) * Math.PI * 2;
+        const r = sp.r + Math.floor(i / 12) * 20;
+        const x = sp.x + Math.cos(a) * r;
+        const z = sp.z + Math.sin(a) * r;
+        const y = this.heightAt(x, z);
+        if (!this.isWater(x, z) && !this.hitsObstacle({ x, y: y + 4, z }, 9)) at = { x, y, z, yaw: Math.atan2(-(sp.x - x), -(sp.z - z)) };
+      }
+      at ||= { x: sp.x + sp.r, y: this.heightAt(sp.x + sp.r, sp.z), z: sp.z, yaw: Math.PI / 2 };
+      const g = new THREE.Group();
+      g.position.set(at.x, at.y, at.z);
+      g.rotation.y = at.yaw; // local -Z is the way the sitter faces
+      const add = (geo, mat, x, y, z) => {
+        const m = new THREE.Mesh(geo, mat);
+        m.position.set(x, y, z);
+        m.castShadow = true;
+        g.add(m);
+        return m;
+      };
+      add(new THREE.CylinderGeometry(2.2, 2.8, 2.4, 14), white, 0, 1.2, 0); // foot
+      add(new THREE.CylinderGeometry(4.2, 2.4, 2.2, 18), white, 0, 3.4, 0); // bowl
+      add(new THREE.TorusGeometry(3.5, 0.75, 8, 20).rotateX(Math.PI / 2), seatMat, 0, 4.6, 0); // seat
+      add(new THREE.CircleGeometry(2.8, 18).rotateX(-Math.PI / 2), water, 0, 4.3, 0);
+      add(new THREE.BoxGeometry(7.4, 5.5, 2.4), white, 0, 7.2, 4.6); // tank
+      add(new THREE.BoxGeometry(7.8, 0.5, 2.8), seatMat, 0, 10.1, 4.6);
+      add(new THREE.BoxGeometry(1.4, 0.5, 0.6), gold, -2.4, 8.8, 3.2); // flush handle
+      this.scene.add(g);
+      this.toilets.push(at);
+    }
   }
 
   // ------------------------------------------------------- custom buildings

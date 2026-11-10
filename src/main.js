@@ -383,8 +383,8 @@ function updateCamera(dt) {
     return;
   }
   for (const m of plane.cockpitHidden) m.visible = mode !== 'cockpit';
-  // From the cockpit only the spinning-prop blur shows, not the solid blades.
-  if (!isHeli && !isBot) for (const c of plane.propeller.children) if (c !== plane.propDisc) c.visible = mode !== 'cockpit';
+  // From the cockpit the propeller is hidden (up close, its blur disc filled the sky).
+  if (!isHeli && !isBot) for (const c of plane.propeller.children) c.visible = mode !== 'cockpit';
   if (mode === 'cockpit') {
     plane.group.updateMatrixWorld();
     camera.position.copy(plane.cockpitEye).applyMatrix4(plane.group.matrixWorld);
@@ -398,6 +398,11 @@ function updateCamera(dt) {
     const back = mode === 'chase' ? 36 : 80;
     want = p.clone().addScaledVector(flatF, -back).add(new THREE.Vector3(0, mode === 'chase' ? 19 : 42, 0));
     look = p.clone().addScaledVector(flatF, 14).add(new THREE.Vector3(0, 9, 0));
+    if (potty.sitting > 0) {
+      // On the toilet: look from the front, so the tank isn't in the way.
+      want = p.clone().addScaledVector(flatF, 30).addScaledVector(flight.right, 12).add(new THREE.Vector3(0, 13, 0));
+      look = p.clone().add(new THREE.Vector3(0, 7, 0));
+    }
   } else if (mode === 'chase') {
     want = p.clone().addScaledVector(f, -24).addScaledVector(flatF, -2).add(new THREE.Vector3(0, 7, 0));
     look = p.clone().addScaledVector(f, 12);
@@ -832,6 +837,14 @@ function updateLabels() {
     items.push({ el: labelEls[i], x: l.x, y: l.y + 40 + d * 0.01, z: l.z, d, pin: false, hide: d > maxDist });
   });
   if (beerRun) items.push(...beerRun.labelItems(p));
+  if (potty.need) {
+    const t = nearestToilet();
+    const d = Math.hypot(t.x - p.x, t.z - p.z);
+    pottyLabel.textContent = `🚽 Toilet · ${fmtDist(d)}`;
+    items.push({ el: pottyLabel, x: t.x, y: t.y + 60, z: t.z, d, pin: true });
+  } else {
+    pottyLabel.style.display = 'none';
+  }
   for (const pl of mp.visible(settings.city)) {
     if (!pl.label) {
       pl.label = document.createElement('div');
@@ -914,6 +927,7 @@ function start(airborne) {
   // Runs inside the tap, so the motion-sensor permission prompt is allowed here.
   if (input.isTouch) input.setTilt(phoneSteering === 'tilt').then((on) => on && message('Tilt to steer — tap CENTER to re-center', 3));
   leaveBot();
+  potty.sitting = 0;
   rampage.reset(); // a fresh start puts the city back together
   updateBotHud();
   clearDebris();
@@ -1591,6 +1605,74 @@ input.on('smash', botSmash);
 input.on('grab', botGrab);
 setInterval(() => isBot && updateBotHud(), 500);
 
+// ------------------------------------------------------------------ potty breaks
+// Every few minutes of play the vehicle needs to go: a 💩 button pops up and a
+// tag points to the nearest giant toilet (there's one by the helipad and one by
+// the runway). Get there, press the button, and the robot sits down and flushes.
+const POTTY_EVERY = 210; // seconds of play between potty breaks
+const POTTY_REACH = 45; // meters from the toilet
+const potty = { timer: 75, need: false, sitting: 0 }; // the first one comes early so you meet it
+const pottyLabel = document.createElement('div');
+pottyLabel.className = 'label pin potty';
+pottyLabel.style.display = 'none';
+$('labels').appendChild(pottyLabel);
+
+function nearestToilet() {
+  const p = flight.pos;
+  return [...world.toilets].sort((a, b) => Math.hypot(a.x - p.x, a.z - p.z) - Math.hypot(b.x - p.x, b.z - p.z))[0];
+}
+function pottyReady() {
+  const t = nearestToilet();
+  return Math.hypot(t.x - flight.pos.x, t.z - flight.pos.z) < POTTY_REACH && (isBot || flight.onGround) && !flight.crashed;
+}
+function updatePotty(dt) {
+  if (potty.sitting > 0) {
+    potty.sitting -= dt;
+    if (potty.sitting <= 0) {
+      // Done: stand up in front of the toilet.
+      const f = flight.forward;
+      flight.pos.x += f.x * 9;
+      flight.pos.z += f.z * 9;
+      flight.pos.y = world.heightAt(flight.pos.x, flight.pos.z);
+      message('Ahh! All better ✨🚽', 2.5);
+    }
+    return;
+  }
+  if (!potty.need) {
+    potty.timer -= dt;
+    if (potty.timer > 0) return;
+    potty.need = true;
+    sound.blip('potty');
+    message('💩 Uh-oh… potty time!<small>Follow the 🚽 tag to the toilet</small>', 3.5);
+  }
+  $('pottyBtn').hidden = false;
+  const ready = pottyReady();
+  $('pottyBtn').classList.toggle('ready', ready);
+  $('pottyText').textContent = ready ? 'Sit on the toilet' : `Potty! 🚽 ${fmtDist(Math.hypot(nearestToilet().x - flight.pos.x, nearestToilet().z - flight.pos.z))}`;
+}
+function goPotty() {
+  if (!running || !potty.need || potty.sitting > 0) return;
+  if (!pottyReady()) {
+    message(`The 🚽 is next to the ${world.data.helipad ? 'helipad and the ' : ''}runway. Land or walk right up to it!`, 3);
+    return;
+  }
+  // Only a robot can sit down: change shape if needed, then take a seat.
+  if (!isBot) transform();
+  finishMorph();
+  const t = nearestToilet();
+  flight.place(new THREE.Vector3(t.x, t.y + 3.4, t.z), t.yaw, null);
+  flight.onGround = true;
+  camInit = false;
+  potty.need = false;
+  potty.timer = POTTY_EVERY;
+  potty.sitting = 3.5;
+  $('pottyBtn').hidden = true;
+  message('🚽 …', 2.5);
+  setTimeout(() => sound.blip('flush'), 2300);
+}
+$('pottyBtn').onclick = goPotty;
+input.on('potty', goPotty);
+
 // ------------------------------------------------------------------ airplane pose
 // Tail-dragger: sits nose-up on the ground and lifts its tail as it speeds up.
 // The tilt pivots around the main wheels' contact point so they stay on the ground.
@@ -1601,7 +1683,7 @@ function poseAirplane(dt) {
   if (isBot) {
     plane.group.position.copy(flight.pos);
     plane.group.quaternion.copy(flight.quat);
-    plane.animate({ speed: flight.speed, onGround: flight.onGround, vy: flight.vel.y, wading: flight.onWater, carrying: !!rampage.held }, dt);
+    plane.animate({ sitting: potty.sitting > 0, speed: flight.speed, onGround: flight.onGround, vy: flight.vel.y, wading: flight.onWater, carrying: !!rampage.held }, dt);
     return;
   }
   if (isHeli) {
@@ -1826,8 +1908,11 @@ function frame() {
   if (running) {
     const ctl = input.read();
     if (morph) updateMorph(dt);
+    updatePotty(dt);
     if (autoLand) {
       updateAutoLand(dt);
+    } else if (potty.sitting > 0) {
+      // Busy. Nobody moves until the flush.
     } else if (!flight.crashed) {
       flight.update(dt, ctl);
       if (flight.crashed) {
@@ -1903,7 +1988,7 @@ frame();
 
 // Test hook: ?debug exposes the simulation for automated checks.
 if (new URLSearchParams(location.search).has('debug')) {
-  window.__game = { world, flight, plane, start, google, mp, camera, autoLandApi: { start: (l) => { autoLandTarget = l; startAutoLand(); }, step: (dt) => autoLand && updateAutoLand(dt), active: () => !!autoLand }, step: (dt, ctl) => flight.update(dt, ctl), beer: () => beerRun, transform, bot: () => ({ isBot, walk: bot.walk, rampage, props }), botSmash, botGrab };
+  window.__game = { world, flight, plane, start, google, mp, camera, autoLandApi: { start: (l) => { autoLandTarget = l; startAutoLand(); }, step: (dt) => autoLand && updateAutoLand(dt), active: () => !!autoLand }, step: (dt, ctl) => flight.update(dt, ctl), beer: () => beerRun, potty, goPotty, transform, bot: () => ({ isBot, walk: bot.walk, rampage, props }), botSmash, botGrab };
   window.__tilt = input.tilt;
   window.__traffic = traffic;
 }

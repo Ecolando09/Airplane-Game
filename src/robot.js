@@ -113,6 +113,15 @@ export function createRobot(kind) {
   let carry = 0;
   /** Pose for this frame. s: { speed, onGround, vy, wading, carrying } */
   function animate(s, dt) {
+    if (s.sitting) {
+      // On the toilet: legs out in front, hands on knees.
+      legs[0].rotation.x = legs[1].rotation.x = 1.45;
+      arms[0].rotation.x = arms[1].rotation.x = 0.9;
+      arms[0].rotation.z = arms[1].rotation.z = 0;
+      torso.rotation.x = 0.08;
+      body.position.y = -1.3;
+      return;
+    }
     const amount = Math.min(1, s.speed / 14);
     phase += dt * (3 + s.speed * 0.35) * (s.onGround ? 1 : 0.3);
     const swing = s.onGround ? Math.sin(phase) * 0.7 * amount : 0.35;
