@@ -368,7 +368,60 @@ function supertrees(world, s) {
   mesh(g, new THREE.BoxGeometry(45, 1.5, 3), mat(LEGO.darkGray), 22.5, 22, 5);
 }
 
-const BUILDERS = { tower, arch, sutro, pyramid, tokyotower, skytree, ggbridge, skypark, flyer, supertrees };
+// ---------------------------------------------------------------- Tian Tan Buddha
+// The Big Buddha at Ngong Ping, Lantau: a bronze seated figure on a lotus, on
+// a three-tier round altar on top of its hill. Built a little larger than life
+// (about 50 m with the altar) so it reads from the air.
+function buddha(world, s) {
+  const ground = world.heightAt(s.x, s.z);
+  const g = group(world, s.x, ground, s.z, THREE.MathUtils.degToRad(s.heading || 0));
+  const bronze = mat(isLego() ? 0x8a7443 : 0x6f6247);
+  const stone = mat(isLego() ? LEGO.tan : 0xcfc6b0);
+  const round = (r0, r1, y0, y1, m, sides = 20) => frustum(g, r0, r1, y0, y1, m, sides);
+  // Altar: three tiers, modeled on the Temple of Heaven.
+  round(30, 30, -6, 4, stone);
+  round(23, 23, 4, 8, stone);
+  round(17, 17, 8, 12, stone);
+  // Lotus throne: a ring of petals around a low drum.
+  round(11, 13, 12, 16, bronze);
+  for (let i = 0; i < 14; i++) {
+    const a = (i / 14) * Math.PI * 2;
+    const petal = mesh(g, new THREE.ConeGeometry(2.6, 6, 5), bronze, Math.cos(a) * 12.2, 15.5, Math.sin(a) * 12.2);
+    petal.rotation.z = -Math.cos(a) * 0.45;
+    petal.rotation.x = Math.sin(a) * 0.45;
+  }
+  // Crossed legs, body, shoulders, head.
+  const legs = mesh(g, new THREE.SphereGeometry(11, 16, 10), bronze, 0, 18.5, -1);
+  legs.scale.set(1, 0.38, 0.8);
+  round(7.5, 5.6, 19, 32, bronze, 14);
+  const shoulders = mesh(g, new THREE.SphereGeometry(7.4, 14, 10), bronze, 0, 31.5, 0);
+  shoulders.scale.set(1.15, 0.55, 0.8);
+  mesh(g, new THREE.SphereGeometry(3.9, 14, 12), bronze, 0, 38, -0.4);
+  mesh(g, new THREE.SphereGeometry(1.7, 10, 8), bronze, 0, 42, -0.2); // topknot
+  for (const sx of [-1, 1]) mesh(g, new THREE.BoxGeometry(0.8, 3.4, 1.2), bronze, sx * 3.9, 37.4, -0.2); // long ears
+  // Right hand raised in blessing, left hand resting on the lap (local -Z is the front).
+  const upper = mesh(g, new THREE.BoxGeometry(2.6, 8, 2.6), bronze, -7.6, 28, -1.5);
+  upper.rotation.x = -0.25;
+  mesh(g, new THREE.BoxGeometry(2.4, 7, 2.2), bronze, -7.4, 30.5, -6).rotation.x = 0.5;
+  mesh(g, new THREE.BoxGeometry(3, 4.2, 0.9), bronze, -7.2, 34.8, -7.6); // open palm
+  mesh(g, new THREE.BoxGeometry(2.6, 2.4, 7), bronze, 6.6, 23, -4.5).rotation.y = 0.5;
+  mesh(g, new THREE.BoxGeometry(4.2, 1, 3.4), bronze, 3, 22.4, -8); // resting hand
+  // The long stairway up from the plaza.
+  const steps = 16;
+  for (let i = 0; i < steps; i++) {
+    const d = 31 + i * 5.5;
+    const x = s.x + Math.sin(THREE.MathUtils.degToRad(s.heading || 0)) * d;
+    const z = s.z - Math.cos(THREE.MathUtils.degToRad(s.heading || 0)) * d;
+    const y = world.heightAt(x, z) - ground;
+    mesh(g, new THREE.BoxGeometry(12, 3, 6), stone, 0, Math.min(3, y) - 0.5, -d);
+  }
+  solid(world, g, 0, 0, 30, 30, -1e4, ground + 4);
+  solid(world, g, 0, 0, 17, 17, ground + 4, ground + 16);
+  solid(world, g, 0, 0, 9, 8, ground + 16, ground + 34);
+  solid(world, g, 0, -0.4, 4, 4, ground + 34, ground + 44);
+}
+
+const BUILDERS = { buddha, tower, arch, sutro, pyramid, tokyotower, skytree, ggbridge, skypark, flyer, supertrees };
 
 /** Build a hand-modeled landmark; unknown kinds are skipped. Returns true if built. */
 export function buildLandmark(world, spec) {

@@ -1,10 +1,10 @@
 {
-  "name": "Hong Kong",
+  "name": "Hong Kong & Shenzhen",
   "bbox": [
-    114.11,
-    22.25,
+    113.87,
+    22.21,
     114.24,
-    22.36
+    22.58
   ],
   "airport": "Kai Tak (historic)",
   "runway": {
@@ -113,6 +113,96 @@
       "Tsim Sha Tsui Clock Tower",
       22.29358,
       114.16953
+    ],
+    [
+      "Tian Tan Buddha",
+      22.25399,
+      113.90498
+    ],
+    [
+      "Po Lin Monastery",
+      22.2555,
+      113.90801
+    ],
+    [
+      "Ngong Ping Cable Car",
+      22.25636,
+      113.90146
+    ],
+    [
+      "Hong Kong International Airport",
+      22.30802,
+      113.91858
+    ],
+    [
+      "Hong Kong Disneyland",
+      22.31297,
+      114.04128
+    ],
+    [
+      "Tsing Ma Bridge",
+      22.35047,
+      114.07171
+    ],
+    [
+      "Ocean Park",
+      22.24637,
+      114.17648
+    ],
+    [
+      "Tai Mo Shan",
+      22.40976,
+      114.12472
+    ],
+    [
+      "Sha Tin Racecourse",
+      22.40151,
+      114.20541
+    ],
+    [
+      "Ping An Finance Centre",
+      22.53664,
+      114.05036
+    ],
+    [
+      "KK100",
+      22.54571,
+      114.10158
+    ],
+    [
+      "Shun Hing Square",
+      22.54534,
+      114.10552
+    ],
+    [
+      "Window of the World",
+      22.5347,
+      113.9735
+    ],
+    [
+      "Shenzhen Civic Center",
+      22.5431,
+      114.0579
+    ],
+    [
+      "Lianhuashan Park",
+      22.556,
+      114.058
+    ],
+    [
+      "Luohu Port",
+      22.53098,
+      114.11333
+    ],
+    [
+      "Shenzhen Bay Bridge",
+      22.495,
+      113.956
+    ],
+    [
+      "Sea World Shekou",
+      22.48623,
+      113.91172
     ]
   ],
   "estimateHeights": true,
@@ -143,14 +233,40 @@
   "ground": "#4d8f3e",
   "geoid": -2,
   "imagery": [
+    "sentinel-s2-l2a-cogs/49/Q/GE/2025/3/S2C_49QGE_20250324_0_L2A",
     "sentinel-s2-l2a-cogs/50/Q/KK/2025/1/S2A_50QKK_20250120_0_L2A",
     "sentinel-s2-l2a-cogs/49/Q/HE/2025/1/S2A_49QHE_20250120_0_L2A",
-    "sentinel-s2-l2a-cogs/50/Q/KK/2025/3/S2C_50QKK_20250324_0_L2A",
     "sentinel-s2-l2a-cogs/49/Q/HE/2025/3/S2C_49QHE_20250324_0_L2A",
-    "sentinel-s2-l2a-cogs/50/Q/KK/2025/4/S2C_50QKK_20250403_0_L2A",
-    "sentinel-s2-l2a-cogs/49/Q/HE/2026/1/S2B_49QHE_20260113_0_L2A"
+    "sentinel-s2-l2a-cogs/50/Q/KK/2025/3/S2C_50QKK_20250324_0_L2A",
+    "sentinel-s2-l2a-cogs/49/Q/GE/2025/1/S2A_49QGE_20250103_0_L2A",
+    "sentinel-s2-l2a-cogs/49/Q/HE/2026/1/S2B_49QHE_20260113_0_L2A",
+    "sentinel-s2-l2a-cogs/50/Q/KK/2026/1/S2B_50QKK_20260113_0_L2A"
   ],
   "landExtra": {
     "national_park": "forest"
-  }
+  },
+  "elevGrid": 513,
+  "structures": [
+    {
+      "kind": "buddha",
+      "lat": 22.25399,
+      "lon": 113.90498,
+      "heading": 0,
+      "clear": 45
+    }
+  ],
+  "custom": [
+    {
+      "building": "京基100",
+      "kind": "tower",
+      "height": 442,
+      "color": "#9fb4c4"
+    }
+  ],
+  "maxBuildings": 150000,
+  "treeDensity": 110,
+  "fog": [
+    4500,
+    24000
+  ]
 }

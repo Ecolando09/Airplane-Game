@@ -37,11 +37,15 @@ let LOOK = 'lego';
 export const setLook = (look) => (LOOK = look);
 export const isLego = () => LOOK === 'lego';
 
+// 0 by day, 1 at night: windows light up (shared by every material).
+export const NIGHT = { value: 0 };
+
 export function legoMaterial({ studs = 0, windows = false, ...params } = {}) {
   if (!isLego()) studs = 0;
   const mat = new THREE.MeshLambertMaterial(params);
   mat.onBeforeCompile = (shader) => {
     shader.uniforms.uStud = { value: studs };
+    shader.uniforms.uNight = NIGHT;
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', '#include <common>\nvarying vec3 vWPos;\nvarying vec3 vWNorm;')
       .replace(
@@ -62,7 +66,8 @@ export function legoMaterial({ studs = 0, windows = false, ...params } = {}) {
         `#include <common>
         varying vec3 vWPos;
         varying vec3 vWNorm;
-        uniform float uStud;`
+        uniform float uStud;
+        uniform float uNight;`
       )
       .replace(
         '#include <color_fragment>',
@@ -90,6 +95,10 @@ export function legoMaterial({ studs = 0, windows = false, ...params } = {}) {
           vec2 f = fract(g);
           float win = step(0.28, f.x) * step(f.x, 0.72) * step(0.35, f.y) * step(f.y, 0.8);
           diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.16, 0.26, 0.36), win * fade * 0.85);
+          // At night about half the windows are lit, a warm yellow.
+          vec2 cell = floor(g);
+          float lit = step(0.5, fract(sin(dot(cell, vec2(12.9898, 78.233))) * 43758.5453));
+          totalEmissiveRadiance += vec3(1.0, 0.82, 0.45) * win * side * lit * uNight * (1.0 - smoothstep(0.6, 1.4, fw));
         }` : ''}`
       );
   };

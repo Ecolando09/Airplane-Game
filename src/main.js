@@ -25,7 +25,7 @@ const SKY = 0x9fd0ff;
 const CITIES = {
   spartanburg: 'Spartanburg, SC', fortcollins: 'Fort Collins, CO', carbondale: 'Carbondale–Marble, CO',
   denver: 'Denver, CO', stlouis: 'St. Louis, MO',
-  sanfrancisco: 'San Francisco, CA', hongkong: 'Hong Kong', tokyo: 'Tokyo, Japan', singapore: 'Singapore',
+  sanfrancisco: 'San Francisco, CA', hongkong: 'Hong Kong & Shenzhen', tokyo: 'Tokyo, Japan', singapore: 'Singapore',
 };
 const VEHICLE_NAMES = { plane: 'Bush Plane', heli: 'Ghost-Spider Copter' };
 const LOOK_NAMES = { lego: 'Lego', real: 'Realistic', google: 'Google 3D' };
