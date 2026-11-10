@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { LEGO, legoMaterial } from './lego.js';
+import { createBoosters } from './boosters.js';
 
 // Robot mode: the vehicle unfolds into a 13 m robot that walks, jumps, smashes
 // buildings and throws things. The robot is built in the vehicle's colors and
@@ -103,6 +104,14 @@ export function createRobot(kind) {
     spinner.userData.axis = 'z';
   }
 
+  // Turbo: the same twin rockets the vehicles get, worn as a jetpack with the
+  // flames pointing down and back.
+  const pack = new THREE.Group();
+  pack.position.set(0, 2.4, 2.1);
+  pack.rotation.x = 1.05;
+  torso.add(pack);
+  const updateBoosters = createBoosters(pack, (hex) => mat(hex), { x: 1.5, y: 0, z: 0, scale: 1.5 });
+
   // Where a carried object sits: above the head, between raised hands.
   const hands = new THREE.Group();
   hands.position.set(0, ROBOT_HEIGHT + 2.2, -1.2);
@@ -148,6 +157,7 @@ export function createRobot(kind) {
     group,
     body,
     onStep: null,
+    updateBoosters,
     kind: 'robot',
     hands,
     animate,
@@ -239,10 +249,11 @@ export class RobotWalk {
     c.yaw += (input.yaw - c.yaw) * k;
     this.yaw -= c.roll * 2.3 * dt;
     this.quat.setFromAxisAngle(Y, this.yaw);
+    this.turboNow += (this.turbo - this.turboNow) * (1 - Math.exp(-dt * 2));
 
     // Walk: ease toward the wanted speed (less grip in the air, slower in water).
     this.onWater = w.isWater(this.pos.x, this.pos.z) && this.pos.y - w.heightAt(this.pos.x, this.pos.z) < 1;
-    const top = ((input.run ?? input.throttle > 0) ? RUN : WALK) * (this.onWater ? 0.6 : 1);
+    const top = ((input.run ?? input.throttle > 0) ? RUN : WALK) * (this.onWater ? 0.6 : 1) * this.turboNow; // T2X, T3X: rocket-powered
     const f = this.forward;
     const r = this.right;
     const wantX = f.x * c.pitch * top + r.x * c.yaw * 12;
@@ -260,7 +271,7 @@ export class RobotWalk {
     this.jetting = !this.onGround && input.brake && this.jet > 0;
     if (this.jetting) {
       this.jet -= dt;
-      this.vel.y += 36 * dt;
+      this.vel.y += (36 + 14 * (this.turboNow - 1)) * dt; // turbo jets carry higher
     }
     if (!this.onGround) this.vel.y -= GRAVITY * dt;
 

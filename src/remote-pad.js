@@ -49,6 +49,7 @@ function connect() {
       $('floatsBtn').textContent = m.bot ? 'Grab / throw' : 'Floats';
       $('brake').textContent = m.bot ? 'Jump' : 'Brake';
       $('botBtn').textContent = m.bot ? '✈️ Vehicle' : '🤖 Robot';
+      $('botTurboBtn').textContent = `Turbo ${m.turbo === 1 ? '1X' : `T${m.turbo}X`}`;
       document.body.classList.toggle('bot', !!m.bot); // shows the supersizer buttons
       $('menuButtons').hidden = !m.menu;
       $('flyButtons').hidden = m.menu;

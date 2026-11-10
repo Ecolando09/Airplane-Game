@@ -19,7 +19,7 @@ export class Input {
     const actions = {
       KeyC: 'cam', KeyR: 'reset', KeyM: 'mute', KeyI: 'invert', KeyB: 'floats', KeyN: 'map',
       KeyP: 'potty', Period: 'bigger', Comma: 'smaller', KeyF: 'transform', KeyG: 'grab', KeyX: 'smash',
-      KeyT: 'turbo', KeyL: 'autoland', Enter: 'respawn', NumpadEnter: 'respawn', Digit1: 'turbo1', Digit2: 'turbo2', Digit3: 'turbo3', Escape: 'pause',
+      KeyT: 'turboKey', KeyL: 'autoland', Enter: 'respawn', NumpadEnter: 'respawn', Digit1: 'turbo1', Digit2: 'turbo2', Digit3: 'turbo3', Escape: 'pause',
     };
     addEventListener('keydown', (e) => {
       if (e.repeat || e.target.closest?.('input, textarea')) return; // typing a name, not flying
@@ -239,7 +239,7 @@ export class Input {
   pollButtons(inMenu) {
     const gp = navigator.getGamepads?.().find((g) => g);
     if (!gp) return;
-    const map = inMenu ? { 0: 'menuStart', 3: 'menuAir' } : { 1: 'floats', 2: 'transform', 3: 'cam', 5: 'turbo', 9: 'reset', 8: 'map', 12: 'bigger', 13: 'smaller' };
+    const map = inMenu ? { 0: 'menuStart', 3: 'menuAir' } : { 1: 'floats', 2: 'transform', 3: 'cam', 4: 'botTurbo', 5: 'turbo', 9: 'reset', 8: 'map', 12: 'bigger', 13: 'smaller' };
     this._prevButtons ||= [];
     gp.buttons.forEach((b, i) => {
       if (b.pressed && !this._prevButtons[i] && map[i]) this.emit(map[i]);

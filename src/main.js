@@ -344,11 +344,12 @@ function updateFloats(dt) {
 let boosterLevel = 0;
 let boosterColor = 2;
 function updateBoosters(dt) {
-  if (isBot) return;
   const on = flight.turbo > 1 && !flight.crashed;
   if (on) boosterColor = flight.turbo;
   boosterLevel += ((on ? 1 : 0) - boosterLevel) * (1 - Math.exp(-dt * 5));
-  plane.updateBoosters(boosterLevel, boosterColor, flight.throttle, timer.getElapsed());
+  // The robot's rockets burn hardest while running or jet-jumping.
+  const power = isBot ? (flight.jetting ? 1 : Math.min(1, flight.speed / 40)) : flight.throttle;
+  plane.updateBoosters(boosterLevel, boosterColor, power, timer.getElapsed());
 }
 
 // ------------------------------------------------------------------ crash debris
@@ -1859,16 +1860,18 @@ input.on('floats', () => (isBot ? botGrab() : toggleFloats()));
 // Turbo modes: 1X normal, T2X and T3X multiply top speed by 2 and 3.
 const turboName = (t) => (t === 1 ? '1X' : `T${t}X`);
 function setTurbo(t) {
-  if (!running || isBot) return;
+  if (!running) return;
   flight.turbo = t;
-  $('turboChip').textContent = t === 1 ? 'TURBO' : turboName(t);
-  $('turboChip').classList.toggle('on', t > 1);
-  message(t === 1 ? 'Turbo off — normal speed' : `🚀 ${turboName(t)} — ${t}× speed!`, 1.8);
+  if (!isBot) $('turboChip').textContent = t === 1 ? 'TURBO' : turboName(t); // (the robot's is SMASH)
+  if (!isBot) $('turboChip').classList.toggle('on', t > 1);
+  $('botTurboChip').textContent = t === 1 ? 'TURBO' : turboName(t);
+  $('botTurboChip').classList.toggle('on', t > 1);
+  message(t === 1 ? 'Turbo off — normal speed' : isBot ? `🚀 ${turboName(t)} — rocket legs, ${t}× speed and higher jumps!` : `🚀 ${turboName(t)} — ${t}× speed!`, 1.8);
 }
 input.on('turbo', () => (isBot ? botSmash() : setTurbo((flight.turbo % 3) + 1)));
-input.on('turbo1', () => !isBot && setTurbo(1));
-input.on('turbo2', () => !isBot && setTurbo(2));
-input.on('turbo3', () => !isBot && setTurbo(3));
+input.on('turbo1', () => setTurbo(1));
+input.on('turbo2', () => setTurbo(2));
+input.on('turbo3', () => setTurbo(3));
 input.on('map', toggleMap);
 input.on('menuStart', () => !running && start(false));
 input.on('menuAir', () => !running && start(true));
@@ -1890,6 +1893,7 @@ function transform() {
     const p = flight.pos;
     const yaw = -THREE.MathUtils.degToRad(flight.heading);
     bot.walk.place(new THREE.Vector3(p.x, p.y - plane.gearHeight, p.z), yaw, flight.vel);
+    bot.walk.turbo = bot.walk.turboNow = flight.turbo || 1; // turbo carries over
     vehicle = { model: plane, flight };
     plane = bot.model;
     flight = bot.walk;
@@ -1901,7 +1905,7 @@ function transform() {
     const p = flight.pos;
     const yaw = flight.yaw;
     const parked = flight.onGround && p.y - world.heightAt(p.x, p.z) < 1.5;
-    const { turbo } = vehicle.flight;
+    const { turbo } = flight; // turbo carries back
     plane = vehicle.model;
     flight = vehicle.flight;
     vehicle = null;
@@ -1974,6 +1978,8 @@ function setBotUi() {
   $('turboChip').textContent = isBot ? 'SMASH' : flight.turbo > 1 ? turboName(flight.turbo) : 'TURBO';
   $('turboChip').classList.toggle('on', !isBot && flight.turbo > 1);
   $('botChip').classList.toggle('on', isBot);
+  $('botTurboChip').textContent = flight.turbo > 1 ? turboName(flight.turbo) : 'TURBO';
+  $('botTurboChip').classList.toggle('on', flight.turbo > 1);
   updateBotHud();
 }
 
@@ -1993,6 +1999,10 @@ function botGrab() {
   updateBotHud();
 }
 input.on('transform', transform);
+// The T key and the robot's own TURBO button cycle turbo in either shape
+// (the vehicle's TURBO button doubles as SMASH for the robot).
+input.on('turboKey', () => setTurbo((flight.turbo % 3) + 1));
+input.on('botTurbo', () => setTurbo((flight.turbo % 3) + 1));
 input.on('bigger', () => running && isBot && rampage.resize(flight, 2) && updateBotHud());
 input.on('smaller', () => running && isBot && rampage.resize(flight, 0.5) && updateBotHud());
 input.on('smash', botSmash);
