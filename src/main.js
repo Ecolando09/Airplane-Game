@@ -303,6 +303,8 @@ function buildVehicle() {
   applyPaint(model);
   bot = { model, walk: new RobotWalk(world, model) };
   bot.walk.onSlam = (speed) => rampage.slam(bot.walk, speed) && updateBotHud();
+  // Walking (or driving) into a building knocks it down.
+  bot.walk.onRam = (c) => rampage.wreck(c, { x: bot.walk.vel.x || 1, z: bot.walk.vel.z });
   model.onStep = () => {
     if (!running || !isBot) return;
     sound.noiseHit('step', 0.5 + flight.speed / 40);

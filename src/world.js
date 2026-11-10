@@ -900,10 +900,10 @@ export class World {
   }
 
   /** For walking: a wall in the way at (x, z) for something whose feet are at feetY? */
-  blockedAt(x, z, feetY, rad, height) {
+  blockedAt(x, z, feetY, rad, height, step = 2.5) {
     for (const c of this.colliders.get(Math.floor((x + this.halfX) / GRID) * 100000 + Math.floor((z + this.halfZ) / GRID)) || []) {
       if (c.dead || c.t === 'tree') continue;
-      if (c.top < feetY + 2.5 || (c.bottom ?? -Infinity) > feetY + height) continue; // low enough to step on, or overhead
+      if (c.top < feetY + step || (c.bottom ?? -Infinity) > feetY + height) continue; // low enough to step on, or overhead
       if (this.inFootprint(c, x, z, rad)) return c;
     }
     return null;

@@ -337,3 +337,8 @@ button.act.go {
   grid-column: 1 / -1;
   background: #2f8a45;
 }
+
+/* Supersizer buttons: robot mode only. */
+body:not(.bot) .bot-only {
+  display: none;
+}

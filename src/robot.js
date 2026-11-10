@@ -268,19 +268,32 @@ export class RobotWalk {
     const dist = Math.hypot(this.vel.x, this.vel.z) * dt;
     const steps = Math.max(1, Math.ceil(dist / 1.5));
     const rad = this.plane.radius;
-    // (If something is already around the robot, e.g. it changed shape inside a
-    // courtyard wall, let it walk out instead of trapping it.)
-    const stuck = !!w.blockedAt(this.pos.x, this.pos.z, this.pos.y, rad, ROBOT_HEIGHT);
+    // On the ground the robot never climbs onto things: anything in its way,
+    // however low, is a wall to walk through (see below). Up on a roof, or
+    // landing from a jump, low roofs can be stepped onto.
+    const terrain = w.heightAt(this.pos.x, this.pos.z);
+    const walking = this.onGround && this.pos.y - terrain < 1;
+    const step = walking ? 0.3 : 2.5;
+    const hit = (x, z) => w.blockedAt(x, z, this.pos.y, rad, ROBOT_HEIGHT, step);
+    let inside = hit(this.pos.x, this.pos.z);
+    if (inside && this.onRam?.(inside)) inside = hit(this.pos.x, this.pos.z); // standing in something: break it
+    const stuck = !!inside; // a landmark around the robot: let it walk out
     for (let i = 0; i < steps; i++) {
       const nx = this.pos.x + (this.vel.x * dt) / steps;
       const nz = this.pos.z + (this.vel.z * dt) / steps;
-      if (stuck || !w.blockedAt(nx, nz, this.pos.y, rad, ROBOT_HEIGHT)) {
+      // Walking into a building knocks it down (onRam); only landmarks stop the robot.
+      const c = stuck ? null : hit(nx, nz);
+      if (c && this.onRam?.(c)) {
+        this.vel.x *= 0.7;
+        this.vel.z *= 0.7;
+      }
+      if (stuck || !hit(nx, nz)) {
         this.pos.x = nx;
         this.pos.z = nz;
-      } else if (!w.blockedAt(nx, this.pos.z, this.pos.y, rad, ROBOT_HEIGHT)) {
+      } else if (!hit(nx, this.pos.z)) {
         this.pos.x = nx;
         this.vel.z = 0;
-      } else if (!w.blockedAt(this.pos.x, nz, this.pos.y, rad, ROBOT_HEIGHT)) {
+      } else if (!hit(this.pos.x, nz)) {
         this.pos.z = nz;
         this.vel.x = 0;
       } else {
@@ -293,7 +306,8 @@ export class RobotWalk {
     this.pos.z = THREE.MathUtils.clamp(this.pos.z, -w.halfZ - 1400, w.halfZ + 1400);
 
     this.pos.y += this.vel.y * dt;
-    const ground = w.standHeight(this.pos.x, this.pos.z, this.onGround ? this.pos.y : this.pos.y - this.vel.y * dt);
+    const ground = walking ? w.heightAt(this.pos.x, this.pos.z)
+      : w.standHeight(this.pos.x, this.pos.z, this.onGround ? this.pos.y : this.pos.y - this.vel.y * dt);
     if (this.pos.y <= ground) {
       if (!this.onGround && this.vel.y < -32) this.onSlam?.(-this.vel.y);
       this.pos.y = ground;

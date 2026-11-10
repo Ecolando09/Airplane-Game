@@ -233,7 +233,6 @@ export class Rampage {
     bot.yaw = it.yaw;
     bot.pos.set(it.x, it.y, it.z);
     bot.vel.set(0, 0, 0);
-    bot.onRam = (c) => this.wreck(c, { x: bot.vel.x || 1, z: bot.vel.z });
     bot.onExit = () => this.exitCar(bot);
     this.hooks.sound('load');
     this.hooks.message(`🚗 Driving the ${this.props.info(it.kind).name}! Nothing can stop you. JUMP to get out`);
