@@ -2436,7 +2436,12 @@ body.pad-play .controls.pad-only {
   display: block;
 }
 
-body.pad-play details.help .controls:not(.pad-only),
+.controls.psg1-only,
+body.psg1 .controls.xbox-guide {
+  display: none;
+}
+
+body.pad-play details.help .controls:not(.pad-only):not(.psg1-only),
 body.pad-play #touch,
 body.pad-play #phoneChip {
   display: none !important;

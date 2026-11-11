@@ -1,3 +1,4 @@
+import { isPsg1 } from './psg1.js';
 import { Tilt } from './tilt.js';
 
 // Keyboard, touch and gamepad input merged into one control state.
@@ -289,7 +290,7 @@ export class Input {
   pollButtons(nav) {
     const gp = this.pad();
     if (!gp) return;
-    const P = __PSG1__;
+    const P = isPsg1(); // PSG1 labels: A (confirm) is the right button
     const prev = (this._prevButtons ||= []);
     const down = (i) => !!gp.buttons[i]?.pressed;
     const fresh = (i) => down(i) && !prev[i];

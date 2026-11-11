@@ -17,7 +17,7 @@ import { Props } from './props.js';
 import { Rampage } from './rampage.js';
 import { RingRace, RampageGame } from './games.js';
 import { ColliderView } from './colliderview.js';
-import { PadNav, pad as padGlyph } from './psg1.js';
+import { PadNav, pad as padGlyph, isPsg1, isPsg1Pad, enablePsg1 } from './psg1.js';
 const pad = padGlyph;
 import { wsUrl, SITE, SERVER_OK } from './server.js';
 
@@ -1869,14 +1869,34 @@ function setPadPlay(on) {
   }
   if (on && running) message('🎮 Controller on: touch buttons hidden<small>Menu → Controls &amp; tips lists the buttons</small>', 3);
 }
-input.on('padActive', () => setPadPlay(true));
+input.on('padActive', (gp) => {
+  if (!__PSG1__ && isPsg1Pad(gp) && !isPsg1()) startBrowserPsg1();
+  setPadPlay(true);
+});
+/**
+ * Playing in the PSG1's own browser (the PSG1 app can't be installed by ADB):
+ * when its built-in controller is used, switch to the PSG1 layout, button names
+ * (A on the right) and graphics settings. Other website players never see this.
+ */
+function startBrowserPsg1() {
+  enablePsg1();
+  import('./psg1.css');
+  Object.assign(PAD_HINTS, { autoLandBtn: 'L1', driveBtn: 'A' });
+  document.querySelector('details.help .controls')?.insertAdjacentHTML('beforebegin', PSG1_CONTROLS);
+  camera.fov = 72;
+  camera.updateProjectionMatrix();
+  applyQuality();
+  if (!$('pottyBtn').querySelector('kbd')) $('pottyBtn').insertAdjacentHTML('beforeend', pad('◀'));
+  if (!$('pottySkip').querySelector('kbd')) $('pottySkip').insertAdjacentHTML('beforeend', ` ${pad('▶')}`);
+  toast('🎮 PSG1 controls on', '#2f7fe0');
+}
 input.on('padGone', () => {
   setPadPlay(false);
   if (running) message('Controller unplugged: touch buttons are back', 2.5);
 });
 if (!__PSG1__) {
   document.querySelector('details.help .controls')?.insertAdjacentHTML('beforebegin', `
-<div class="controls pad-only">
+<div class="controls pad-only xbox-guide">
   <div><b>Left stick</b> steer &amp; climb · <b>right stick</b> ◀▶ rudder, ▲▼ throttle (or <kbd class="pad">RT</kbd>/<kbd class="pad">LT</kbd>) · <kbd class="pad pad-A">A</kbd> brake</div>
   <div>Copter: <b>left stick</b> ◀▶ turn, ▲▼ speed · <b>right stick</b> ▲▼ up / down</div>
   <div><kbd class="pad pad-B">B</kbd> floats · <kbd class="pad">RB</kbd> turbo · <kbd class="pad">LB</kbd> auto-land · <kbd class="pad pad-Y">Y</kbd> camera</div>
@@ -1914,7 +1934,7 @@ function applyPsg1Hints() {
   addEventListener('offline', net);
   net();
 }
-const PSG1_CONTROLS = __PSG1__ ? `
+const PSG1_CONTROLS = `
 <div class="controls psg1-only">
             <div><b>Left stick</b> steer &amp; climb · <b>Right stick</b> ◀▶ rudder, ▲▼ throttle · <kbd class="pad">B</kbd> brake</div>
             <div>Copter: <b>left stick</b> ◀▶ turn, ▲▼ speed · <b>right stick</b> ▲▼ up / down</div>
@@ -1923,7 +1943,7 @@ const PSG1_CONTROLS = __PSG1__ ? `
               <kbd class="pad">R1</kbd> smash, <kbd class="pad">A</kbd> grab, throw or drive, <kbd class="pad">L1</kbd> turbo, <kbd class="pad">▲</kbd><kbd class="pad">▼</kbd> supersizer</div>
             <div><kbd class="pad">◀</kbd> potty · <kbd class="pad">▶</kbd> not now · <kbd class="pad">SELECT</kbd> big map · <kbd class="pad">START</kbd> menu</div>
             <div>Menus: <kbd class="pad">✚</kbd> move · <kbd class="pad">A</kbd> choose · <kbd class="pad">B</kbd> back · <kbd class="pad">L1</kbd><kbd class="pad">R1</kbd> city · <kbd class="pad">START</kbd> play</div>
-          </div>` : '';
+          </div>`;
 if (__PSG1__) applyPsg1Hints();
 
 // ------------------------------------------------------------------ Android app
@@ -2048,7 +2068,7 @@ function transform() {
     plane = bot.model;
     flight = bot.walk;
     isBot = true;
-    message(__PSG1__ ? `🤖 Robot mode!<small>R1 smash · A grab, throw or drive · B jump (hold to fly) · stick all the way to run · Y change back</small>`
+    message(isPsg1() ? `🤖 Robot mode!<small>R1 smash · A grab, throw or drive · B jump (hold to fly) · stick all the way to run · Y change back</small>`
       : padPlay ? '🤖 Robot mode!<small>RB smash · B grab, throw or drive · A jump (hold to fly) · stick all the way to run · X change back</small>'
       : input.isTouch ? '🤖 Robot mode! SMASH buildings, GRAB things and throw them'
       : '🤖 Robot mode!<small>X smash · G grab and throw · Space jump (hold to fly) · Shift run · F change back</small>', 4);
@@ -2196,12 +2216,13 @@ let renderScale = 1;
 function pixelRatio() {
   const dpr = window.devicePixelRatio || 1;
   if (prefs.low) return Math.min(dpr, 1) * 0.8;
-  if (__PSG1__) return dpr * renderScale;
+  if (isPsg1()) return dpr * renderScale;
   return Math.min(dpr, IS_TOUCH ? 1.25 : 2) * renderScale;
 }
 // Automatic scaling (on in PSG1 mode, or with ?autoscale): if frames take longer
 // than 22 ms for two seconds, draw fewer pixels; give them back when there's room.
-const AUTO_SCALE = __PSG1__ || new URLSearchParams(location.search).has('autoscale');
+const AUTO_SCALE_Q = new URLSearchParams(location.search).has('autoscale');
+const autoScale = () => isPsg1() || AUTO_SCALE_Q;
 const SCALES = [1, 0.85, 0.72, 0.6, 0.5];
 const perf = { avg: 16, slow: 0, fast: 0, fps: 60, shown: 0, frames: 0, t: 0 };
 function updatePerf(rawDt) {
@@ -2213,7 +2234,7 @@ function updatePerf(rawDt) {
     perf.frames = perf.t = 0;
     if ($('fps')) $('fps').textContent = `${Math.round(perf.fps)} fps · ${Math.round(perf.avg)} ms · ${Math.round(renderScale * 100)}%`;
   }
-  if (!AUTO_SCALE || !running || prefs.low) return;
+  if (!autoScale() || !running || prefs.low) return;
   perf.slow = perf.avg > 22 ? perf.slow + rawDt : 0;
   perf.fast = perf.avg < 14 ? perf.fast + rawDt : 0;
   const i = SCALES.indexOf(renderScale);
@@ -2295,9 +2316,9 @@ let coach = null; // { steps, i, mark }
 function coachSteps() {
   const t = input.isTouch;
   // PSG1, or any controller in use: hints name buttons (Xbox names on a controller).
-  const P = __PSG1__ || padPlay;
+  const P = isPsg1() || padPlay;
   const XBOX = { Y: 'X', A: 'B', R1: 'RB', L1: 'LB' };
-  const pad = (k) => padGlyph(__PSG1__ ? k : XBOX[k] || k);
+  const pad = (k) => padGlyph(isPsg1() ? k : XBOX[k] || k);
   const tiltOn = () => input.tilt.active;
   const K = (k) => `<kbd>${k}</kbd>`;
   const agl = () => flight.pos.y - plane.gearHeight - world.heightAt(flight.pos.x, flight.pos.z);

@@ -42,6 +42,35 @@ try {
   await page.evaluate(() => { navigator.getGamepads = () => []; window.dispatchEvent(new Event('gamepaddisconnected')); });
   await page.waitForTimeout(500);
   check('unplugging brings the touch buttons back', await shown('#touch'));
+
+  // The PSG1's built-in controller in the PSG1's browser: PSG1 layout and names.
+  const p2 = await browser.newPage({ viewport: { width: 730, height: 492 }, isMobile: true, hasTouch: true });
+  p2.on('pageerror', (e) => console.log('PAGE ERROR:', e.message));
+  await p2.addInitScript(() => {
+    const pad = { id: 'psg1_gamepad (Vendor: 1234 Product: 5678)', index: 0, connected: true, mapping: '', axes: [0, 0, 0, 0],
+      buttons: Array.from({ length: 16 }, () => ({ pressed: false, value: 0 })) };
+    window.__press = (i, on) => Object.assign(pad.buttons[i], { pressed: on, value: on ? 1 : 0 });
+    navigator.getGamepads = () => [pad];
+  });
+  await openGame(p2, 'city=carbondale&vehicle=plane&look=lego&mode=free');
+  const press2 = async (i) => {
+    await p2.evaluate((i) => window.__press(i, true), i);
+    await p2.waitForTimeout(700);
+    await p2.evaluate((i) => window.__press(i, false), i);
+    await p2.waitForTimeout(700);
+  };
+  check('website has no PSG1 mode before the PSG1 controller is used', await p2.evaluate(() => !document.body.classList.contains('psg1')));
+  await press2(13); // D-pad down (wakes the pad, moves the menu highlight)
+  const st = await p2.evaluate(() => ({ psg1: document.body.classList.contains('psg1'), fov: window.__game.camera.fov,
+    guide: getComputedStyle(document.querySelector('.controls.psg1-only')).display !== 'none',
+    xbox: getComputedStyle(document.querySelector('.controls.xbox-guide')).display !== 'none',
+    touch: getComputedStyle(document.getElementById('touch')).display !== 'none' }));
+  check('PSG1 controller in the browser turns on PSG1 mode', st.psg1 && st.fov === 72, JSON.stringify(st));
+  check('PSG1 controls guide shown (not the Xbox one)', st.guide && !st.xbox);
+  await press2(12); // back up to Play
+  await press2(1); // A (right button) presses
+  check('PSG1 A button (right) presses the highlighted menu button', await p2.evaluate(() => window.__game.running));
+  check('auto-land hint names L1', await p2.evaluate(() => document.querySelector('#autoLandBtn kbd').textContent === 'L1'));
 } finally {
   await browser.close();
   stop();

@@ -5,12 +5,16 @@
 // In the PSG1 build the page is a fixed 620 x 540 CSS pixels (src/psg1.css),
 // touch controls are hidden, and hints name the PSG1's buttons.
 
-// PSG1 mode is the PSG1 app's own build (vite build --mode psg1): the website
-// never turns it on.
-export const isPsg1 = () => __PSG1__;
+// PSG1 mode: always on in the PSG1 app's own build (vite build --mode psg1). On
+// the website it turns on only when the PSG1's built-in controller
+// ("psg1_gamepad") is used, i.e. when playing in the PSG1's browser.
+let seen = false;
+export const isPsg1 = () => __PSG1__ || seen;
+export const isPsg1Pad = (gp) => /psg1/i.test(gp?.id || '');
 
 /** Switch the page into PSG1 mode. */
 export function enablePsg1() {
+  seen = true;
   document.body.classList.add('psg1');
   document.body.classList.remove('is-touch');
 }
