@@ -32,8 +32,10 @@ body.psg1 #phoneControls {
 }
 
 body.psg1 #minimap {
+  /* Bottom right, clear of messages and pop-ups (the phone layout puts it at the top). */
   width: 150px;
   height: 150px;
+  top: auto;
   right: 8px;
   bottom: 8px;
   border-width: 3px;
@@ -99,4 +101,69 @@ body.psg1 #coach {
 
 #netNote.offline {
   background: #fff4d6;
+}
+
+/* Pop-ups (Beer Run orders, room games) stack up from just above the minimap,
+   narrow enough to leave the vehicle in view. */
+body.psg1 #toasts {
+  top: auto;
+  bottom: 166px;
+  right: 8px;
+  max-width: 46vw;
+}
+
+body.psg1 .toast {
+  font-size: 13px;
+}
+
+/* Long messages wrap instead of running off the sides. */
+body.psg1 #message {
+  font-size: 24px;
+  width: 80vw;
+}
+
+/* The test frame counter (?fps) sits bottom left, off the place-name banner. */
+body.psg1 #fps {
+  top: auto;
+  bottom: 6px;
+  left: 8px;
+  transform: none;
+}
+
+/* The crash box sits mid-screen, below the Beer Run order card. */
+body.psg1 #crashBox {
+  top: 55%;
+}
+
+body.psg1 #crashBox p {
+  font-size: 24px;
+}
+
+/* While a results or phone card is open, pop-ups would land on top of it. */
+body.psg1:has(.overlay:not([hidden])) #toasts {
+  display: none;
+}
+
+/* Results card (Beer Run, Rampage, Ring Race): compact enough for the PSG1's
+   screen, with room between the score posting row and the buttons. */
+body.psg1 .beer-card {
+  padding: 12px 18px 14px;
+}
+
+body.psg1 .beer-total {
+  font-size: 34px;
+  margin-top: 0;
+}
+
+body.psg1 .beer-stats {
+  margin-top: 6px;
+}
+
+body.psg1 .beer-board {
+  margin-top: 8px;
+}
+
+body.psg1 .beer-card .crash-actions {
+  margin-top: 14px;
+  justify-content: center;
 }

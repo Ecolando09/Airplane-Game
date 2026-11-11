@@ -86,14 +86,24 @@ names, not the browser numbers, and were the source of the earlier doubt.
 
 ## What this means
 
-1. The game is playable on the PSG1 today: open the address above in the
-   PSG1's browser. **Conflict:** commit 01b3ef3 (another session, same day)
-   took PSG1 mode off the website and made the app the only PSG1 route, and
-   its install step is `adb install`, which this device refuses. After the
-   next deploy, `?psg1` will no longer work in the browser. Decide between
-   bringing a browser PSG1 mode back (for example, switching on when a
-   `psg1_gamepad` is seen) or finding a working install route for the app.
-2. The PSG1 app cannot be installed by ADB. To get a full-screen icon: try the
-   browser's "Add to Home screen", or the on-device installer, or PlayGate.
-3. Phase 4 (performance) is the next real work: 36 fps at 50 % scale is below
-   the 45 fps target for a small city.
+1. **The way in is the PSG1's browser:** open https://play.latlas.lol/legoplane/
+   and press a button; the website switches to PSG1 mode when it sees the
+   PSG1's own controller (commit b18bbf7). The app (`lego-sky-psg1.apk`) is
+   kept for PlayGate, since the device refuses `adb install`.
+2. To get a full-screen icon: try the browser's "Add to Home screen", the
+   on-device installer, or PlayGate.
+3. Performance after the 2026-11-11 fixes (measured with the PSG1 build; Low graphics on by
+   default, nothing drawn past the fog, minimap redrawn 15 times a second),
+   flying over each city with the browser bars showing:
+
+   | City | Before (website ?psg1) | After |
+   |---|---|---|
+   | Spartanburg runway | 28-35 fps at 50-72 % | 60 fps at 100 % |
+   | Spartanburg in the air | 36-45 fps at 50 % | 39-59 fps at 72-100 % |
+   | Denver | 30-33 fps at 50 % | 43-46 fps at 100 % |
+   | San Francisco | 34-38 fps at 50 % | 55-60 fps at 100 % |
+   | Tokyo | 26-34 fps at 50 % | 28-56 fps at 50-100 % |
+   | Hong Kong | 14-17 fps at 50 % | 40-50 fps at 100 % |
+
+   The biggest single cost was the minimap: redrawing every street and street
+   name each frame took about a third of the PSG1's time.

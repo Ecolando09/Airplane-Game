@@ -213,11 +213,11 @@ say "Done!"
 echo "Homepage:  https://$DOMAIN/"
 echo "Game:      https://$DOMAIN/legoplane/"
 echo "Android:   https://$DOMAIN/downloads/lego-sky.apk"
+echo "PSG1:      open the game in the PSG1's browser and press a button (PSG1 mode turns on)"
 if [ -s "$APK_DIR/lego-sky-psg1.apk" ]; then
   echo
-  echo "PSG1 app (not on the website): $APK_DIR/lego-sky-psg1.apk"
+  echo "PSG1 app (for PlayGate; the PSG1 itself refuses adb install): $APK_DIR/lego-sky-psg1.apk"
   echo "  Copy it to your computer:  scp root@$DOMAIN:$APK_DIR/lego-sky-psg1.apk ."
-  echo "  Install on the PSG1 (USB): adb install -r lego-sky-psg1.apk"
 fi
 echo
 echo "If the site doesn't load yet, check DNS: Porkbun needs an A record for"

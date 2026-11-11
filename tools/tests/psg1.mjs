@@ -41,10 +41,31 @@ try {
   await page.evaluate(() => window.legoSkyPad.set(Array(17).fill(0), [0, 0, 0, 0]));
   await page.waitForTimeout(800);
   check('menu highlight starts on the Play button', (await focused()) === 'startRunway', await focused());
-  await press(13); // D-pad down
+  await press(13, 80); // D-pad down
   check('D-pad down moves the highlight', (await focused()) === 'startAir', await focused());
-  await press(12); // D-pad up
+  await press(12, 80); // D-pad up
   check('D-pad up moves it back', (await focused()) === 'startRunway', await focused());
+  // Up/down go row by row, so small items under wide ones are reached too: open
+  // Settings and step through it; every checkbox gets the highlight.
+  const settings = await page.evaluate(() => {
+    const d = document.getElementById('settingsBox');
+    if (d) d.open = true;
+    return !!d;
+  });
+  const seen = [];
+  for (let i = 0; i < 60 && settings; i++) {
+    const f = await focused();
+    seen.push(f);
+    if (f === 'setLow') break;
+    await press(13, 80);
+  }
+  check('D-pad down reaches every Settings checkbox', ['setInvert', 'setSound', 'setMusic', 'setLow'].every((id) => seen.includes(id)), seen.join(' > '));
+  while ((await focused()) !== 'startRunway') {
+    const before = await focused();
+    await press(12, 80);
+    if ((await focused()) === before) break;
+  }
+  check('D-pad up returns to the Play button', (await focused()) === 'startRunway', await focused());
   await press(1); // A
   check('A presses the highlighted button (starts flying)', await page.evaluate(() => window.__game.running));
 
@@ -70,14 +91,21 @@ try {
     const plane = { up: read([0, 0, 0, -1]), down: read([0, 0, 0, 1]), idle: read([0, 0, 0, 0]) };
     inp.heliMode = true;
     const copter = { up: read([0, -1, 0, 0]), lift: read([0, 0, 0, -1]) };
+    // A robot made from the helicopter walks with the left stick like any robot.
+    const bot = inp.botMode;
+    inp.botMode = true;
+    window.legoSkyPad.set(Array(17).fill(0), [0, -1, 0, 0]);
+    const copterRobot = inp.read().pitch;
+    inp.botMode = bot;
     inp.heliMode = heli;
     read([0, 0, 0, 0]);
-    return { plane, copter };
+    return { plane, copter, copterRobot };
   });
   check('plane: right stick up raises the throttle, down lowers it',
     stickThrottle.plane.up > 0.9 && stickThrottle.plane.down < -0.9 && stickThrottle.plane.idle === 0, JSON.stringify(stickThrottle.plane));
   check('copter: left stick up is forward speed, right stick stays lift',
     stickThrottle.copter.up > 0.9 && stickThrottle.copter.lift === 0, JSON.stringify(stickThrottle.copter));
+  check('robot made from the copter walks with the left stick', stickThrottle.copterRobot > 0.9, String(stickThrottle.copterRobot));
 
   // A pop-up: the crash box takes the highlight, and START respawns.
   await page.evaluate(() => {

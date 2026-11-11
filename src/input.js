@@ -113,8 +113,9 @@ export class Input {
     const gp = this.pad();
     if (gp) {
       const dz = (v) => (Math.abs(v) < 0.12 ? 0 : v);
-      if (this.heliMode) {
-        // Helicopter: left stick steers, right stick up/down is lift.
+      if (this.heliMode && !this.botMode) {
+        // Helicopter: left stick steers, right stick up/down is lift. (A robot made
+        // from the helicopter walks with the left stick like any robot.)
         if (dz(gp.axes[0])) roll = dz(gp.axes[0]);
         if (dz(gp.axes[3] ?? 0)) liftSet = -dz(gp.axes[3]);
       } else if (dz(gp.axes[0]) || dz(gp.axes[1])) {

@@ -216,7 +216,7 @@ export class Rampage {
     const y = it.held ? bot.pos.y + 8 : it.y + 2;
     this.burst(it.held ? bot.pos.x : it.x, y, it.held ? bot.pos.z : it.z, 4 * scale, factor > 1 ? 0x4fd8ff : 0xc06bff, 8);
     const size = scale === 1 ? 'normal size' : scale > 1 ? `${scale}× bigger` : `${1 / scale}× smaller`;
-    const tip = info.drive && scale >= 2 && !it.held && !this.driving ? ' Big enough to drive: press 🚗 DRIVE to get in!' : '';
+    const tip = info.drive && scale >= 2 && !it.held && !this.driving ? ` Big enough to drive: press ${this._keys().drive} to get in!` : '';
     this.hooks.message(`${factor > 1 ? '🔍 Supersized' : '🔬 Shrunk'} the ${info.name}: ${size}.${tip}`);
     return true;
   }
@@ -235,7 +235,8 @@ export class Rampage {
     bot.vel.set(0, 0, 0);
     bot.onExit = () => this.exitCar(bot);
     this.hooks.sound('load');
-    this.hooks.message(`🚗 Driving the ${this.props.info(it.kind).name}! Nothing can stop you. HORN for a boost, EXIT (jump) to get out`);
+    const k = this._keys();
+    this.hooks.message(`🚗 Driving the ${this.props.info(it.kind).name}! Nothing can stop you. ${k.horn} for a boost, ${k.exit} to get out`);
     this.hooks.driving?.(true);
   }
 
@@ -309,6 +310,11 @@ export class Rampage {
     this.burst(bot.pos.x, bot.pos.y, bot.pos.z, 8, 0xb5b0a4, 14);
     this.explode(bot.pos.x, bot.pos.y + 2, bot.pos.z, r * 0.8);
     return this.blast(bot.pos.x, bot.pos.y + 3, bot.pos.z, r, bot.pos);
+  }
+
+  /** How the drive, horn and exit controls are named on this device (hooks.keys). */
+  _keys() {
+    return this.hooks.keys?.() || { drive: '🚗 DRIVE', horn: 'HORN', exit: 'EXIT (jump)' };
   }
 
   /** Pick up the nearest loose object or car, or throw the one being carried. */

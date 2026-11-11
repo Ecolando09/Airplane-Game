@@ -35,17 +35,20 @@ const CITIES = {
 const VEHICLE_NAMES = { plane: 'Bush Plane', heli: 'Ghost-Spider Copter' };
 const LOOK_NAMES = { lego: 'Lego', real: 'Realistic', google: 'Google 3D' };
 const MODES = { free: 'Free flight', rings: 'Ring Race', rampage: 'Rampage', beer: 'Beer Run' }; // Beer Run: only in Fort Collins
-// Preferences that stay on this device (not shared with a room).
-const prefs = { sens: 100, invert: false, sound: true, music: false, low: false, sky: 'day', paint: 'classic', potty: 'some', ...(() => {
+// Preferences that stay on this device (not shared with a room). The PSG1 keeps
+// its own (see usePsg1Prefs) and starts on Low graphics: on the PSG1 that is the
+// PSG1 preset (see pixelRatio).
+let PREFS_KEY = __PSG1__ ? 'legosky.psg1.prefs' : 'legosky.prefs';
+const prefs = { sens: 100, invert: false, sound: true, music: false, low: __PSG1__, sky: 'day', paint: 'classic', potty: 'some', ...(() => {
   try {
-    return JSON.parse(localStorage.getItem('legosky.prefs') || '{}');
+    return JSON.parse(localStorage.getItem(PREFS_KEY) || '{}');
   } catch {
     return {};
   }
 })() };
 function savePrefs() {
   try {
-    localStorage.setItem('legosky.prefs', JSON.stringify(prefs));
+    localStorage.setItem(PREFS_KEY, JSON.stringify(prefs));
   } catch {}
 }
 const CONFIG = window.LEGOSKY_CONFIG || {};
@@ -230,6 +233,11 @@ async function buildWorld() {
   rampage = new Rampage(scene, world, traffic, props, {
     message: (t) => message(t, 2.5),
     sound: (k) => sound.blip(k),
+    // Car controls by name: the PSG1's buttons, a controller's, touch buttons or keys.
+    keys: () => (isPsg1() ? { drive: pad('A'), horn: pad('R1'), exit: pad('B') }
+      : padPlay ? { drive: pad('B'), horn: pad('RB'), exit: pad('A') }
+        : input.isTouch ? { drive: '🚗 DRIVE', horn: 'HORN', exit: 'EXIT (jump)' }
+          : { drive: '<kbd>G</kbd>', horn: '<kbd>X</kbd>', exit: '<kbd>Space</kbd>' }),
     canBreak: () => !google,
     driving: () => {
       setBotUi();
@@ -280,10 +288,8 @@ async function buildWorld() {
   }
   colView = new ColliderView(scene, world);
   colView.on = new URLSearchParams(location.search).get('debug') === 'colliders';
-  camera.far = google ? 60000 : 40000;
-  camera.updateProjectionMatrix();
   scene.fog.near = google ? 6000 : data.fog?.[0] ?? 2500;
-  scene.fog.far = (google ? 30000 : data.fog?.[1] ?? 11000) * (prefs.low ? 0.6 : 1);
+  setViewRange();
   worldObjects = scene.children.filter((o) => !before.has(o) && o !== google?.tiles.group);
 
   labelEls = world.landmarks.map((l) => {
@@ -530,6 +536,7 @@ let bigMap = false;
 const toggleMap = () => {
   bigMap = !bigMap;
   mm.classList.toggle('big', bigMap);
+  mapClock = 1; // redraw right away
 };
 mm.addEventListener('click', toggleMap);
 
@@ -556,6 +563,8 @@ function computeMajorRoads() {
     .sort((a, b) => b.style.rank - a.style.rank); // draw big roads last (on top)
 }
 
+let mapClock = 1;
+const textWidths = new Map();
 function drawMinimap() {
   const W = mm.width;
   const range = bigMap ? 11000 : 3500; // meters shown across
@@ -610,7 +619,8 @@ function drawMinimap() {
   mctx.textAlign = 'center';
   mctx.textBaseline = 'middle';
   for (const r of labels) {
-    if (named.has(r.n) || placed.length >= (bigMap ? 24 : 12)) continue;
+    if (placed.length >= (bigMap ? 24 : 12)) break;
+    if (named.has(r.n)) continue;
     const mid = Math.floor(r.p.length / 4) * 2;
     if (mid + 3 >= r.p.length) continue;
     const [x1, y1] = toMap(r.p[mid], r.p[mid + 1]);
@@ -618,7 +628,10 @@ function drawMinimap() {
     const cx = (x1 + x2) / 2;
     const cy = (y1 + y2) / 2;
     if (cx < 30 || cy < 30 || cx > W - 30 || cy > W - 30) continue;
-    const tw = mctx.measureText(r.n).width + 8;
+    // Text widths are cached: big cities have thousands of named streets.
+    const wk = mctx.font + r.n;
+    let tw = textWidths.get(wk);
+    if (tw === undefined) textWidths.set(wk, (tw = mctx.measureText(r.n).width + 8));
     let ang = Math.atan2(y2 - y1, x2 - x1);
     if (ang > Math.PI / 2) ang -= Math.PI;
     if (ang < -Math.PI / 2) ang += Math.PI;
@@ -863,7 +876,7 @@ function updateHud(dt) {
         checkUnlocks();
       }
     }
-    if (flight.canStall !== false && !flight.onGround && flight.speed < 26 && flight.forward.y > -0.3) {
+    if (flight.canStall !== false && !autoLand && !flight.onGround && flight.speed < 26 && flight.forward.y > -0.3) {
       message('STALL — lower the nose!', 0.3);
     }
     if (Math.abs(p.x) > world.halfX + 1500 || Math.abs(p.z) > world.halfZ + 1500) {
@@ -1103,7 +1116,7 @@ function start(airborne, { lesson = false } = {}) {
   if (lesson || (!seen && !airborne && !new URLSearchParams(location.search).has('debug'))) return startCoach();
   if (coach) endCoach(false);
   message(airborne ? `Welcome to ${data.name.split(',')[0]}!`
-    : isHeli ? (input.isTouch ? 'Push LIFT up to take off!' : 'Hold W to lift off, Shift for speed!')
+    : isHeli ? (input.isTouch ? 'Push LIFT up to take off!' : isPsg1() || padPlay ? 'Right stick up to lift off, left stick up for speed!' : 'Hold W to lift off, Shift for speed!')
       : `Runway ${world.runway.names?.[0] ?? ''} — full throttle to take off!`, 3);
 }
 // ------------------------------------------------------------------ menu
@@ -1880,6 +1893,7 @@ input.on('padActive', (gp) => {
  */
 function startBrowserPsg1() {
   enablePsg1();
+  usePsg1Prefs();
   import('./psg1.css');
   Object.assign(PAD_HINTS, { autoLandBtn: 'L1', driveBtn: 'A' });
   document.querySelector('details.help .controls')?.insertAdjacentHTML('beforebegin', PSG1_CONTROLS);
@@ -2215,8 +2229,10 @@ for (const b of $('segSky').querySelectorAll('button')) {
 let renderScale = 1;
 function pixelRatio() {
   const dpr = window.devicePixelRatio || 1;
-  if (prefs.low) return Math.min(dpr, 1) * 0.8;
+  // PSG1: native resolution times the automatic scale, Low or not. There, Low
+  // (no shadows, fewer cars, nearer fog) frees time so the scale can stay high.
   if (isPsg1()) return dpr * renderScale;
+  if (prefs.low) return Math.min(dpr, 1) * 0.8;
   return Math.min(dpr, IS_TOUCH ? 1.25 : 2) * renderScale;
 }
 // Automatic scaling (on in PSG1 mode, or with ?autoscale): if frames take longer
@@ -2234,7 +2250,7 @@ function updatePerf(rawDt) {
     perf.frames = perf.t = 0;
     if ($('fps')) $('fps').textContent = `${Math.round(perf.fps)} fps · ${Math.round(perf.avg)} ms · ${Math.round(renderScale * 100)}%`;
   }
-  if (!autoScale() || !running || prefs.low) return;
+  if (!autoScale() || !running || (prefs.low && !isPsg1())) return;
   perf.slow = perf.avg > 22 ? perf.slow + rawDt : 0;
   perf.fast = perf.avg < 14 ? perf.fast + rawDt : 0;
   const i = SCALES.indexOf(renderScale);
@@ -2253,13 +2269,43 @@ if (new URLSearchParams(location.search).has('fps')) {
 }
 
 /** Low graphics: lower resolution, no shadows, nearer fog (and fewer cars from the next city load). */
+/**
+ * How far the fog reaches (nearer with Low graphics), and how far the camera
+ * draws. On the PSG1 nothing is drawn past the fog: beyond it everything is
+ * already sky-colored, and the big cities can't afford the extra drawing.
+ */
+function setViewRange() {
+  scene.fog.far = (google ? 30000 : data.fog?.[1] ?? 11000) * (prefs.low ? 0.6 : 1);
+  if (isPsg1() && !google) {
+    // Hong Kong's harbour view reaches 24 km; the PSG1 stops at 9.
+    scene.fog.far = Math.min(scene.fog.far, 9000);
+    scene.fog.near = Math.min(scene.fog.near, scene.fog.far * 0.4);
+  }
+  camera.far = isPsg1() && !google ? scene.fog.far + 200 : google ? 60000 : 40000;
+  camera.updateProjectionMatrix();
+}
 function applyQuality() {
   renderer.setPixelRatio(pixelRatio());
   renderer.setSize(innerWidth, innerHeight);
   renderer.shadowMap.enabled = !prefs.low;
   sun.castShadow = !prefs.low;
-  if (world) scene.fog.far = (google ? 30000 : data.fog?.[1] ?? 11000) * (prefs.low ? 0.6 : 1);
+  if (world) setViewRange();
   scene.traverse((o) => o.material && (Array.isArray(o.material) ? o.material : [o.material]).forEach((m) => (m.needsUpdate = true)));
+}
+/**
+ * In the PSG1's browser: switch to the PSG1's own settings, starting (the first
+ * time) from the website's with Low graphics on, the PSG1 preset.
+ */
+function usePsg1Prefs() {
+  if (PREFS_KEY === 'legosky.psg1.prefs') return;
+  PREFS_KEY = 'legosky.psg1.prefs';
+  let saved = null;
+  try {
+    saved = JSON.parse(localStorage.getItem(PREFS_KEY) || 'null');
+  } catch {}
+  Object.assign(prefs, saved || { low: true });
+  savePrefs();
+  applyPrefs();
 }
 function applyPrefs() {
   input.sens = prefs.sens / 100;
@@ -2327,7 +2373,7 @@ function coachSteps() {
     { text: () => (P ? 'Push the left stick up to fly forward' : t ? 'Slide <b>SPEED</b> up to fly forward' : `Hold ${K('Shift')} to fly forward`), done: () => flight.speed > 15 },
   ] : [
     { text: () => (P ? 'Hold the right stick up until the throttle bar is full' : t ? 'Slide the <b>THROTTLE</b> all the way up' : `Hold ${K('Shift')} until the throttle bar is full`), done: () => flight.throttle > 0.9 || !flight.onGround },
-    { text: () => (P ? 'At 60 mph, pull the left stick back to lift off' : t ? (tiltOn() ? 'At 60 mph, tip the top of the phone toward you to lift off' : 'At 60 mph, push the stick up to lift off')
+    { text: () => (P ? `At 60 mph, ${prefs.invert ? 'pull the left stick back' : 'push the left stick up'} to lift off` : t ? (tiltOn() ? 'At 60 mph, tip the top of the phone toward you to lift off' : 'At 60 mph, push the stick up to lift off')
       : `At 60 mph, hold ${K('W')} to lift off`), done: () => !isBot && agl() > 25 },
   ];
   return [
@@ -2811,7 +2857,13 @@ function frame() {
     updateCamera(dt);
     updateHud(dt);
     updateLabels();
-    drawMinimap();
+    // The map moves well under a pixel in 1/15 s, and redrawing every street and
+    // name each frame cost the PSG1 about a third of its time.
+    mapClock += dt;
+    if (mapClock >= 1 / 15) {
+      mapClock = 0;
+      drawMinimap();
+    }
   } else {
     sound.jet?.(0);
     // Live preview behind the menu: the vehicle parked where it is, with the

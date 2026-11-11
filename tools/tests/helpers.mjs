@@ -12,7 +12,7 @@ import { createRequire } from 'node:module';
 const { chromium } = createRequire(import.meta.url)('playwright');
 
 const PORT = Number(process.env.PORT || 4173);
-export const BASE = `http://localhost:${PORT}/`;
+export const BASE = `http://127.0.0.1:${PORT}/`;
 
 async function up() {
   try {
@@ -49,7 +49,8 @@ export async function launch(viewport = { width: 1100, height: 700 }) {
 export async function openApp(page, query = '', { online = false } = {}) {
   const { readFile } = await import('node:fs/promises');
   const path = await import('node:path');
-  const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), '../../dist-psg1');
+  const { fileURLToPath } = await import('node:url');
+  const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../dist-psg1');
   const types = { html: 'text/html', js: 'text/javascript', css: 'text/css', json: 'application/json', jpg: 'image/jpeg', png: 'image/png' };
   await page.route('**/*', async (route) => {
     const u = new URL(route.request().url());

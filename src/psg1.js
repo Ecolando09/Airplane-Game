@@ -93,8 +93,7 @@ export class PadNav {
     const a = this.current.getBoundingClientRect();
     const ax = a.left + a.width / 2;
     const ay = a.top + a.height / 2;
-    let best = null;
-    let bestScore = Infinity;
+    const cands = [];
     for (const el of items) {
       if (el === this.current) continue;
       const b = el.getBoundingClientRect();
@@ -104,14 +103,23 @@ export class PadNav {
       // Must be in that direction (a little overlap allowed for rows of cards).
       const edge = dx ? (dx > 0 ? b.left - a.right : a.left - b.right) : (dy > 0 ? b.top - a.bottom : a.top - b.bottom);
       if (along <= 4 || edge < -Math.min(a.width, a.height) * 0.6) continue;
-      const across = dx ? Math.abs(by - ay) : Math.abs(bx - ax);
-      const score = along + across * 2.5;
-      if (score < bestScore) {
-        bestScore = score;
-        best = el;
-      }
+      cands.push({ el, b, bx, by, along, edge: Math.max(0, edge) });
     }
-    if (best) this.focus(best);
+    if (!cands.length) return;
+    let best;
+    if (dy) {
+      // Up/down: always the next row (so a small checkbox under a wide slider, or
+      // a row of buttons under a wide one, is never skipped), then the item in
+      // that row nearest sideways: overlapping first, then by center.
+      const row = Math.min(...cands.map((c) => c.edge)) + 8;
+      const side = (c) => Math.max(0, c.b.left - a.right, a.left - c.b.right) * 4 + Math.abs(c.bx - ax);
+      best = cands.filter((c) => c.edge <= row).sort((p, q) => side(p) - side(q))[0];
+    } else {
+      // Left/right: nearest along the row, staying on the same line if possible.
+      const score = (c) => c.along + Math.abs(c.by - ay) * 2.5;
+      best = cands.sort((p, q) => score(p) - score(q))[0];
+    }
+    this.focus(best.el);
   }
 
   /** Press the highlighted element. */
