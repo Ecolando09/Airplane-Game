@@ -1,9 +1,11 @@
-// PSG1 mode (docs/plans/02-psg1-port-plan.md phases 1, 2 and 4): the layout at
-// 620 x 540, and playing with only the PSG1 buttons. Buttons are pressed through
+// The PSG1 app's built-in game (npm run build:psg1), opened the way the app
+// serves it, with no internet: it must load and play offline, lay out at
+// 620 x 540, and play with only the PSG1 buttons. Buttons are pressed through
 // the app bridge (window.legoSkyPad), the same path the PSG1 app uses.
-import { serve, launch, openGame, check, failed } from './helpers.mjs';
+//   npm run build:psg1 && node tools/tests/psg1.mjs
+import { launch, openApp, check, failed } from './helpers.mjs';
 
-const stop = await serve();
+const stop = () => {};
 const { browser, page } = await launch({ width: 620, height: 540 });
 // Standard gamepad order: 0 B (bottom), 1 A (right), 2 Y (left), 3 X (top), 4 L1, 5 R1, 9 START, 12-15 D-pad.
 const press = async (i, hold = 700) => {
@@ -18,14 +20,19 @@ const press = async (i, hold = 700) => {
 };
 const focused = () => page.evaluate(() => document.querySelector('.padfocus')?.id || document.querySelector('.padfocus')?.textContent.trim().slice(0, 30) || null);
 try {
-  await openGame(page, 'psg1&city=spartanburg&vehicle=plane&look=lego&mode=free');
+  await openApp(page, 'city=spartanburg&vehicle=plane&look=lego&mode=free');
+  check('the built-in game loads and builds a city with no internet', true);
   const layout = await page.evaluate(() => ({
     psg1: document.body.classList.contains('psg1'),
     touchHidden: getComputedStyle(document.getElementById('touch')).display === 'none',
     fov: window.__game.camera.fov,
     tips: getComputedStyle(document.querySelector('.controls.psg1-only')).display !== 'none',
+    net: document.getElementById('netNote')?.textContent,
+    diag: !!document.getElementById('diagLink'),
   }));
-  check('?psg1 turns on PSG1 mode', layout.psg1);
+  check('menu says it is offline, and what still works', /Offline/.test(layout.net || ''), layout.net);
+  check('device check page is in the menu', layout.diag);
+  check('PSG1 mode is on', layout.psg1);
   check('touch controls hidden', layout.touchHidden);
   check('wider camera (72°)', layout.fov === 72, `${layout.fov}°`);
   check('PSG1 controls guide shown in the menu', layout.tips);
@@ -96,7 +103,11 @@ try {
   await press(5); // R1
   await page.waitForFunction(() => document.getElementById('loading').hidden && window.__game.world, null, { timeout: 180000 });
   const after = await page.evaluate(() => new URLSearchParams(location.search).get('city'));
-  check('R1 in the menu picks the next city', before !== after, `${before} -> ${after}`);
+  check('R1 in the menu picks the next city (loaded offline)', before !== after, `${before} -> ${after}`);
+  // The Realistic look's satellite picture is built in too.
+  await page.evaluate(() => document.querySelector('#segLook [data-v=real]').click());
+  await page.waitForFunction(() => document.getElementById('loading').hidden && window.__game.world, null, { timeout: 180000 });
+  check('Realistic look loads offline', await page.evaluate(() => new URLSearchParams(location.search).get('look') === 'real' && !!window.__game.world));
 } finally {
   await browser.close();
   stop();

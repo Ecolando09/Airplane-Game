@@ -8,7 +8,9 @@
     "build": "vite build",
     "preview": "vite preview",
     "relay": "node server/relay.js",
-    "build:play": "vite build --outDir play-dist/legoplane --emptyOutDir && cp -r homepage/. play-dist/"
+    "build:play": "vite build --outDir play-dist/legoplane --emptyOutDir && cp -r homepage/. play-dist/",
+    "build:psg1": "vite build --mode psg1 --emptyOutDir",
+    "preview:psg1": "vite preview --mode psg1 --port 4174"
   },
   "dependencies": {
     "3d-tiles-renderer": "^0.5.3",

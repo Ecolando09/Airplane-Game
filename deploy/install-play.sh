@@ -93,13 +93,15 @@ fi
 # app itself (android/) changes. Kept between runs; a failure here doesn't stop the update.
 say "Android apps"
 APK_DIR=/opt/latlas-play/apk
+mkdir -p "$APK_DIR"
+# The phone app is a window onto the website: rebuilt only when the app itself changes.
 APK_HASH=$(find android deploy/build-apk.sh -type f | sort | xargs sha256sum | sha256sum | cut -c1-16)
-if [ -s "$APK_DIR/lego-sky.apk" ] && [ -s "$APK_DIR/lego-sky-psg1.apk" ] && [ "$(cat "$APK_DIR/hash" 2>/dev/null)" = "$APK_HASH" ]; then
-  echo "Up to date"
-elif bash deploy/build-apk.sh "$APK_DIR/lego-sky.apk" && bash deploy/build-apk.sh "$APK_DIR/lego-sky-psg1.apk" psg1; then
+if [ -s "$APK_DIR/lego-sky.apk" ] && [ "$(cat "$APK_DIR/hash" 2>/dev/null)" = "$APK_HASH" ]; then
+  echo "Phone app: up to date"
+elif bash deploy/build-apk.sh "$APK_DIR/lego-sky.apk"; then
   echo "$APK_HASH" > "$APK_DIR/hash"
 else
-  echo "!! Couldn't build the Android apps; the website is updated anyway."
+  echo "!! Couldn't build the phone app; the website is updated anyway."
 fi
 if [ -s "$APK_DIR/lego-sky.apk" ]; then
   mkdir -p "$WEB/downloads"
@@ -111,11 +113,20 @@ if [ -s "$APK_DIR/lego-sky.apk" ]; then
     > "$WEB/downloads/lego-sky.json"
   echo "Download: https://$DOMAIN/downloads/lego-sky.apk"
 fi
-# The PSG1 build (Play Solana handheld): install with  adb install -r lego-sky-psg1.apk
-if [ -s "$APK_DIR/lego-sky-psg1.apk" ]; then
-  mkdir -p "$WEB/downloads"
-  cp "$APK_DIR/lego-sky-psg1.apk" "$WEB/downloads/lego-sky-psg1.apk"
-  echo "PSG1:     https://$DOMAIN/downloads/lego-sky-psg1.apk"
+
+# The PSG1 app carries the whole game inside it (plays offline), so it is rebuilt
+# whenever the game changes. It is not put on the website: copy it from this
+# server to your computer and install it on the PSG1 with adb (see the end).
+rm -f "$WEB/downloads/lego-sky-psg1.apk"
+if [ -f vite.config.js ] && [ -d node_modules/vite ]; then
+  PSG1_HASH=$(find android deploy/build-apk.sh src public psg1 index.html vite.config.js package-lock.json -type f | sort | xargs sha256sum | sha256sum | cut -c1-16)
+  if [ -s "$APK_DIR/lego-sky-psg1.apk" ] && [ "$(cat "$APK_DIR/psg1-hash" 2>/dev/null)" = "$PSG1_HASH" ]; then
+    echo "PSG1 app: up to date"
+  elif npm run -s build:psg1 >/dev/null && bash deploy/build-apk.sh "$APK_DIR/lego-sky-psg1.apk" psg1; then
+    echo "$PSG1_HASH" > "$APK_DIR/psg1-hash"
+  else
+    echo "!! Couldn't build the PSG1 app; the website is updated anyway."
+  fi
 fi
 
 say "Starting the relay (phone controller + multiplayer)"
@@ -202,8 +213,12 @@ say "Done!"
 echo "Homepage:  https://$DOMAIN/"
 echo "Game:      https://$DOMAIN/legoplane/"
 echo "Android:   https://$DOMAIN/downloads/lego-sky.apk"
-echo "PSG1 app:  https://$DOMAIN/downloads/lego-sky-psg1.apk"
-echo "Device check page: https://$DOMAIN/legoplane/diag.html"
+if [ -s "$APK_DIR/lego-sky-psg1.apk" ]; then
+  echo
+  echo "PSG1 app (not on the website): $APK_DIR/lego-sky-psg1.apk"
+  echo "  Copy it to your computer:  scp root@$DOMAIN:$APK_DIR/lego-sky-psg1.apk ."
+  echo "  Install on the PSG1 (USB): adb install -r lego-sky-psg1.apk"
+fi
 echo
 echo "If the site doesn't load yet, check DNS: Porkbun needs an A record for"
 echo "'${DOMAIN%%.latlas.lol}' pointing to ${IP:-this server}."

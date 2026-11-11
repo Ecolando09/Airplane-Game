@@ -1,7 +1,6 @@
 import { Tilt } from './tilt.js';
 
 // Keyboard, touch and gamepad input merged into one control state.
-import { isPsg1, isPsg1Pad } from './psg1.js';
 export class Input {
   constructor() {
     this.keys = new Set();
@@ -32,8 +31,8 @@ export class Input {
     addEventListener('keyup', (e) => this.keys.delete(e.code));
     addEventListener('blur', () => this.keys.clear());
     this._setupTouch();
-    // The virtual gamepad (see pad()), in the browser's standard button order.
-    window.legoSkyPad = {
+    // The virtual gamepad the PSG1 app feeds (see pad()), in the browser's standard button order.
+    if (__PSG1__) window.legoSkyPad = {
       id: 'psg1_gamepad (app bridge)', connected: true, t: -1e9, axes: [0, 0, 0, 0],
       buttons: Array.from({ length: 17 }, () => ({ pressed: false, value: 0 })),
       set(buttons, axes, app) {
@@ -59,12 +58,13 @@ export class Input {
    * app calls window.legoSkyPad.set(buttons, axes) with the standard layout.
    */
   pad() {
-    const v = window.legoSkyPad;
-    if (v?.app) return v; // the PSG1 app feeds its buttons here: always trust it
-    const gp = navigator.getGamepads?.().find((g) => g && g.connected !== false);
-    if (gp) return gp;
-    return v && performance.now() - v.t < 5000 ? v : null;
+    if (__PSG1__) {
+      const v = window.legoSkyPad;
+      if (v.app || performance.now() - v.t < 5000) return v; // the app's buttons (tests set it too)
+    }
+    return navigator.getGamepads?.().find((g) => g && g.connected !== false) || null;
   }
+
 
   read() {
     const k = (...codes) => (codes.some((c) => this.keys.has(c)) ? 1 : 0);
@@ -283,8 +283,7 @@ export class Input {
   pollButtons(nav) {
     const gp = this.pad();
     if (!gp) return;
-    if (isPsg1Pad(gp) && !isPsg1()) this.emit('psg1');
-    const P = isPsg1();
+    const P = __PSG1__;
     const prev = (this._prevButtons ||= []);
     const down = (i) => !!gp.buttons[i]?.pressed;
     const fresh = (i) => down(i) && !prev[i];

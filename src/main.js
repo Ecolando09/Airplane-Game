@@ -17,7 +17,8 @@ import { Props } from './props.js';
 import { Rampage } from './rampage.js';
 import { RingRace, RampageGame } from './games.js';
 import { ColliderView } from './colliderview.js';
-import { isPsg1, enablePsg1, PadNav, pad } from './psg1.js';
+import { PadNav, pad } from './psg1.js';
+import { wsUrl, SITE, SERVER_OK } from './server.js';
 
 const $ = (id) => document.getElementById(id);
 const SKY = 0x9fd0ff;
@@ -86,13 +87,13 @@ scene.background = new THREE.Color(SKY);
 scene.fog = new THREE.Fog(SKY, 2500, 11000);
 
 // The PSG1's screen is nearly square, so it gets a wider view so the sides don't feel cropped.
-const camera = new THREE.PerspectiveCamera(isPsg1() ? 72 : 65, innerWidth / innerHeight, 0.3, 40000);
+const camera = new THREE.PerspectiveCamera(__PSG1__ ? 72 : 65, innerWidth / innerHeight, 0.3, 40000);
 
 const hemi = new THREE.HemisphereLight(0xdff0ff, 0x6a8a50, 1.6);
 scene.add(hemi);
 const sun = new THREE.DirectionalLight(0xfff4e0, 2.2);
 sun.castShadow = true;
-sun.shadow.mapSize.setScalar(IS_TOUCH || isPsg1() ? 1024 : 2048);
+sun.shadow.mapSize.setScalar(IS_TOUCH || __PSG1__ ? 1024 : 2048);
 Object.assign(sun.shadow.camera, { left: -160, right: 160, top: 160, bottom: -160, near: 1, far: 2000 });
 sun.shadow.bias = -0.0005;
 sun.shadow.normalBias = 0.5;
@@ -133,7 +134,7 @@ let hitStop = 0; // seconds the action freezes after a punch lands
 let game = null; // the game being played (Ring Race, Rampage), if any
 let mpSendSmash = () => {}; // set by the multiplayer code: tell the room what broke
 const input = new Input();
-if (isPsg1()) input.isTouch = false; // real buttons: no on-screen controls, gamepad hints
+if (__PSG1__) input.isTouch = false; // real buttons: no on-screen controls, gamepad hints
 const sound = new EngineSound();
 const mp = new Multiplayer({
   scene,
@@ -223,7 +224,7 @@ async function buildWorld() {
   data = cityData;
   const before = new Set(scene.children);
   world = new World(scene, data, { satImage });
-  traffic = new Traffic(scene, world, prefs.low ? 350 : IS_TOUCH || isPsg1() ? 900 : 2500);
+  traffic = new Traffic(scene, world, prefs.low ? 350 : IS_TOUCH || __PSG1__ ? 900 : 2500);
   props = new Props(scene, world);
   rampage = new Rampage(scene, world, traffic, props, {
     message: (t) => message(t, 2.5),
@@ -1032,7 +1033,7 @@ function setPhoneSteering(mode) {
     localStorage.setItem('legosky.steering', mode);
   } catch {}
 }
-if (input.isTouch && !isPsg1()) {
+if (input.isTouch && !__PSG1__) {
   document.body.classList.add('is-touch');
   $('phoneControls').hidden = false;
   $('phoneBtn').hidden = true; // you're already on the phone
@@ -1228,7 +1229,7 @@ setInterval(() => {
   $('attribText').textContent = a.filter((x) => x.type === 'string').map((x) => x.value).join(' · ');
 }, 2000);
 // ------------------------------------------------------------------ fly together (menu)
-const MP_OK = !/claude\.ai|claudeusercontent/.test(location.host) && location.protocol !== 'file:';
+const MP_OK = SERVER_OK;
 let mpName = '';
 try {
   mpName = localStorage.getItem('legosky.name') || '';
@@ -1249,8 +1250,7 @@ let openRooms = [];
 let lobbyOk = true;
 function watchLobby() {
   if (!MP_OK) return;
-  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-  const ws = new WebSocket(`${proto}://${location.host}/ws?role=lobby`);
+  const ws = new WebSocket(wsUrl('role=lobby'));
   ws.onopen = () => {
     lobbyOk = true;
     updateMpUi();
@@ -1320,7 +1320,7 @@ $('mpLeave').onclick = () => {
   history.replaceState(null, '', `?${q}`);
 };
 $('mpCopy').onclick = async () => {
-  const url = `${location.origin}${location.pathname}?room=${mp.room}&city=${settings.city}`;
+  const url = `${SITE}?room=${mp.room}&city=${settings.city}`;
   try {
     await navigator.clipboard.writeText(url);
     $('mpCopy').textContent = 'Copied!';
@@ -1519,7 +1519,7 @@ function endGame(mode, score, { title, chips, note, stars = 0 }) {
       return li;
     }));
   $('beerName').value = mp.name || mpName || '';
-  $('beerPost').hidden = !BOARD_OK || score <= 0;
+  $('beerPost').hidden = !BOARD_OK || score <= 0 || !navigator.onLine;
   $('beerSubmit').disabled = false;
   $('beerSubmit').textContent = 'Post my score';
   $('beerPlaced').hidden = true;
@@ -1536,7 +1536,7 @@ $('beerMenu').onclick = () => {
 };
 
 // Leaderboards: this week's and all-time best, shared by everyone on the server.
-const BOARD_OK = !/claude\.ai|claudeusercontent/.test(location.host) && location.protocol !== 'file:';
+const BOARD_OK = SERVER_OK;
 let board = null;
 let boardTab = 'week';
 let boardWs = null;
@@ -1550,8 +1550,7 @@ function watchBoard() {
   }
   board = null;
   boardKey = key;
-  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-  const ws = (boardWs = new WebSocket(`${proto}://${location.host}/ws?role=board&game=${encodeURIComponent(key)}`));
+  const ws = (boardWs = new WebSocket(wsUrl(`role=board&game=${encodeURIComponent(key)}`)));
   ws.onmessage = (e) => {
     let m;
     try {
@@ -1571,6 +1570,12 @@ function watchBoard() {
   };
   ws.onclose = () => {
     boardWs = null;
+    if (!navigator.onLine) {
+      // Offline (the PSG1 app can be): say so instead of "Loading…" forever.
+      board = null;
+      $('beerBoard').innerHTML = '<li class="muted">Leaderboards need an internet connection. Your best scores are saved on this device.</li>';
+      $('beerPost').hidden = true;
+    }
     setTimeout(() => (!$('beerEnd').hidden || gameMode() !== 'free' ? watchBoard() : null), 5000);
   };
 }
@@ -1843,18 +1848,8 @@ input.on('dUp', () => (isBot ? running && rampage.resize(flight, 2) && updateBot
 input.on('dDown', () => (isBot ? running && rampage.resize(flight, 0.5) && updateBotHud() : goPotty()));
 input.on('dLeft', goPotty);
 input.on('dRight', () => (potty.need ? skipPotty() : coach && nextCoach()));
-input.on('psg1', () => {
-  // A PSG1's built-in controls showed up in an ordinary browser: switch layouts.
-  enablePsg1();
-  camera.fov = 72;
-  camera.updateProjectionMatrix();
-  applyPsg1Hints();
-  applyQuality();
-  toast('🎮 PSG1 controls on', '#2f7fe0');
-});
 /** Button names as printed on the PSG1 instead of keyboard keys. */
 function applyPsg1Hints() {
-  if (!isPsg1()) return;
   const kbd = (id, html) => {
     const k = $(id)?.querySelector('kbd');
     if (k) k.outerHTML = html;
@@ -1864,8 +1859,33 @@ function applyPsg1Hints() {
   kbd('crashRespawn', pad('START'));
   if (!$('pottyBtn').querySelector('kbd')) $('pottyBtn').insertAdjacentHTML('beforeend', pad('◀'));
   if (!$('pottySkip').querySelector('kbd')) $('pottySkip').insertAdjacentHTML('beforeend', ` ${pad('▶')}`);
+  // The PSG1 controls guide, and a device check page, in the menu.
+  document.querySelector('details.help .controls')?.insertAdjacentHTML('beforebegin', PSG1_CONTROLS);
+  $('tutorialBtn').insertAdjacentHTML('afterend', '<a class="small-btn" id="diagLink" href="./psg1/diag.html">Device check (buttons, screen, graphics)</a>');
+  // Online or not: everything plays offline; rooms and leaderboards need a connection.
+  $('menuPanel').querySelector('.menu-head')?.insertAdjacentHTML('afterend', '<div id="netNote"></div>');
+  const net = () => {
+    const on = navigator.onLine;
+    $('netNote').classList.toggle('offline', !on);
+    $('netNote').innerHTML = on
+      ? '📶 <b>Online</b>: multiplayer rooms and leaderboards are on'
+      : '✈️ <b>Offline</b>: every city and game works. Connect to Wi-Fi for multiplayer rooms and leaderboards';
+  };
+  addEventListener('online', net); // (the lobby reconnects by itself every few seconds)
+  addEventListener('offline', net);
+  net();
 }
-applyPsg1Hints();
+const PSG1_CONTROLS = __PSG1__ ? `
+<div class="controls psg1-only">
+            <div><b>Left stick</b> steer &amp; climb · <b>Right stick</b> ◀▶ rudder, ▲▼ throttle · <kbd class="pad">B</kbd> brake</div>
+            <div>Copter: <b>left stick</b> ◀▶ turn, ▲▼ speed · <b>right stick</b> ▲▼ up / down</div>
+            <div><kbd class="pad">A</kbd> floats · <kbd class="pad">R1</kbd> turbo · <kbd class="pad">L1</kbd> auto-land · <kbd class="pad">X</kbd> camera</div>
+            <div><kbd class="pad">Y</kbd> robot mode: walk with the left stick (all the way to run), <kbd class="pad">B</kbd> jump (hold to fly),
+              <kbd class="pad">R1</kbd> smash, <kbd class="pad">A</kbd> grab, throw or drive, <kbd class="pad">L1</kbd> turbo, <kbd class="pad">▲</kbd><kbd class="pad">▼</kbd> supersizer</div>
+            <div><kbd class="pad">◀</kbd> potty · <kbd class="pad">▶</kbd> not now · <kbd class="pad">SELECT</kbd> big map · <kbd class="pad">START</kbd> menu</div>
+            <div>Menus: <kbd class="pad">✚</kbd> move · <kbd class="pad">A</kbd> choose · <kbd class="pad">B</kbd> back · <kbd class="pad">L1</kbd><kbd class="pad">R1</kbd> city · <kbd class="pad">START</kbd> play</div>
+          </div>` : '';
+if (__PSG1__) applyPsg1Hints();
 
 // ------------------------------------------------------------------ Android app
 // The app (android/) is a window onto this page and adds "LegoSkyApp/<version>" to
@@ -1877,7 +1897,7 @@ window.legoSkyBack = () => {
   return true;
 };
 {
-  const appVersion = +(navigator.userAgent.match(/LegoSkyApp\/(\d+)/)?.[1] || 0);
+  const appVersion = __PSG1__ ? 0 : +(navigator.userAgent.match(/LegoSkyApp\/(\d+)/)?.[1] || 0);
   const link = $('androidLink');
   if (appVersion) {
     // In the app: offer the newer APK when the server has one.
@@ -1891,7 +1911,7 @@ window.legoSkyBack = () => {
         }
       })
       .catch(() => {});
-  } else if (/Android/i.test(navigator.userAgent)) {
+  } else if (/Android/i.test(navigator.userAgent) && !__PSG1__) {
     link.hidden = false;
   }
 }
@@ -1989,7 +2009,7 @@ function transform() {
     plane = bot.model;
     flight = bot.walk;
     isBot = true;
-    message(isPsg1() ? `🤖 Robot mode!<small>R1 smash · A grab, throw or drive · B jump (hold to fly) · stick all the way to run · Y change back</small>`
+    message(__PSG1__ ? `🤖 Robot mode!<small>R1 smash · A grab, throw or drive · B jump (hold to fly) · stick all the way to run · Y change back</small>`
       : input.isTouch ? '🤖 Robot mode! SMASH buildings, GRAB things and throw them'
       : '🤖 Robot mode!<small>X smash · G grab and throw · Space jump (hold to fly) · Shift run · F change back</small>', 4);
   } else {
@@ -2136,12 +2156,12 @@ let renderScale = 1;
 function pixelRatio() {
   const dpr = window.devicePixelRatio || 1;
   if (prefs.low) return Math.min(dpr, 1) * 0.8;
-  if (isPsg1()) return dpr * renderScale;
+  if (__PSG1__) return dpr * renderScale;
   return Math.min(dpr, IS_TOUCH ? 1.25 : 2) * renderScale;
 }
 // Automatic scaling (on in PSG1 mode, or with ?autoscale): if frames take longer
 // than 22 ms for two seconds, draw fewer pixels; give them back when there's room.
-const AUTO_SCALE = isPsg1() || new URLSearchParams(location.search).has('autoscale');
+const AUTO_SCALE = __PSG1__ || new URLSearchParams(location.search).has('autoscale');
 const SCALES = [1, 0.85, 0.72, 0.6, 0.5];
 const perf = { avg: 16, slow: 0, fast: 0, fps: 60, shown: 0, frames: 0, t: 0 };
 function updatePerf(rawDt) {
@@ -2234,7 +2254,7 @@ input.on('mute', () => {
 let coach = null; // { steps, i, mark }
 function coachSteps() {
   const t = input.isTouch;
-  const P = isPsg1(); // PSG1: hints name its buttons
+  const P = __PSG1__; // PSG1: hints name its buttons
   const tiltOn = () => input.tilt.active;
   const K = (k) => `<kbd>${k}</kbd>`;
   const agl = () => flight.pos.y - plane.gearHeight - world.heightAt(flight.pos.x, flight.pos.z);

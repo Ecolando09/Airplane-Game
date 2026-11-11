@@ -1,4 +1,5 @@
 import QRCode from 'qrcode';
+import { wsUrl, SITE } from './server.js';
 
 // Game-side link to phone controllers through the relay at /ws.
 // The phone page (remote.html) sends stick/throttle input and button presses;
@@ -14,7 +15,7 @@ export class RemoteLink {
   }
 
   get padUrl() {
-    return new URL(`remote.html?room=${this.code}`, location.href).href;
+    return `${SITE}remote.html?room=${this.code}`;
   }
 
   qrDataUrl() {
@@ -23,8 +24,7 @@ export class RemoteLink {
 
   connect() {
     if (this.ws && this.ws.readyState <= 1) return;
-    const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-    const ws = (this.ws = new WebSocket(`${proto}://${location.host}/ws?role=game&room=${this.code}`));
+    const ws = (this.ws = new WebSocket(wsUrl(`role=game&room=${this.code}`)));
     ws.onopen = () => {
       this.retry = 0;
       this.onStatus('waiting');

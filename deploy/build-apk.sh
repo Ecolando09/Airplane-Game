@@ -2,8 +2,9 @@
 # Builds the Lego Sky Android app (android/) into a signed APK.
 #   bash deploy/build-apk.sh OUT.apk          the phone app (lol.latlas.legosky)
 #   bash deploy/build-apk.sh OUT.apk psg1     the PSG1 app (lol.latlas.legosky.psg1):
-#       its own name and package, opens the game in PSG1 mode, passes the
-#       built-in buttons to the page (see MainActivity)
+#       its own name and package, with the whole game inside it (run
+#       `npm run build:psg1` first: it packs dist-psg1/), so it plays offline;
+#       passes the built-in buttons to the page (see MainActivity)
 #
 # Uses Ubuntu/Debian's Android build tools (aapt, dx, zipalign, apksigner) and the
 # Android 14 SDK jar, so no Android Studio is needed. The signing key is made on
@@ -50,7 +51,14 @@ mkdir -p "$W/gen" "$W/classes"
 # The PSG1 variant: same code, its own name, package and "psg1" flag.
 RES=$SRC/res
 RENAME=()
+ASSETS=()
 if [ "$VARIANT" = psg1 ]; then
+  GAME=${PSG1_GAME:-$SRC/../dist-psg1}
+  [ -s "$GAME/index.html" ] || { echo "No PSG1 game build at $GAME: run npm run build:psg1 first"; exit 1; }
+  mkdir -p "$W/assets"
+  cp -r "$GAME" "$W/assets/game"
+  rm -f "$W/assets/game/config.js" # no Google key in the app (it only works on the website)
+  ASSETS=(-A "$W/assets")
   cp -r "$SRC/res" "$W/res"
   RES=$W/res
   sed -i 's|<string name="app_name">[^<]*</string>|<string name="app_name">Lego Sky PSG1</string>|' "$RES/values/strings.xml"
@@ -58,7 +66,7 @@ if [ "$VARIANT" = psg1 ]; then
   RENAME=(--rename-manifest-package lol.latlas.legosky.psg1)
 fi
 
-aapt package -f -m -J "$W/gen" -M "$SRC/AndroidManifest.xml" -S "$RES" -I "$JAR" -F "$W/app.apk" ${RENAME[@]+"${RENAME[@]}"}
+aapt package -f -m -J "$W/gen" -M "$SRC/AndroidManifest.xml" -S "$RES" -I "$JAR" -F "$W/app.apk" ${RENAME[@]+"${RENAME[@]}"} ${ASSETS[@]+"${ASSETS[@]}"}
 javac -nowarn -Xlint:-options -source 8 -target 8 -bootclasspath "$JAR" -classpath "$JAR" -d "$W/classes" \
   $(find "$SRC/java" "$W/gen" -name '*.java')
 dalvik-exchange --dex --min-sdk-version=24 --output="$W/classes.dex" "$W/classes"

@@ -41,6 +41,32 @@ export async function launch(viewport = { width: 1100, height: 700 }) {
   return { browser, page };
 }
 
+/**
+ * Open the PSG1 build (dist-psg1/, from `npm run build:psg1`) the way the PSG1
+ * app does: served from https://appassets.androidplatform.net/ with every other
+ * address blocked, as on a device with no internet.
+ */
+export async function openApp(page, query = '', { online = false } = {}) {
+  const { readFile } = await import('node:fs/promises');
+  const path = await import('node:path');
+  const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), '../../dist-psg1');
+  const types = { html: 'text/html', js: 'text/javascript', css: 'text/css', json: 'application/json', jpg: 'image/jpeg', png: 'image/png' };
+  await page.route('**/*', async (route) => {
+    const u = new URL(route.request().url());
+    if (u.host !== 'appassets.androidplatform.net') return online ? route.continue() : route.abort('internetdisconnected');
+    try {
+      const body = await readFile(path.join(root, decodeURIComponent(u.pathname)));
+      await route.fulfill({ status: 200, body, contentType: types[u.pathname.split('.').pop()] || 'application/octet-stream' });
+    } catch {
+      await route.fulfill({ status: 404, body: '' });
+    }
+  });
+  if (!online) await page.context().setOffline(true); // navigator.onLine = false (the routes above still serve the app's files)
+  await page.goto(`https://appassets.androidplatform.net/index.html?debug&${query}`);
+  await page.waitForFunction(() => window.__game?.world?.colliders && document.getElementById('loading').hidden, null, { timeout: 180000 });
+  await page.waitForTimeout(500);
+}
+
 /** Open the game in a city and wait until its map is built. */
 export async function openGame(page, query = '') {
   await page.goto(`${BASE}?debug&${query}`);

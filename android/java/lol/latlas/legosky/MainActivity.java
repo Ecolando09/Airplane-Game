@@ -22,20 +22,31 @@ import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
+import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.FrameLayout;
 import android.widget.TextView;
 
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.HashMap;
+import java.util.Map;
+
 /**
  * Lego Sky: shows the live game from play.latlas.lol full screen and in landscape.
  * Pages on play.latlas.lol stay in the app; other links open in the browser.
  *
  * The same code builds the PSG1 app (deploy/build-apk.sh OUT.apk psg1), which sets
- * the resource bool "psg1". That app opens the game in PSG1 mode, tags its user
- * agent "LegoSkyPSG1/1", and passes the built-in buttons and sticks to the page
- * itself (window.legoSkyPad), so they always work and B never acts as Back.
+ * the resource bool "psg1". That app carries the whole game inside it (the PSG1
+ * build from `npm run build:psg1`, in assets/game/) and serves it to the web view
+ * from https://appassets.androidplatform.net/, so it plays with no internet. When
+ * online, the game itself reaches play.latlas.lol for multiplayer rooms and
+ * leaderboards. It also tags its user agent "LegoSkyPSG1/1" and passes the
+ * built-in buttons and sticks to the page (window.legoSkyPad), so they always
+ * work and B never acts as Back.
  */
 public class MainActivity extends Activity {
     static final String HOST = "play.latlas.lol";
@@ -43,6 +54,8 @@ public class MainActivity extends Activity {
     // Lets the game know it runs inside the app (and which app version).
     static final String UA_TAG = " LegoSkyApp/1";
     static final String PSG1_TAG = " LegoSkyPSG1/1";
+    // The address the built-in copy of the game is served at (reserved for apps).
+    static final String ASSET_HOST = "appassets.androidplatform.net";
 
     private boolean psg1;
     private String home = SITE;
@@ -60,7 +73,7 @@ public class MainActivity extends Activity {
     protected void onCreate(Bundle saved) {
         super.onCreate(saved);
         psg1 = getResources().getBoolean(R.bool.psg1);
-        if (psg1) home = SITE + "?psg1";
+        if (psg1) home = "https://" + ASSET_HOST + "/index.html";
         Window w = getWindow();
         w.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         if (Build.VERSION.SDK_INT >= 28) {
@@ -104,14 +117,22 @@ public class MainActivity extends Activity {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest req) {
                 Uri u = req.getUrl();
+                if (psg1 && ASSET_HOST.equals(u.getHost())) return false;
                 if (HOST.equals(u.getHost()) && !u.getPath().endsWith(".apk")) return false;
                 openOutside(u);
                 return true;
             }
 
             @Override
+            public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest req) {
+                Uri u = req.getUrl();
+                if (!psg1 || !ASSET_HOST.equals(u.getHost())) return null; // everything else: the network
+                return serveAsset(u.getPath());
+            }
+
+            @Override
             public void onReceivedError(WebView view, WebResourceRequest req, WebResourceError err) {
-                if (req.isForMainFrame()) error.setVisibility(View.VISIBLE);
+                if (req.isForMainFrame() && !psg1) error.setVisibility(View.VISIBLE);
             }
 
             @Override
@@ -132,6 +153,43 @@ public class MainActivity extends Activity {
             }
         });
         root.addView(web, 0, new FrameLayout.LayoutParams(-1, -1));
+    }
+
+    // ------------------------------------------------------------ built-in game (PSG1)
+    private static String mimeFor(String path) {
+        String p = path.toLowerCase();
+        if (p.endsWith(".html")) return "text/html";
+        if (p.endsWith(".js") || p.endsWith(".mjs")) return "text/javascript";
+        if (p.endsWith(".css")) return "text/css";
+        if (p.endsWith(".json")) return "application/json";
+        if (p.endsWith(".jpg") || p.endsWith(".jpeg")) return "image/jpeg";
+        if (p.endsWith(".png")) return "image/png";
+        if (p.endsWith(".svg")) return "image/svg+xml";
+        if (p.endsWith(".wasm")) return "application/wasm";
+        if (p.endsWith(".webp")) return "image/webp";
+        return "application/octet-stream";
+    }
+
+    /** A file from assets/game/, or a 404. */
+    private WebResourceResponse serveAsset(String path) {
+        if (path == null || path.equals("/") || path.isEmpty()) path = "/index.html";
+        if (path.contains("..")) return notFound();
+        Map<String, String> headers = new HashMap<String, String>();
+        headers.put("Cache-Control", "no-cache");
+        headers.put("Access-Control-Allow-Origin", "*");
+        try {
+            InputStream in = getAssets().open("game" + path);
+            String mime = mimeFor(path);
+            String enc = mime.startsWith("text/") || mime.endsWith("json") ? "utf-8" : null;
+            return new WebResourceResponse(mime, enc, 200, "OK", headers, in);
+        } catch (IOException e) {
+            return notFound();
+        }
+    }
+
+    private static WebResourceResponse notFound() {
+        return new WebResourceResponse("text/plain", "utf-8", 404, "Not Found", new HashMap<String, String>(),
+            new ByteArrayInputStream(new byte[0]));
     }
 
     // ------------------------------------------------------------ PSG1 controls

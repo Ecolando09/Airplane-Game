@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { wsUrl } from './server.js';
 
 // Multiplayer: everyone in the same 4-letter room sees each other's vehicles.
 // Positions go through the relay (/ws?role=mp) about 10 times a second and are
@@ -53,11 +54,10 @@ export class Multiplayer {
   }
 
   _connect() {
-    const proto = location.protocol === 'https:' ? 'wss' : 'ws';
     // Proposed city/look: used only if this connection creates the room.
     const want = this.settings || this.getSettings();
     const q = `role=mp&room=${this.room}&city=${encodeURIComponent(want.city)}&look=${encodeURIComponent(want.look)}`;
-    const ws = (this.ws = new WebSocket(`${proto}://${location.host}/ws?${q}`));
+    const ws = (this.ws = new WebSocket(wsUrl(q)));
     ws.onmessage = (e) => {
       let m;
       try {

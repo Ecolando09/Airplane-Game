@@ -2413,24 +2413,6 @@ body.beer #roomGame {
   z-index: 1;
 }
 
-kbd.pad {
-  display: inline-block;
-  min-width: 1.7em;
-  padding: 0 0.45em;
-  border-radius: 999px;
-  background: #23272b;
-  color: #fff;
-  border: 1px solid rgba(255, 255, 255, 0.35);
-  font: 700 0.8em/1.6 system-ui, sans-serif;
-  text-align: center;
-  vertical-align: middle;
-}
-
-kbd.pad-A { background: #d01712; }
-kbd.pad-B { background: #e8b923; color: #23272b; }
-kbd.pad-X { background: #2f7fe0; }
-kbd.pad-Y { background: #1f8a43; }
-
 #fps {
   position: fixed;
   top: 6px;
@@ -2443,78 +2425,4 @@ kbd.pad-Y { background: #1f8a43; }
   color: #9fffa0;
   font: 600 11px ui-monospace, monospace;
   pointer-events: none;
-}
-
-.psg1-only {
-  display: none;
-}
-
-/* ---------- PSG1: one fixed 620 x 540 layout, real buttons, no touch controls */
-body.psg1 .psg1-only {
-  display: block;
-}
-
-body.psg1 details.help .controls:not(.psg1-only),
-body.psg1 #touch,
-body.psg1 #phoneBtn,
-body.psg1 #phoneChip,
-body.psg1 #phoneControls {
-  display: none !important;
-}
-
-body.psg1 #minimap {
-  width: 150px;
-  height: 150px;
-  right: 8px;
-  bottom: 8px;
-  border-width: 3px;
-  border-radius: 12px;
-}
-
-body.psg1 #minimap.big {
-  width: min(520px, 90vw);
-  height: min(440px, 80vh);
-}
-
-body.psg1 #instruments {
-  transform: scale(0.85);
-  transform-origin: top left;
-}
-
-body.psg1 #menuPanel {
-  width: 62vw;
-  padding: 12px 12px 12px 14px;
-  gap: 10px;
-}
-
-body.psg1 .menu-head h1 {
-  font-size: 24px;
-}
-
-body.psg1 #pottyBtn,
-body.psg1 #autoLandBtn,
-body.psg1 #driveBtn {
-  bottom: 40px;
-  font-size: 15px;
-  padding: 8px 14px;
-}
-
-body.psg1 #pottySkip {
-  bottom: 12px;
-}
-
-body.psg1 #autoLandBtn kbd.pad,
-body.psg1 #driveBtn kbd.pad,
-body.psg1 #pottyBtn kbd.pad {
-  margin-left: 8px;
-  font-size: 13px;
-}
-
-body.psg1 #crashBox kbd:not(.pad) {
-  display: none;
-}
-
-body.psg1 #coach {
-  max-width: 70vw;
-  font-size: 14px;
 }

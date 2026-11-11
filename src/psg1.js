@@ -1,29 +1,20 @@
 // PSG1 support (Play Solana's handheld: a 1240 x 1080 screen and built-in
-// gamepad with Nintendo-style labels, A on the right and B at the bottom).
+// gamepad with Nintendo-style labels, A on the right and B at the bottom), and
+// gamepad navigation of menus, which every build uses.
 //
-// PSG1 mode turns on when the page runs in the PSG1 app (its user agent has
-// "LegoSkyPSG1"), with ?psg1 in the address (for trying it on a computer), or
-// when a gamepad whose name contains "psg1" connects. It gives the page one
-// fixed size to design for (620 x 540 CSS pixels), hides the touch controls,
-// shows PSG1 button names, and lets the D-pad drive every menu.
+// In the PSG1 build the page is a fixed 620 x 540 CSS pixels (src/psg1.css),
+// touch controls are hidden, and hints name the PSG1's buttons.
 
-const q = new URLSearchParams(location.search);
-export const PSG1_UA = /LegoSkyPSG1/.test(navigator.userAgent);
-let on = PSG1_UA || q.has('psg1');
+// PSG1 mode is the PSG1 app's own build (vite build --mode psg1): the website
+// never turns it on.
+export const isPsg1 = () => __PSG1__;
 
-export const isPsg1 = () => on;
-export const isPsg1Pad = (gp) => /psg1/i.test(gp?.id || '');
-
-/** Switch the page into PSG1 mode (idempotent). */
+/** Switch the page into PSG1 mode. */
 export function enablePsg1() {
-  on = true;
   document.body.classList.add('psg1');
   document.body.classList.remove('is-touch');
-  // A fixed logical width: the 1240 x 1080 screen becomes 620 x 540 CSS pixels
-  // whatever the device pixel ratio is, so the layout is designed once.
-  if (PSG1_UA) document.querySelector('meta[name=viewport]')?.setAttribute('content', 'width=620, user-scalable=no');
 }
-if (on) enablePsg1();
+if (__PSG1__) enablePsg1();
 
 /**
  * Button names as printed on the PSG1, for hints. The browser's standard
@@ -34,7 +25,7 @@ export const PSG1_LABEL = { 0: 'B', 1: 'A', 2: 'Y', 3: 'X', 4: 'L1', 5: 'R1', 6:
 /** A small round button glyph for hints, e.g. pad('A'). */
 export const pad = (label) => `<kbd class="pad pad-${label.replace(/[^A-Z0-9]/g, '') || 'dpad'}">${label}</kbd>`;
 
-// ------------------------------------------------------------------ menu navigation
+// ------------------------------------------------------------------ menu navigation (any gamepad)
 // Moves a highlight between the buttons of whatever is on top (the menu or a
 // pop-up) with the D-pad or stick, presses the highlighted one, and goes back.
 

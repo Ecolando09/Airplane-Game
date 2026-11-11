@@ -15,14 +15,13 @@ Written 2026-11-11 for whoever (person or AI) does the building. Two projects:
 |---|---|
 | `03` sections 1 to 3 (potty, driving, jetpack) | **Done** (commit 4b09bb2). Tests: `tools/tests/robot.mjs` |
 | `03` section 4 (invisible blockers) | **Done** (be7e96f). Tests: `tools/tests/blockers.mjs`. Collision view: backquote key or `?debug=colliders` |
-| `02` Phase 0 diagnostics page | **Done**: `https://play.latlas.lol/legoplane/diag.html`. The on-device checks still need the owner and the PSG1 |
-| `02` Phases 1, 2, 4 (layout, controls, menus, performance) | **Done** (380bb00). Tests: `tools/tests/psg1.mjs`. Try on a computer with `?psg1&fps` in a 620 x 540 window |
-| `02` Phase 3 (PSG1 app) | **Done**: `deploy/build-apk.sh OUT.apk psg1`, published at `https://play.latlas.lol/downloads/lego-sky-psg1.apk` |
+| PSG1 app (`02` Phases 1 to 5) | **Done**. The PSG1 app carries the whole game (all nine cities) and plays with no internet; when online it also gets multiplayer rooms and leaderboards from play.latlas.lol. PSG1 code is only in the app's build (`npm run build:psg1`), not on the website. The server builds `/opt/latlas-play/apk/lego-sky-psg1.apk` on each deploy (not published on the site). Tests: `npm run build:psg1 && node tools/tests/psg1.mjs` (loads the game the way the app does, offline) |
+| `02` Phase 0 device check | The check page is inside the PSG1 app (Menu → Settings → Device check). The checks on the PSG1 itself still need the owner |
 | `04` Part A (explore the extension) | **Not started**: needs a session in the Claude desktop app on the owner's computer |
-| `04` Track 1 (Unity shell) | Waiting on Part A. The web side it loads (`?psg1`, `window.legoSkyPad`) is ready |
-| `02` Phases 5, 6 (offline build, store) | Not started (only if a store listing is wanted) |
+| `04` Track 1 (Unity shell) | Waiting on Part A. A Unity shell would show the same built-in game (`dist-psg1/`) and can feed buttons through `window.legoSkyPad` |
+| `02` Phase 6 (store listing) | Not started (only if a store listing is wanted) |
 
-Run all tests: `npx vite build && node tools/tests/robot.mjs && node tools/tests/blockers.mjs && node tools/tests/psg1.mjs`
+Run all tests: `npx vite build && node tools/tests/robot.mjs && node tools/tests/blockers.mjs && npm run build:psg1 && node tools/tests/psg1.mjs`
 
 ## Recommended order
 
