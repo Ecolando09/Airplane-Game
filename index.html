@@ -43,8 +43,10 @@
       </div>
       <div id="beerDwell" hidden><svg viewBox="0 0 44 44"><circle cx="22" cy="22" r="19" /><circle id="beerDwellArc" cx="22" cy="22" r="19" /></svg><span id="beerDwellText"></span></div>
       <button id="autoLandBtn" class="big go" hidden>🛬 Auto-land at <span id="autoLandName"></span><kbd>L</kbd></button>
+      <button id="driveBtn" class="big go" hidden>🚗 DRIVE the <span id="driveName">car</span><kbd>G</kbd></button>
       <div id="coach" hidden><span id="coachText"></span><small><span id="coachStep"></span><button id="coachSkip">Skip this step</button><button id="coachEnd">End lesson</button></small></div>
       <button id="pottyBtn" class="big" hidden><span class="poo">💩</span><span id="pottyText">Potty time!</span></button>
+      <button id="pottySkip" hidden aria-label="Not now">✕ Not now</button>
       <div id="crashBox" hidden>
         <p id="crashReason">💥 Crashed!</p>
         <div class="crash-actions">
@@ -204,6 +206,11 @@
             <label class="check"><input type="checkbox" id="setSound" checked /> Sound effects</label>
             <label class="check"><input type="checkbox" id="setMusic" /> Music</label>
             <label class="check"><input type="checkbox" id="setLow" /> Low graphics (smoother on older phones)</label>
+            <div class="seg-row">Potty breaks
+              <div class="seg-mini" id="setPotty" role="group" aria-label="Potty breaks">
+                <button data-v="off">Off</button><button data-v="some">Sometimes</button><button data-v="often">Often</button>
+              </div>
+            </div>
             <button class="small-btn" id="tutorialBtn">Replay the flying lesson</button>
           </div>
         </details>
@@ -231,11 +238,11 @@
             <div><kbd>B</kbd> floats (land on water) &nbsp; <kbd>T</kbd> turbo (or <kbd>1</kbd><kbd>2</kbd><kbd>3</kbd>)</div>
             <div><kbd>C</kbd> camera &nbsp; <kbd>N</kbd> big map &nbsp; <kbd>R</kbd> restart &nbsp; <kbd>Esc</kbd> menu</div>
             <div><kbd>L</kbd> auto-land (within 500 ft of a landmark)</div>
-            <div><kbd>F</kbd> robot mode: <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> walk · <kbd>Shift</kbd> run · <kbd>Space</kbd> jump (hold for jets)</div>
-            <div>Supersizer: <kbd>.</kbd> makes the car (or anything) in front of you bigger, <kbd>,</kbd> smaller. Grab a supersized car to drive it</div>
+            <div><kbd>F</kbd> robot mode: <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> walk · <kbd>Shift</kbd> run · <kbd>Space</kbd> jump (hold it to fly on the jetpack)</div>
+            <div>Supersizer: <kbd>.</kbd> makes the car (or anything) in front of you bigger, <kbd>,</kbd> smaller. Walk up to a supersized car and press 🚗 DRIVE (or <kbd>G</kbd>) to drive it; <kbd>X</kbd> honks for a boost</div>
             <div>Robot turbo: <kbd>T</kbd> (or <kbd>2</kbd> <kbd>3</kbd>) lights the rocket pack for 2× or 3× running speed and higher jumps</div>
             <div>Robot: <kbd>X</kbd> smash · <kbd>G</kbd> grab a car, boat or boulder, <kbd>G</kbd> again to throw it</div>
-            <div><kbd>P</kbd> potty: when 💩 pops up, go to the 🚽 by the helipad or runway</div>
+            <div><kbd>P</kbd> potty: when 💩 pops up, go to the 🚽 by the helipad or runway (or sit any time you're next to one; turn prompts off in Settings)</div>
             <div><kbd>I</kbd> invert pitch &nbsp; <kbd>M</kbd> sound</div>
           </div>
           <p class="tip heli-only">Push LIFT up (or hold W) to take off, then raise SPEED to fly. To land, stop and

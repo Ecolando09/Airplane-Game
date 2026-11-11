@@ -674,7 +674,9 @@ export class World {
     if (hp) spots.push({ x: hp.x, z: hp.z, r: 32 });
     const rw = this.runway;
     const back = rw.length / 2 - 40;
-    spots.push({ x: rw.x - rw.fx * back - rw.fz * (rw.width / 2 + 55), z: rw.z - rw.fz * back + rw.fx * (rw.width / 2 + 55), r: 0 });
+    // Well off to the side of the runway's far end, out of the takeoff view.
+    const side = rw.width / 2 + 120;
+    spots.push({ x: rw.x - rw.fx * back - rw.fz * side, z: rw.z - rw.fz * back + rw.fx * side, r: 0 });
     for (const sp of spots) {
       // The first clear, dry spot around the pad.
       let at = null;
@@ -909,11 +911,21 @@ export class World {
     return null;
   }
 
+  /** The underside of something overhead (a bridge deck, an arch) between heights y0 and y1, or null. */
+  ceilingAt(x, z, y0, y1, rad = 0) {
+    let low = null;
+    for (const c of this.colliders.get(Math.floor((x + this.halfX) / GRID) * 100000 + Math.floor((z + this.halfZ) / GRID)) || []) {
+      if (c.dead || c.bottom === undefined || c.bottom < y0 - 0.5 || c.bottom > y1) continue;
+      if (this.inFootprint(c, x, z, rad) && (low === null || c.bottom < low)) low = c.bottom;
+    }
+    return low;
+  }
+
   /** For walking: the height to stand at, counting roofs that are at or below step height. */
   standHeight(x, z, feetY) {
     let y = this.heightAt(x, z);
     for (const c of this.colliders.get(Math.floor((x + this.halfX) / GRID) * 100000 + Math.floor((z + this.halfZ) / GRID)) || []) {
-      if (c.dead || c.t === 'tree' || c.bottom !== undefined) continue;
+      if (c.dead || c.t === 'tree') continue; // bridge decks and arches can be landed on too
       if (c.top > y && c.top <= feetY + 2.5 && this.inFootprint(c, x, z)) y = c.top;
     }
     return y;

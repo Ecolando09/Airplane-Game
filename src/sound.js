@@ -39,6 +39,17 @@ export class EngineSound {
     this.windGain.gain.value = 0;
     wind.connect(this.windFilter).connect(this.windGain).connect(ctx.destination);
     wind.start();
+    // Jetpack: a low rushing roar, faded in while the robot's jets burn.
+    const jet = ctx.createBufferSource();
+    jet.buffer = this.noise;
+    jet.loop = true;
+    this.jetFilter = ctx.createBiquadFilter();
+    this.jetFilter.type = 'lowpass';
+    this.jetFilter.frequency.value = 700;
+    this.jetGain = ctx.createGain();
+    this.jetGain.gain.value = 0;
+    jet.connect(this.jetFilter).connect(this.jetGain).connect(ctx.destination);
+    jet.start(0, 0.37);
     if (this.wantMusic) this.setMusic(true);
   }
 
@@ -64,6 +75,14 @@ export class EngineSound {
     src.connect(f).connect(g).connect(ctx.destination);
     src.start(t, Math.random());
     src.stop(t + P.len + 0.05);
+  }
+
+  /** Jetpack roar: power 0 (off) to about 1.5 (turbo). */
+  jet(power) {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    this.jetGain.gain.setTargetAtTime(this.muted ? 0 : Math.min(0.22, power * 0.14), t, power ? 0.05 : 0.15);
+    this.jetFilter.frequency.setTargetAtTime(500 + power * 600, t, 0.1);
   }
 
   /** Optional background tune: a slow, gentle arpeggio that never ends. */
@@ -127,12 +146,13 @@ export class EngineSound {
       potty: [[880, 0], [988, 0.12], [880, 0.24]], // "uh-oh" chime
       flush: [[520, 0], [440, 0.1], [360, 0.2], [290, 0.3], [230, 0.4], [180, 0.5], [140, 0.6]],
       transform: [[196, 0], [294, 0.07], [392, 0.14], [587, 0.21], [784, 0.28]],
+      horn: [[415, 0], [523, 0], [415, 0.2], [523, 0.2]],
     }[kind] || [];
     const t0 = this.ctx.currentTime;
     for (const [f, at] of notes) {
       const o = this.ctx.createOscillator();
       const g = this.ctx.createGain();
-      o.type = kind === 'break' || kind === 'transform' || kind === 'flush' ? 'sawtooth' : 'triangle';
+      o.type = kind === 'horn' ? 'square' : kind === 'break' || kind === 'transform' || kind === 'flush' ? 'sawtooth' : 'triangle';
       o.frequency.value = f;
       g.gain.setValueAtTime(0.0001, t0 + at);
       g.gain.exponentialRampToValueAtTime(0.12, t0 + at + 0.01);

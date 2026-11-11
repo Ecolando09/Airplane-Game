@@ -174,7 +174,9 @@ const Y = new THREE.Vector3(0, 1, 0);
 const GRAVITY = 30;
 const WALK = 20; // m/s
 const RUN = 34;
-const JET_TIME = 1.0; // seconds of jump jets per jump (about 40 m up)
+const JET_CLIMB = 18; // m/s climb while jump is held (more with turbo)
+const JET_CEILING = 600; // meters above the ground where the jets fade out
+const FALL_MAX = 45; // m/s terminal speed (still fast enough to stomp)
 
 /**
  * Walking physics, with the same fields the flight models have (pos, quat,
@@ -253,27 +255,33 @@ export class RobotWalk {
 
     // Walk: ease toward the wanted speed (less grip in the air, slower in water).
     this.onWater = w.isWater(this.pos.x, this.pos.z) && this.pos.y - w.heightAt(this.pos.x, this.pos.z) < 1;
-    const top = ((input.run ?? input.throttle > 0) ? RUN : WALK) * (this.onWater ? 0.6 : 1) * this.turboNow; // T2X, T3X: rocket-powered
+    // Jets give running speed in the air and much better steering, so holding
+    // jump turns the robot into something that flies.
+    const jets = !this.onGround && input.brake;
+    const top = ((input.run ?? input.throttle > 0) || jets ? RUN : WALK) * (this.onWater ? 0.6 : 1) * this.turboNow; // T2X, T3X: rocket-powered
     const f = this.forward;
     const r = this.right;
     const wantX = f.x * c.pitch * top + r.x * c.yaw * 12;
     const wantZ = f.z * c.pitch * top + r.z * c.yaw * 12;
-    const grip = 1 - Math.exp(-dt * (this.onGround ? 7 : 1.2));
+    const grip = 1 - Math.exp(-dt * (this.onGround ? 7 : jets ? 4 : 1.2));
     this.vel.x += (wantX - this.vel.x) * grip;
     this.vel.z += (wantZ - this.vel.z) * grip;
 
-    // Jump, with jets while the button is held.
+    // Jump; holding the button keeps the jets burning for as long as it's held.
+    // The climb rate eases toward JET_CLIMB (a tap is a hop, holding climbs, and
+    // holding while falling cushions the landing) and fades out near the ceiling.
     if (input.brake && this.onGround) {
       this.vel.y = 24;
       this.onGround = false;
-      this.jet = JET_TIME;
     }
-    this.jetting = !this.onGround && input.brake && this.jet > 0;
+    this.jetting = !this.onGround && input.brake;
     if (this.jetting) {
-      this.jet -= dt;
-      this.vel.y += (36 + 14 * (this.turboNow - 1)) * dt; // turbo jets carry higher
+      const agl = this.pos.y - w.heightAt(this.pos.x, this.pos.z);
+      const climb = (JET_CLIMB + 10 * (this.turboNow - 1)) * THREE.MathUtils.clamp((JET_CEILING - agl) / 100, -0.3, 1);
+      this.vel.y += (climb - this.vel.y) * (1 - Math.exp(-dt * 2.5));
+    } else if (!this.onGround) {
+      this.vel.y = Math.max(-FALL_MAX, this.vel.y - GRAVITY * dt);
     }
-    if (!this.onGround) this.vel.y -= GRAVITY * dt;
 
     // Move in short steps; walls stop you (slide along them), roofs you can stand on.
     const dist = Math.hypot(this.vel.x, this.vel.z) * dt;
@@ -316,6 +324,15 @@ export class RobotWalk {
     this.pos.x = THREE.MathUtils.clamp(this.pos.x, -w.halfX - 1400, w.halfX + 1400);
     this.pos.z = THREE.MathUtils.clamp(this.pos.z, -w.halfZ - 1400, w.halfZ + 1400);
 
+    // Head bump: flying up into a bridge deck or an arch stops at its underside.
+    if (this.vel.y > 0) {
+      const head = this.pos.y + ROBOT_HEIGHT;
+      const roof = w.ceilingAt(this.pos.x, this.pos.z, head, head + this.vel.y * dt, rad * 0.5);
+      if (roof !== null) {
+        this.pos.y = roof - ROBOT_HEIGHT - 0.05;
+        this.vel.y = 0;
+      }
+    }
     this.pos.y += this.vel.y * dt;
     const ground = walking ? w.heightAt(this.pos.x, this.pos.z)
       : w.standHeight(this.pos.x, this.pos.z, this.onGround ? this.pos.y : this.pos.y - this.vel.y * dt);
@@ -345,7 +362,10 @@ export class RobotWalk {
     c.pitch += (input.pitch - c.pitch) * k;
     c.roll += (input.roll - c.roll) * k;
     if (input.brake) return this.onExit?.();
-    const top = Math.min(75, 24 * this.driving);
+    // Turbo and the horn's boost make the car faster too.
+    this.turboNow += (this.turbo - this.turboNow) * (1 - Math.exp(-dt * 2));
+    this.boost = Math.max(0, (this.boost || 0) - dt);
+    const top = Math.min(75, 24 * this.driving) * (1 + 0.35 * (this.turboNow - 1)) * (this.boost > 0 ? 1.4 : 1);
     const f0 = this.forward;
     let along = this.vel.x * f0.x + this.vel.z * f0.z;
     along += (c.pitch * top - along) * (1 - Math.exp(-dt * 1.6));

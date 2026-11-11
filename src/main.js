@@ -32,7 +32,7 @@ const VEHICLE_NAMES = { plane: 'Bush Plane', heli: 'Ghost-Spider Copter' };
 const LOOK_NAMES = { lego: 'Lego', real: 'Realistic', google: 'Google 3D' };
 const MODES = { free: 'Free flight', rings: 'Ring Race', rampage: 'Rampage', beer: 'Beer Run' }; // Beer Run: only in Fort Collins
 // Preferences that stay on this device (not shared with a room).
-const prefs = { sens: 100, invert: false, sound: true, music: false, low: false, sky: 'day', paint: 'classic', ...(() => {
+const prefs = { sens: 100, invert: false, sound: true, music: false, low: false, sky: 'day', paint: 'classic', potty: 'some', ...(() => {
   try {
     return JSON.parse(localStorage.getItem('legosky.prefs') || '{}');
   } catch {
@@ -223,6 +223,10 @@ async function buildWorld() {
     message: (t) => message(t, 2.5),
     sound: (k) => sound.blip(k),
     canBreak: () => !google,
+    driving: () => {
+      setBotUi();
+      $('driveBtn').hidden = true;
+    },
     // Every explosion: a boom and a camera shake, both fading with distance.
     boom: (size, x, z) => {
       const d = Math.hypot(x - flight.pos.x, z - flight.pos.z);
@@ -317,7 +321,6 @@ function buildVehicle() {
   floatsAnim = 0;
   boosterLevel = 0;
   camInit = false;
-  if (window.__game) Object.assign(window.__game, { world, flight, plane, google });
 }
 
 // ------------------------------------------------------------------ floats
@@ -344,8 +347,11 @@ function updateFloats(dt) {
 let boosterLevel = 0;
 let boosterColor = 2;
 function updateBoosters(dt) {
-  const on = flight.turbo > 1 && !flight.crashed;
-  if (on) boosterColor = flight.turbo;
+  // The pack shows with turbo, and whenever the robot's jets are burning.
+  const jets = isBot && flight.jetting;
+  const on = (flight.turbo > 1 || jets) && !flight.crashed;
+  if (on) boosterColor = Math.max(flight.turbo, 2);
+  sound.jet?.(jets && running ? 1 + 0.25 * (flight.turboNow - 1) : 0);
   boosterLevel += ((on ? 1 : 0) - boosterLevel) * (1 - Math.exp(-dt * 5));
   // The robot's rockets burn hardest while running or jet-jumping.
   const power = isBot ? (flight.jetting ? 1 : Math.min(1, flight.speed / 40)) : flight.throttle;
@@ -407,6 +413,7 @@ const camOff = new THREE.Vector3();
 const camLookOff = new THREE.Vector3();
 const camFwd = new THREE.Vector3(0, 0, -1);
 let camInit = false;
+let botAir = 0; // eases to 1 while the robot is airborne (camera pulls back)
 function updateCamera(dt) {
   const mode = CAMS[camMode];
   const p = plane.group.position;
@@ -443,7 +450,9 @@ function updateCamera(dt) {
   }
   if (isBot) {
     // Over the robot's shoulder, far enough back to see what it's about to hit.
-    const back = (mode === 'chase' ? 36 : 80) * (1 + 0.35 * (flight.driving || 0));
+    // Pull back a little while flying on the jets, to see where you're going.
+    botAir += ((isBot && !flight.onGround ? 1 : 0) - botAir) * (1 - Math.exp(-dt * 1.5));
+    const back = (mode === 'chase' ? 36 : 80) * (1 + 0.35 * (flight.driving || 0)) * (1 + 0.5 * botAir);
     want = p.clone().addScaledVector(flatF, -back).add(new THREE.Vector3(0, mode === 'chase' ? 19 : 42, 0));
     look = p.clone().addScaledVector(flatF, 14).add(new THREE.Vector3(0, 9, 0));
     if (potty.sitting > 0) {
@@ -793,6 +802,7 @@ function updateHud(dt) {
   $('thrFill').style.width = `${Math.round((flight.throttle || 0) * 100)}%`;
   updateBuddies();
   updateAutoLandButton();
+  updateDriveButton();
 
   let best = null;
   let bestD = 700;
@@ -1649,7 +1659,7 @@ function renderLogbook() {
   const rows = [
     ['Cities flown', `${c.cities} of ${Object.keys(CITIES).length}`], [`Landmarks found in ${CITIES[settings.city]}`, `${here} of ${world.landmarks.length}`],
     ['Landmarks found everywhere', c.landmarks], ['Stars earned in games', `${c.stars} ★`], ['Things smashed as the robot', c.smashed.toLocaleString()],
-    ['Butter landings (★★★)', c.butter],
+    ['Butter landings (★★★)', c.butter], ['Potty breaks taken 🚽', logbook.potty || 0],
   ];
   $('logbook').replaceChildren(...rows.map(([k, v]) => {
     const d = document.createElement('div');
@@ -1899,7 +1909,7 @@ function transform() {
     flight = bot.walk;
     isBot = true;
     message(input.isTouch ? '🤖 Robot mode! SMASH buildings, GRAB things and throw them'
-      : '🤖 Robot mode!<small>X smash · G grab and throw · Space jump (hold for jets) · Shift run · F change back</small>', 4);
+      : '🤖 Robot mode!<small>X smash · G grab and throw · Space jump (hold to fly) · Shift run · F change back</small>', 4);
   } else {
     rampage.release(flight);
     const p = flight.pos;
@@ -1932,7 +1942,6 @@ function transform() {
   trail = [];
   sound.blip('transform');
   setBotUi();
-  if (window.__game) Object.assign(window.__game, { flight, plane });
 }
 
 function finishMorph() {
@@ -1955,7 +1964,6 @@ function leaveBot() {
   vehicle = null;
   isBot = false;
   setBotUi();
-  if (window.__game) Object.assign(window.__game, { flight, plane });
 }
 
 /** The shape change: the old shape spins and shrinks while the new one grows. */
@@ -1972,10 +1980,12 @@ function updateMorph(dt) {
 function setBotUi() {
   document.body.classList.toggle('bot', isBot);
   input.botMode = isBot;
-  for (const [act, label] of [['brake', ['BRAKE', 'JUMP']], ['floats', ['FLOATS', 'GRAB']]]) {
-    document.querySelector(`#touchButtons [data-act=${act}]`).textContent = label[+isBot];
+  // While driving a supersized car: JUMP and GRAB get out, SMASH honks (and boosts).
+  const car = isBot && !!rampage?.driving;
+  for (const [act, label] of [['brake', ['BRAKE', 'JUMP', 'EXIT']], ['floats', ['FLOATS', 'GRAB', 'EXIT']]]) {
+    document.querySelector(`#touchButtons [data-act=${act}]`).textContent = label[car ? 2 : +isBot];
   }
-  $('turboChip').textContent = isBot ? 'SMASH' : flight.turbo > 1 ? turboName(flight.turbo) : 'TURBO';
+  $('turboChip').textContent = car ? 'HORN' : isBot ? 'SMASH' : flight.turbo > 1 ? turboName(flight.turbo) : 'TURBO';
   $('turboChip').classList.toggle('on', !isBot && flight.turbo > 1);
   $('botChip').classList.toggle('on', isBot);
   $('botTurboChip').textContent = flight.turbo > 1 ? turboName(flight.turbo) : 'TURBO';
@@ -2056,6 +2066,17 @@ function applyPrefs() {
   $('setSound').checked = prefs.sound;
   $('setMusic').checked = prefs.music;
   $('setLow').checked = prefs.low;
+  for (const b of $('setPotty').querySelectorAll('button')) b.classList.toggle('on', b.dataset.v === prefs.potty);
+}
+for (const b of $('setPotty').querySelectorAll('button')) {
+  b.onclick = () => {
+    const was = prefs.potty;
+    prefs.potty = b.dataset.v;
+    savePrefs();
+    applyPrefs();
+    // Switching from Off (or to a slower pace) restarts the countdown at the new pace.
+    if (was !== prefs.potty && pottyRate()) potty.timer = pottyRate().first;
+  };
 }
 $('setSens').oninput = () => {
   prefs.sens = Number($('setSens').value);
@@ -2148,12 +2169,16 @@ $('tutorialBtn').onclick = () => {
 };
 
 // ------------------------------------------------------------------ potty breaks
-// Every few minutes of play the vehicle needs to go: a 💩 button pops up and a
-// tag points to the nearest giant toilet (there's one by the helipad and one by
-// the runway). Get there, press the button, and the robot sits down and flushes.
-const POTTY_EVERY = 210; // seconds of play between potty breaks
+// Now and then the vehicle needs to go: a 💩 button pops up and a tag points to
+// the nearest giant toilet (one by the helipad, one by the runway). It's optional:
+// Settings → Potty breaks (Off / Sometimes / Often), "Not now" waves a prompt
+// away, an ignored prompt leaves on its own, and games and the lesson are never
+// interrupted. The toilets work any time: walk or land next to one to sit.
+const POTTY_RATES = { off: null, some: { first: 300, every: 600 }, often: { first: 75, every: 210 } };
 const POTTY_REACH = 45; // meters from the toilet
-const potty = { timer: 75, need: false, sitting: 0 }; // the first one comes early so you meet it
+const POTTY_WAIT = 60; // an ignored prompt goes away after this many seconds
+const pottyRate = () => (prefs.potty in POTTY_RATES ? POTTY_RATES[prefs.potty] : POTTY_RATES.some);
+const potty = { timer: pottyRate()?.first ?? 0, need: false, sitting: 0, shown: 0 };
 const pottyLabel = document.createElement('div');
 pottyLabel.className = 'label pin potty';
 pottyLabel.style.display = 'none';
@@ -2165,7 +2190,14 @@ function nearestToilet() {
 }
 function pottyReady() {
   const t = nearestToilet();
-  return Math.hypot(t.x - flight.pos.x, t.z - flight.pos.z) < POTTY_REACH && (isBot || flight.onGround) && !flight.crashed;
+  return !!t && Math.hypot(t.x - flight.pos.x, t.z - flight.pos.z) < POTTY_REACH && (isBot || flight.onGround) && !flight.crashed && !bot.walk?.driving;
+}
+/** Wave the prompt away until the next interval. */
+function skipPotty() {
+  potty.need = false;
+  potty.timer = pottyRate()?.every ?? 0;
+  potty.shown = 0;
+  $('pottyBtn').hidden = $('pottySkip').hidden = true;
 }
 function updatePotty(dt) {
   if (potty.sitting > 0) {
@@ -2180,22 +2212,35 @@ function updatePotty(dt) {
     }
     return;
   }
-  if (!potty.need) {
+  const rate = pottyRate();
+  const busy = !!play() || !!coach || !!autoLand;
+  if (potty.need && (!rate || busy)) skipPotty(); // turned off, or a game started
+  if (!potty.need && rate && !busy) {
     potty.timer -= dt;
-    if (potty.timer > 0) return;
-    potty.need = true;
-    sound.blip('potty');
-    message('💩 Uh-oh… potty time!<small>Follow the 🚽 tag to the toilet</small>', 3.5);
+    if (potty.timer <= 0) {
+      potty.need = true;
+      potty.shown = 0;
+      sound.blip('potty');
+      message('💩 Uh-oh… potty time!<small>Follow the 🚽 tag to the toilet, or tap ✕ for not now</small>', 3.5);
+    }
   }
-  $('pottyBtn').hidden = false;
   const ready = pottyReady();
+  if (potty.need) {
+    potty.shown += dt;
+    if (potty.shown > POTTY_WAIT && !ready) return skipPotty();
+  }
+  // With no prompt, a toilet you're standing next to still offers a seat.
+  const show = potty.need || (ready && !busy);
+  $('pottyBtn').hidden = !show;
+  $('pottySkip').hidden = !potty.need;
+  if (!show) return;
   $('pottyBtn').classList.toggle('ready', ready);
-  $('pottyText').textContent = ready ? 'Sit on the toilet' : `Potty! 🚽 ${fmtDist(Math.hypot(nearestToilet().x - flight.pos.x, nearestToilet().z - flight.pos.z))}`;
+  $('pottyText').textContent = ready ? (potty.need ? 'Sit on the toilet' : '🚽 Sit') : `Potty! 🚽 ${fmtDist(Math.hypot(nearestToilet().x - flight.pos.x, nearestToilet().z - flight.pos.z))}`;
 }
 function goPotty() {
-  if (!running || !potty.need || potty.sitting > 0) return;
+  if (!running || potty.sitting > 0) return;
   if (!pottyReady()) {
-    message(`The 🚽 is next to the ${world.data.helipad ? 'helipad and the ' : ''}runway. Land or walk right up to it!`, 3);
+    if (potty.need) message(`The 🚽 is next to the ${world.data.helipad ? 'helipad and the ' : ''}runway. Land or walk right up to it!`, 3);
     return;
   }
   // Only a robot can sit down: change shape if needed, then take a seat.
@@ -2206,13 +2251,17 @@ function goPotty() {
   flight.onGround = true;
   camInit = false;
   potty.need = false;
-  potty.timer = POTTY_EVERY;
+  potty.timer = pottyRate()?.every ?? 0;
+  potty.shown = 0;
   potty.sitting = 3.5;
-  $('pottyBtn').hidden = true;
+  $('pottyBtn').hidden = $('pottySkip').hidden = true;
+  logbook.potty = (logbook.potty || 0) + 1;
+  saveLogbook();
   message('🚽 …', 2.5);
   setTimeout(() => sound.blip('flush'), 2300);
 }
 $('pottyBtn').onclick = goPotty;
+$('pottySkip').onclick = skipPotty;
 input.on('potty', goPotty);
 
 // ------------------------------------------------------------------ airplane pose
@@ -2410,6 +2459,24 @@ function updateAutoLand(dt) {
   }
 }
 
+// The DRIVE prompt: a supersized car (or bus, cart, truck) within reach.
+let driveTargetNow = null;
+function updateDriveButton() {
+  const it = isBot && running && !flight.crashed && potty.sitting <= 0 ? rampage.driveTarget(flight) : null;
+  if (it !== driveTargetNow) {
+    if (it && !driveTargetNow) sound.blip('ring');
+    driveTargetNow = it;
+    if (it) $('driveName').textContent = props.info(it.kind).name;
+  }
+  $('driveBtn').hidden = !it;
+}
+$('driveBtn').onclick = () => {
+  if (driveTargetNow && !rampage.driving) {
+    rampage.enterCar(flight, driveTargetNow);
+    updateBotHud();
+  }
+};
+
 function updateAutoLandButton() {
   const l = !isBot && !autoLand && !flight.crashed && !flight.onGround ? nearestLandmark() : null;
   if (l !== autoLandTarget) {
@@ -2502,6 +2569,7 @@ function frame() {
     updateLabels();
     drawMinimap();
   } else {
+    sound.jet?.(0);
     // Live preview behind the menu: the vehicle parked where it is, with the
     // camera slowly circling it. The view is shifted right, clear of the menu.
     if (!building && plane) {
@@ -2544,7 +2612,14 @@ frame();
 
 // Test hook: ?debug exposes the simulation for automated checks.
 if (new URLSearchParams(location.search).has('debug')) {
-  window.__game = { world, flight, plane, start, google, mp, camera, autoLandApi: { start: (l) => { autoLandTarget = l; startAutoLand(); }, step: (dt) => autoLand && updateAutoLand(dt), active: () => !!autoLand }, step: (dt, ctl) => flight.update(dt, ctl), beer: () => beerRun, gameObj: () => game, potty, goPotty, transform, bot: () => ({ isBot, walk: bot.walk, rampage, props }), botSmash, botGrab };
+  window.__game = {
+    get world() { return world; }, get flight() { return flight; }, get plane() { return plane; }, get google() { return google; },
+    get running() { return running; }, get isBot() { return isBot; }, get coach() { return coach; },
+    mp, camera, input, prefs, logbook, potty, start, goPotty, skipPotty, updatePotty, transform, finishMorph, botSmash, botGrab, applyPrefs,
+    autoLandApi: { start: (l) => { autoLandTarget = l; startAutoLand(); }, step: (dt) => autoLand && updateAutoLand(dt), active: () => !!autoLand },
+    step: (dt, ctl) => flight.update(dt, ctl), beer: () => beerRun, gameObj: () => game,
+    bot: () => ({ isBot, walk: bot.walk, rampage, props }),
+  };
   window.__tilt = input.tilt;
   window.__traffic = traffic;
 }

@@ -216,7 +216,7 @@ export class Rampage {
     const y = it.held ? bot.pos.y + 8 : it.y + 2;
     this.burst(it.held ? bot.pos.x : it.x, y, it.held ? bot.pos.z : it.z, 4 * scale, factor > 1 ? 0x4fd8ff : 0xc06bff, 8);
     const size = scale === 1 ? 'normal size' : scale > 1 ? `${scale}× bigger` : `${1 / scale}× smaller`;
-    const tip = info.drive && scale >= 2 && !it.held && !this.driving ? ' Big enough to drive: GRAB it to get in!' : '';
+    const tip = info.drive && scale >= 2 && !it.held && !this.driving ? ' Big enough to drive: press 🚗 DRIVE to get in!' : '';
     this.hooks.message(`${factor > 1 ? '🔍 Supersized' : '🔬 Shrunk'} the ${info.name}: ${size}.${tip}`);
     return true;
   }
@@ -235,7 +235,8 @@ export class Rampage {
     bot.vel.set(0, 0, 0);
     bot.onExit = () => this.exitCar(bot);
     this.hooks.sound('load');
-    this.hooks.message(`🚗 Driving the ${this.props.info(it.kind).name}! Nothing can stop you. JUMP to get out`);
+    this.hooks.message(`🚗 Driving the ${this.props.info(it.kind).name}! Nothing can stop you. HORN for a boost, EXIT (jump) to get out`);
+    this.hooks.driving?.(true);
   }
 
   exitCar(bot) {
@@ -250,6 +251,33 @@ export class Rampage {
     bot.pos.x += r.x * (this.props.radius(item) + 4);
     bot.pos.z += r.z * (this.props.radius(item) + 4);
     bot.vel.set(0, 0, 0);
+    bot.boost = 0;
+    this.hooks.driving?.(false);
+  }
+
+  /** While driving, SMASH honks and gives a short burst of speed. */
+  honk(bot) {
+    if (!this.driving) return false;
+    this.hooks.sound('horn');
+    bot.boost = 1.5;
+    return true;
+  }
+
+  /** A supersized car (or other drivable thing) close enough to get into, or null. */
+  driveTarget(bot) {
+    if (this.driving || this.held) return null;
+    let best = null;
+    let bestD = 12;
+    for (const it of this.props.items) {
+      if (it.held || (it.scale || 1) < 2 || !this.props.info(it.kind).drive) continue;
+      if (Math.abs(it.y - bot.pos.y) > ROBOT_HEIGHT) continue;
+      const d = Math.hypot(it.x - bot.pos.x, it.z - bot.pos.z) - this.props.radius(it);
+      if (d < bestD) {
+        bestD = d;
+        best = it;
+      }
+    }
+    return best;
   }
 
   /** The nearest thing lying around, for the "nothing here" hint: { name, dist, side }. */
@@ -269,6 +297,7 @@ export class Rampage {
   // ---------------------------------------------------------------- actions
   /** Punch: the hit lands a moment after the swing starts. */
   smash(bot) {
+    if (this.honk(bot)) return;
     if (this.held || this.pending.length) return;
     bot.plane.punch();
     this.pending.push({ t: 0.16, bot });
@@ -286,6 +315,8 @@ export class Rampage {
   grabOrThrow(bot) {
     if (this.driving) return this.exitCar(bot);
     if (this.held) return this._throw(bot);
+    const ride = this.driveTarget(bot);
+    if (ride) return this.enterCar(bot, ride);
     const f = bot.forward;
     const cx = bot.pos.x + f.x * 4;
     const cz = bot.pos.z + f.z * 4;
@@ -357,8 +388,11 @@ export class Rampage {
     this._updateBricks(dt);
     this._updateBalls(dt);
     // Point out the nearest thing to grab (within 150 m) while the robot's hands are free.
-    const near = bot && !this.held && !this.driving ? this.props.nearest(bot.pos.x, bot.pos.z, 150) : null;
+    const ride = bot ? this.driveTarget(bot) : null;
+    const near = ride || (bot && !this.held && !this.driving ? this.props.nearest(bot.pos.x, bot.pos.z, 150) : null);
     this.marker.visible = !!near;
+    this.marker.material.color.setHex(ride ? 0x3ee06a : 0xffe14d);
+    this.marker.scale.setScalar(ride ? 2 : 1);
     if (near) {
       this.marker.position.set(near.x, near.y + this.props.radius(near) * 2 + 6 + Math.sin(this.time * 4) * 1.2, near.z);
       this.marker.rotation.y = this.time * 2;
@@ -382,10 +416,31 @@ export class Rampage {
           }
         }
       }
+      // Supersized things (2x and up) are solid to a walking robot: it stops at
+      // them instead of kicking them away, so it can climb into a big car.
+      if (!bot.driving) {
+        for (const it of this.props.within(bot.pos.x, bot.pos.z, 3)) {
+          if ((it.scale || 1) < 2 || Math.abs(it.y - bot.pos.y) > 6) continue;
+          const dx = bot.pos.x - it.x;
+          const dz = bot.pos.z - it.z;
+          const d = Math.hypot(dx, dz) || 1;
+          const keep = this.props.radius(it) + 3;
+          if (d < keep) {
+            bot.pos.x = it.x + (dx / d) * keep;
+            bot.pos.z = it.z + (dz / d) * keep;
+            const into = (bot.vel.x * -dx + bot.vel.z * -dz) / d;
+            if (into > 0) {
+              bot.vel.x += (dx / d) * into;
+              bot.vel.z += (dz / d) * into;
+            }
+          }
+        }
+      }
       if (bot.onGround && bot.speed > 6) {
         const reach = bot.driving ? 2 * bot.driving : 0;
         for (const it of this.props.within(bot.pos.x, bot.pos.z, 2.5 + reach)) {
           if (it === this.driving?.item) continue;
+          if (!bot.driving && (it.scale || 1) >= 2) continue;
           if (Math.abs(it.y - bot.pos.y) < 4) this._launch(it, new THREE.Vector3(bot.vel.x, 0, bot.vel.z).multiplyScalar(1.5).setY(10 + bot.speed * 0.3));
         }
         for (const car of this.traffic.near(bot.pos.x, bot.pos.z, 4.5 + reach)) {
