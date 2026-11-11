@@ -17,6 +17,7 @@ import { Props } from './props.js';
 import { Rampage } from './rampage.js';
 import { RingRace, RampageGame } from './games.js';
 import { ColliderView } from './colliderview.js';
+import { isPsg1, enablePsg1, PadNav, pad } from './psg1.js';
 
 const $ = (id) => document.getElementById(id);
 const SKY = 0x9fd0ff;
@@ -84,13 +85,14 @@ const scene = new THREE.Scene();
 scene.background = new THREE.Color(SKY);
 scene.fog = new THREE.Fog(SKY, 2500, 11000);
 
-const camera = new THREE.PerspectiveCamera(65, innerWidth / innerHeight, 0.3, 40000);
+// The PSG1's screen is nearly square, so it gets a wider view so the sides don't feel cropped.
+const camera = new THREE.PerspectiveCamera(isPsg1() ? 72 : 65, innerWidth / innerHeight, 0.3, 40000);
 
 const hemi = new THREE.HemisphereLight(0xdff0ff, 0x6a8a50, 1.6);
 scene.add(hemi);
 const sun = new THREE.DirectionalLight(0xfff4e0, 2.2);
 sun.castShadow = true;
-sun.shadow.mapSize.setScalar(IS_TOUCH ? 1024 : 2048);
+sun.shadow.mapSize.setScalar(IS_TOUCH || isPsg1() ? 1024 : 2048);
 Object.assign(sun.shadow.camera, { left: -160, right: 160, top: 160, bottom: -160, near: 1, far: 2000 });
 sun.shadow.bias = -0.0005;
 sun.shadow.normalBias = 0.5;
@@ -131,6 +133,7 @@ let hitStop = 0; // seconds the action freezes after a punch lands
 let game = null; // the game being played (Ring Race, Rampage), if any
 let mpSendSmash = () => {}; // set by the multiplayer code: tell the room what broke
 const input = new Input();
+if (isPsg1()) input.isTouch = false; // real buttons: no on-screen controls, gamepad hints
 const sound = new EngineSound();
 const mp = new Multiplayer({
   scene,
@@ -220,7 +223,7 @@ async function buildWorld() {
   data = cityData;
   const before = new Set(scene.children);
   world = new World(scene, data, { satImage });
-  traffic = new Traffic(scene, world, prefs.low ? 350 : IS_TOUCH ? 900 : 2500);
+  traffic = new Traffic(scene, world, prefs.low ? 350 : IS_TOUCH || isPsg1() ? 900 : 2500);
   props = new Props(scene, world);
   rampage = new Rampage(scene, world, traffic, props, {
     message: (t) => message(t, 2.5),
@@ -1029,7 +1032,7 @@ function setPhoneSteering(mode) {
     localStorage.setItem('legosky.steering', mode);
   } catch {}
 }
-if (input.isTouch) {
+if (input.isTouch && !isPsg1()) {
   document.body.classList.add('is-touch');
   $('phoneControls').hidden = false;
   $('phoneBtn').hidden = true; // you're already on the phone
@@ -1800,6 +1803,70 @@ function updateRoomGames(dt) {
   $('roomGame').textContent = chip.join('  ·  ');
 }
 
+// ------------------------------------------------------------------ gamepad menus and PSG1 buttons
+// With a gamepad, the menu and every pop-up work without touching the screen:
+// the D-pad moves a highlight, A presses, B goes back, L1/R1 change city.
+function navRoot() {
+  for (const id of ['beerEnd', 'phonePanel', 'crashBox']) if (!$(id).hidden) return $(id);
+  if (!running && !$('menu').hidden) return $('menuPanel');
+  return null;
+}
+const padNav = new PadNav(navRoot);
+input.on('nav', (dir) => {
+  const [dx, dy] = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] }[dir];
+  if (dx && padNav.nudge(dx)) return;
+  padNav.move(dx, dy);
+});
+input.on('navPress', () => padNav.press());
+input.on('navBack', () => {
+  const el = padNav.current;
+  const d = el?.closest('details[open]');
+  if (d) {
+    d.open = false;
+    padNav.focus(d.querySelector('summary'));
+  } else if (!$('phonePanel').hidden) $('phonePanel').hidden = true;
+  else if (!running && pausedFlight) $('resumeBtn').onclick();
+});
+input.on('navStart', () => {
+  if (!$('crashBox').hidden) return respawnHere();
+  if (!$('beerEnd').hidden) return $('beerAgain').click();
+  if (!running && !building) (pausedFlight ? $('resumeBtn') : $('startRunway')).click();
+});
+input.on('navCity', (step) => {
+  if (running || building) return;
+  const keys = Object.keys(CITIES);
+  applySetting('city', keys[(keys.indexOf(settings.city) + step + keys.length) % keys.length]);
+});
+// PSG1-only buttons while playing (see Input.pollButtons for the full layout).
+input.on('l1', () => (isBot ? setTurbo((flight.turbo % 3) + 1) : running && startAutoLand()));
+input.on('dUp', () => (isBot ? running && rampage.resize(flight, 2) && updateBotHud() : toggleMap()));
+input.on('dDown', () => (isBot ? running && rampage.resize(flight, 0.5) && updateBotHud() : goPotty()));
+input.on('dLeft', goPotty);
+input.on('dRight', () => (potty.need ? skipPotty() : coach && nextCoach()));
+input.on('psg1', () => {
+  // A PSG1's built-in controls showed up in an ordinary browser: switch layouts.
+  enablePsg1();
+  camera.fov = 72;
+  camera.updateProjectionMatrix();
+  applyPsg1Hints();
+  applyQuality();
+  toast('🎮 PSG1 controls on', '#2f7fe0');
+});
+/** Button names as printed on the PSG1 instead of keyboard keys. */
+function applyPsg1Hints() {
+  if (!isPsg1()) return;
+  const kbd = (id, html) => {
+    const k = $(id)?.querySelector('kbd');
+    if (k) k.outerHTML = html;
+  };
+  kbd('autoLandBtn', pad('L1'));
+  kbd('driveBtn', pad('A'));
+  kbd('crashRespawn', pad('START'));
+  if (!$('pottyBtn').querySelector('kbd')) $('pottyBtn').insertAdjacentHTML('beforeend', pad('◀'));
+  if (!$('pottySkip').querySelector('kbd')) $('pottySkip').insertAdjacentHTML('beforeend', ` ${pad('▶')}`);
+}
+applyPsg1Hints();
+
 // ------------------------------------------------------------------ Android app
 // The app (android/) is a window onto this page and adds "LegoSkyApp/<version>" to
 // its user agent. Phone Back while flying opens the menu; from the menu it leaves the app.
@@ -1922,7 +1989,8 @@ function transform() {
     plane = bot.model;
     flight = bot.walk;
     isBot = true;
-    message(input.isTouch ? '🤖 Robot mode! SMASH buildings, GRAB things and throw them'
+    message(isPsg1() ? `🤖 Robot mode!<small>R1 smash · A grab, throw or drive · B jump (hold to fly) · R2 run · Y change back</small>`
+      : input.isTouch ? '🤖 Robot mode! SMASH buildings, GRAB things and throw them'
       : '🤖 Robot mode!<small>X smash · G grab and throw · Space jump (hold to fly) · Shift run · F change back</small>', 4);
   } else {
     rampage.release(flight);
@@ -2060,9 +2128,52 @@ for (const b of $('segSky').querySelectorAll('button')) {
     updateMenu();
   };
 }
+/**
+ * How many screen pixels per CSS pixel to draw. The PSG1 preset draws at the
+ * screen's native resolution (1240 x 1080), times the automatic render scale.
+ */
+let renderScale = 1;
+function pixelRatio() {
+  const dpr = window.devicePixelRatio || 1;
+  if (prefs.low) return Math.min(dpr, 1) * 0.8;
+  if (isPsg1()) return dpr * renderScale;
+  return Math.min(dpr, IS_TOUCH ? 1.25 : 2) * renderScale;
+}
+// Automatic scaling (on in PSG1 mode, or with ?autoscale): if frames take longer
+// than 22 ms for two seconds, draw fewer pixels; give them back when there's room.
+const AUTO_SCALE = isPsg1() || new URLSearchParams(location.search).has('autoscale');
+const SCALES = [1, 0.85, 0.72, 0.6, 0.5];
+const perf = { avg: 16, slow: 0, fast: 0, fps: 60, shown: 0, frames: 0, t: 0 };
+function updatePerf(rawDt) {
+  perf.avg += (rawDt * 1000 - perf.avg) * 0.1;
+  perf.frames++;
+  perf.t += rawDt;
+  if (perf.t >= 0.5) {
+    perf.fps = perf.frames / perf.t;
+    perf.frames = perf.t = 0;
+    if ($('fps')) $('fps').textContent = `${Math.round(perf.fps)} fps · ${Math.round(perf.avg)} ms · ${Math.round(renderScale * 100)}%`;
+  }
+  if (!AUTO_SCALE || !running || prefs.low) return;
+  perf.slow = perf.avg > 22 ? perf.slow + rawDt : 0;
+  perf.fast = perf.avg < 14 ? perf.fast + rawDt : 0;
+  const i = SCALES.indexOf(renderScale);
+  if (perf.slow > 2 && i < SCALES.length - 1) setRenderScale(SCALES[i + 1]);
+  else if (perf.fast > 6 && i > 0) setRenderScale(SCALES[i - 1]);
+}
+function setRenderScale(s) {
+  renderScale = s;
+  perf.slow = perf.fast = 0;
+  renderer.setPixelRatio(pixelRatio());
+  renderer.setSize(innerWidth, innerHeight);
+}
+if (new URLSearchParams(location.search).has('fps')) {
+  const el = Object.assign(document.createElement('div'), { id: 'fps' });
+  document.body.appendChild(el);
+}
+
 /** Low graphics: lower resolution, no shadows, nearer fog (and fewer cars from the next city load). */
 function applyQuality() {
-  renderer.setPixelRatio(prefs.low ? Math.min(window.devicePixelRatio, 1) * 0.8 : Math.min(window.devicePixelRatio, IS_TOUCH ? 1.25 : 2));
+  renderer.setPixelRatio(pixelRatio());
   renderer.setSize(innerWidth, innerHeight);
   renderer.shadowMap.enabled = !prefs.low;
   sun.castShadow = !prefs.low;
@@ -2123,26 +2234,27 @@ input.on('mute', () => {
 let coach = null; // { steps, i, mark }
 function coachSteps() {
   const t = input.isTouch;
+  const P = isPsg1(); // PSG1: hints name its buttons
   const tiltOn = () => input.tilt.active;
   const K = (k) => `<kbd>${k}</kbd>`;
   const agl = () => flight.pos.y - plane.gearHeight - world.heightAt(flight.pos.x, flight.pos.z);
   const fly = isHeli ? [
-    { text: () => (t ? 'Slide <b>LIFT</b> up to take off' : `Hold ${K('W')} to lift off`), done: () => !isBot && agl() > 20 },
-    { text: () => (t ? 'Slide <b>SPEED</b> up to fly forward' : `Hold ${K('Shift')} to fly forward`), done: () => flight.speed > 15 },
+    { text: () => (P ? `Push the right stick up to lift off` : t ? 'Slide <b>LIFT</b> up to take off' : `Hold ${K('W')} to lift off`), done: () => !isBot && agl() > 20 },
+    { text: () => (P ? `Hold ${pad('R2')} to fly forward` : t ? 'Slide <b>SPEED</b> up to fly forward' : `Hold ${K('Shift')} to fly forward`), done: () => flight.speed > 15 },
   ] : [
-    { text: () => (t ? 'Slide the <b>THROTTLE</b> all the way up' : `Hold ${K('Shift')} until the throttle bar is full`), done: () => flight.throttle > 0.9 || !flight.onGround },
-    { text: () => (t ? (tiltOn() ? 'At 60 mph, tip the top of the phone toward you to lift off' : 'At 60 mph, push the stick up to lift off')
+    { text: () => (P ? `Hold ${pad('R2')} until the throttle bar is full` : t ? 'Slide the <b>THROTTLE</b> all the way up' : `Hold ${K('Shift')} until the throttle bar is full`), done: () => flight.throttle > 0.9 || !flight.onGround },
+    { text: () => (P ? 'At 60 mph, pull the left stick back to lift off' : t ? (tiltOn() ? 'At 60 mph, tip the top of the phone toward you to lift off' : 'At 60 mph, push the stick up to lift off')
       : `At 60 mph, hold ${K('W')} to lift off`), done: () => !isBot && agl() > 25 },
   ];
   return [
     ...fly,
-    { text: () => (t ? (tiltOn() ? 'Tilt the phone like a steering wheel to turn' : 'Move the stick left or right to turn') : `Turn with ${K('A')} and ${K('D')}`),
+    { text: () => (P ? 'Turn with the left stick' : t ? (tiltOn() ? 'Tilt the phone like a steering wheel to turn' : 'Move the stick left or right to turn') : `Turn with ${K('A')} and ${K('D')}`),
       start: () => (coach.mark = flight.heading), done: () => Math.abs(((flight.heading - coach.mark + 540) % 360) - 180) > 40 },
-    { text: () => (t ? 'Tap <b>🤖</b> to turn into a giant robot. It works in mid-air!' : `Press ${K('F')} to turn into a giant robot. It works in mid-air!`), done: () => isBot },
-    { text: () => (t ? 'Walk up to a building with the stick and tap <b>SMASH</b>' : `Walk up to a building (${K('W')}${K('A')}${K('S')}${K('D')}) and press ${K('X')} to smash it`), done: () => isBot && rampage.total > 0 },
-    { text: () => (t ? 'Find a car or boulder, tap <b>GRAB</b>, then <b>GRAB</b> again to throw it' : `Find a car or boulder, press ${K('G')} to grab it, and ${K('G')} again to throw`),
+    { text: () => (P ? `Press ${pad('Y')} to turn into a giant robot. It works in mid-air!` : t ? 'Tap <b>🤖</b> to turn into a giant robot. It works in mid-air!' : `Press ${K('F')} to turn into a giant robot. It works in mid-air!`), done: () => isBot },
+    { text: () => (P ? `Walk up to a building with the left stick and press ${pad('R1')} to smash it` : t ? 'Walk up to a building with the stick and tap <b>SMASH</b>' : `Walk up to a building (${K('W')}${K('A')}${K('S')}${K('D')}) and press ${K('X')} to smash it`), done: () => isBot && rampage.total > 0 },
+    { text: () => (P ? `Find a car or boulder, press ${pad('A')} to grab it, and ${pad('A')} again to throw` : t ? 'Find a car or boulder, tap <b>GRAB</b>, then <b>GRAB</b> again to throw it' : `Find a car or boulder, press ${K('G')} to grab it, and ${K('G')} again to throw`),
       done: () => rampage.stats.thrown > 0 },
-    { text: () => (t ? 'Tap <b>🤖</b> again to change back, and fly!' : `Press ${K('F')} again to change back, and fly!`), done: () => !isBot },
+    { text: () => (P ? `Press ${pad('Y')} again to change back, and fly!` : t ? 'Tap <b>🤖</b> again to change back, and fly!' : `Press ${K('F')} again to change back, and fly!`), done: () => !isBot },
   ];
 }
 function startCoach() {
@@ -2545,8 +2657,11 @@ const timer = new THREE.Timer();
 function frame() {
   requestAnimationFrame(frame);
   timer.update();
-  const dt = Math.min(timer.getDelta(), 0.05);
-  input.pollButtons(!running);
+  const rawDt = timer.getDelta();
+  const dt = Math.min(rawDt, 0.05);
+  updatePerf(Math.min(rawDt, 0.25));
+  if (input.pad()) padNav.sync();
+  input.pollButtons(!!navRoot());
   world.update(timer.getElapsed());
   if (beerRun && !beerRun.active) beerRun.update(dt, {}); // finish the kegs' flight animations
   if (google) google.update(renderer);

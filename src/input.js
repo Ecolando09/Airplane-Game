@@ -1,6 +1,7 @@
 import { Tilt } from './tilt.js';
 
 // Keyboard, touch and gamepad input merged into one control state.
+import { isPsg1, isPsg1Pad } from './psg1.js';
 export class Input {
   constructor() {
     this.keys = new Set();
@@ -31,14 +32,36 @@ export class Input {
     addEventListener('keyup', (e) => this.keys.delete(e.code));
     addEventListener('blur', () => this.keys.clear());
     this._setupTouch();
+    // The virtual gamepad (see pad()), in the browser's standard button order.
+    window.legoSkyPad = {
+      id: 'psg1_gamepad (app bridge)', connected: true, t: -1e9, axes: [0, 0, 0, 0],
+      buttons: Array.from({ length: 17 }, () => ({ pressed: false, value: 0 })),
+      set(buttons, axes) {
+        (buttons || []).forEach((v, i) => this.buttons[i] && Object.assign(this.buttons[i], { pressed: v > 0.5, value: v }));
+        (axes || []).forEach((v, i) => (this.axes[i] = v));
+        this.t = performance.now();
+      },
+    };
   }
 
   on(name, fn) {
     this.handlers[name] = fn;
   }
 
-  emit(name) {
-    this.handlers[name]?.();
+  emit(name, arg) {
+    this.handlers[name]?.(arg);
+  }
+
+  /**
+   * The connected gamepad, or the "virtual" one an app can feed when its web
+   * view doesn't pass the built-in controls through the Gamepad API: the PSG1
+   * app calls window.legoSkyPad.set(buttons, axes) with the standard layout.
+   */
+  pad() {
+    const gp = navigator.getGamepads?.().find((g) => g && g.connected !== false);
+    if (gp) return gp;
+    const v = window.legoSkyPad;
+    return v && performance.now() - v.t < 5000 ? v : null;
   }
 
   read() {
@@ -79,7 +102,7 @@ export class Input {
     }
 
     // Gamepad
-    const gp = navigator.getGamepads?.().find((g) => g);
+    const gp = this.pad();
     if (gp) {
       const dz = (v) => (Math.abs(v) < 0.12 ? 0 : v);
       if (this.heliMode) {
@@ -233,18 +256,55 @@ export class Input {
   }
 
   /**
-   * Gamepad buttons that trigger actions (Xbox layout): B floats (robot: grab),
-   * X robot mode, Y camera, RB turbo (robot: smash), Menu restart, View big map, A starts from the menu. Call once per frame.
+   * Gamepad buttons that trigger actions. Call once per frame.
+   *
+   * Playing (Xbox layout): B floats (robot: grab), X robot mode, Y camera,
+   * RB turbo (robot: smash), LB robot turbo, Menu restart, View big map,
+   * D-pad up/down supersizer.
+   * Playing (PSG1 layout, by position): A (right) floats/grab, Y (left) robot
+   * mode, X (top) camera, R1 turbo/smash, L1 auto-land (robot: turbo), START
+   * pause, SELECT big map, D-pad up/down big map/potty (robot: bigger/smaller),
+   * D-pad left potty, D-pad right "not now" / skip a lesson step.
+   *
+   * In menus and pop-ups (nav = true): D-pad or left stick moves the highlight,
+   * A presses it (Xbox: A bottom; PSG1: A right), B goes back, L1/R1 change
+   * city, START plays.
    */
-  pollButtons(inMenu) {
-    const gp = navigator.getGamepads?.().find((g) => g);
+  pollButtons(nav) {
+    const gp = this.pad();
     if (!gp) return;
-    const map = inMenu ? { 0: 'menuStart', 3: 'menuAir' } : { 1: 'floats', 2: 'transform', 3: 'cam', 4: 'botTurbo', 5: 'turbo', 9: 'reset', 8: 'map', 12: 'bigger', 13: 'smaller' };
-    this._prevButtons ||= [];
-    gp.buttons.forEach((b, i) => {
-      if (b.pressed && !this._prevButtons[i] && map[i]) this.emit(map[i]);
-      this._prevButtons[i] = b.pressed;
-    });
+    if (isPsg1Pad(gp) && !isPsg1()) this.emit('psg1');
+    const P = isPsg1();
+    const prev = (this._prevButtons ||= []);
+    const down = (i) => !!gp.buttons[i]?.pressed;
+    const fresh = (i) => down(i) && !prev[i];
+    if (nav) {
+      // Direction with key-repeat: first move at once, then every 0.15 s after 0.4 s.
+      const ax = gp.axes[0] || 0;
+      const ay = gp.axes[1] || 0;
+      const dir = down(12) || ay < -0.6 ? 'up' : down(13) || ay > 0.6 ? 'down' : down(14) || ax < -0.6 ? 'left' : down(15) || ax > 0.6 ? 'right' : '';
+      const now = performance.now();
+      if (dir !== this._navDir) {
+        this._navDir = dir;
+        this._navAt = now + 400;
+        if (dir) this.emit('nav', dir);
+      } else if (dir && now > this._navAt) {
+        this._navAt = now + 150;
+        this.emit('nav', dir);
+      }
+      if (fresh(P ? 1 : 0)) this.emit('navPress');
+      if (fresh(P ? 0 : 1)) this.emit('navBack');
+      if (fresh(9)) this.emit('navStart');
+      if (fresh(4)) this.emit('navCity', -1);
+      if (fresh(5)) this.emit('navCity', 1);
+    } else {
+      this._navDir = 'hold'; // a direction held while a menu closes doesn't count as a move
+      const map = P
+        ? { 1: 'floats', 2: 'transform', 3: 'cam', 4: 'l1', 5: 'turbo', 8: 'map', 9: 'pause', 12: 'dUp', 13: 'dDown', 14: 'dLeft', 15: 'dRight' }
+        : { 1: 'floats', 2: 'transform', 3: 'cam', 4: 'botTurbo', 5: 'turbo', 9: 'reset', 8: 'map', 12: 'bigger', 13: 'smaller' };
+      for (const i in map) if (fresh(Number(i))) this.emit(map[i]);
+    }
+    gp.buttons.forEach((b, i) => (prev[i] = !!b.pressed));
   }
 
   /**

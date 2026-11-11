@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Lego Sky device check</title>
+<style>
+  :root { color-scheme: dark; --bg: #11161c; --panel: #1b232c; --ink: #e8eef3; --dim: #8a99a8; --on: #3ee06a; --accent: #ffd23f; }
+  body { margin: 0; padding: 16px; background: var(--bg); color: var(--ink); font: 15px/1.45 system-ui, sans-serif; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  p { margin: 0 0 12px; color: var(--dim); }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; }
+  section { background: var(--panel); border-radius: 12px; padding: 12px 14px; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--accent); margin: 0 0 8px; }
+  dl { display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; margin: 0; }
+  dt { color: var(--dim); }
+  dd { margin: 0; word-break: break-word; font-family: ui-monospace, monospace; font-size: 13px; }
+  .btns { display: flex; flex-wrap: wrap; gap: 6px; }
+  .b { min-width: 38px; padding: 4px 6px; border-radius: 8px; background: #2a3440; text-align: center; font: 12px ui-monospace, monospace; }
+  .b.on { background: var(--on); color: #082; font-weight: 700; }
+  .axis { display: grid; grid-template-columns: 60px 1fr 52px; gap: 8px; align-items: center; font: 12px ui-monospace, monospace; }
+  .bar { height: 10px; background: #2a3440; border-radius: 5px; position: relative; overflow: hidden; }
+  .bar i { position: absolute; top: 0; bottom: 0; left: 50%; background: var(--on); }
+  #log { max-height: 160px; overflow: auto; font: 12px ui-monospace, monospace; color: var(--dim); white-space: pre-wrap; }
+  button.copy { margin-top: 10px; padding: 8px 14px; border: 0; border-radius: 8px; background: var(--accent); color: #222; font-weight: 700; font-size: 15px; }
+</style>
+</head>
+<body>
+<h1>Lego Sky: device check</h1>
+<p>Open this page on the PSG1 (or any device). Press every button and move both sticks, then tap "Copy report" and send it to the builder. Nothing is sent anywhere by this page.</p>
+<div class="grid">
+  <section>
+    <h2>Screen and browser</h2>
+    <dl id="info"></dl>
+  </section>
+  <section>
+    <h2>Graphics</h2>
+    <dl id="gl"></dl>
+  </section>
+  <section>
+    <h2>Gamepad</h2>
+    <dl id="padInfo"><dt>Status</dt><dd>No gamepad yet: press any button</dd></dl>
+    <div class="btns" id="buttons" style="margin-top:8px"></div>
+    <div id="axes" style="margin-top:10px; display:grid; gap:4px"></div>
+  </section>
+  <section>
+    <h2>Keys and touches</h2>
+    <p style="margin:0 0 6px">If the gamepad box stays empty, buttons may arrive as keys instead. They show up here.</p>
+    <div id="log"></div>
+    <button class="copy" id="copy">Copy report</button>
+  </section>
+</div>
+<script>
+const $ = (id) => document.getElementById(id);
+const seen = { buttons: new Set(), axes: new Set(), keys: new Set() };
+const row = (dl, k, v) => {
+  const dt = document.createElement('dt');
+  dt.textContent = k;
+  const dd = document.createElement('dd');
+  dd.textContent = v;
+  dl.append(dt, dd);
+};
+
+function info() {
+  const dl = $('info');
+  dl.replaceChildren();
+  row(dl, 'User agent', navigator.userAgent);
+  row(dl, 'Window (CSS px)', `${innerWidth} × ${innerHeight}`);
+  row(dl, 'Pixel ratio', String(devicePixelRatio));
+  row(dl, 'Real pixels', `${Math.round(innerWidth * devicePixelRatio)} × ${Math.round(innerHeight * devicePixelRatio)}`);
+  row(dl, 'Screen', `${screen.width} × ${screen.height}`);
+  row(dl, 'Orientation', screen.orientation?.type || (innerWidth > innerHeight ? 'landscape' : 'portrait'));
+  row(dl, 'Touch points', String(navigator.maxTouchPoints));
+  row(dl, 'Pointer', matchMedia('(pointer: coarse)').matches ? 'coarse (touch)' : 'fine (mouse)');
+  row(dl, 'Memory (GB)', String(navigator.deviceMemory ?? 'unknown'));
+  row(dl, 'CPU cores', String(navigator.hardwareConcurrency ?? 'unknown'));
+  row(dl, 'Gamepad API', 'getGamepads' in navigator ? 'yes' : 'NO');
+  const chrome = navigator.userAgent.match(/Chrome\/(\d+)/);
+  row(dl, 'Chromium version', chrome ? chrome[1] : 'not Chromium');
+}
+
+function gl() {
+  const dl = $('gl');
+  const c = document.createElement('canvas');
+  const g = c.getContext('webgl2');
+  row(dl, 'WebGL2', g ? 'yes' : 'NO (the game needs it)');
+  if (!g) return;
+  const ext = g.getExtension('WEBGL_debug_renderer_info');
+  row(dl, 'GPU', ext ? g.getParameter(ext.UNMASKED_RENDERER_WEBGL) : g.getParameter(g.RENDERER));
+  row(dl, 'Vendor', ext ? g.getParameter(ext.UNMASKED_VENDOR_WEBGL) : g.getParameter(g.VENDOR));
+  row(dl, 'Max texture', String(g.getParameter(g.MAX_TEXTURE_SIZE)));
+  row(dl, 'Max samples', String(g.getParameter(g.MAX_SAMPLES)));
+}
+
+function log(text) {
+  const el = $('log');
+  el.textContent = `${text}\n${el.textContent}`.slice(0, 4000);
+}
+addEventListener('keydown', (e) => {
+  seen.keys.add(`${e.code || '?'} (key "${e.key}", keyCode ${e.keyCode})`);
+  log(`key down: code=${e.code} key=${e.key} keyCode=${e.keyCode}`);
+  if (e.key !== 'F5') e.preventDefault();
+});
+addEventListener('pointerdown', (e) => log(`${e.pointerType} at ${Math.round(e.clientX)}, ${Math.round(e.clientY)}`));
+addEventListener('gamepadconnected', (e) => log(`gamepad connected: ${e.gamepad.id} (mapping "${e.gamepad.mapping}")`));
+addEventListener('resize', info);
+
+let lastPad = null;
+function frame() {
+  requestAnimationFrame(frame);
+  const pads = (navigator.getGamepads?.() || []).filter(Boolean);
+  const gp = pads[0];
+  if (!gp) return;
+  lastPad = gp;
+  const dl = $('padInfo');
+  dl.replaceChildren();
+  row(dl, 'Name', gp.id);
+  row(dl, 'Mapping', gp.mapping || '(none: buttons are not in the standard order)');
+  row(dl, 'Count', `${gp.buttons.length} buttons, ${gp.axes.length} axes, ${pads.length} pad(s)`);
+  const bs = $('buttons');
+  if (bs.children.length !== gp.buttons.length) {
+    bs.replaceChildren(...gp.buttons.map((_, i) => Object.assign(document.createElement('div'), { className: 'b', textContent: String(i) })));
+  }
+  gp.buttons.forEach((b, i) => {
+    const on = b.pressed || b.value > 0.1;
+    bs.children[i].classList.toggle('on', on);
+    bs.children[i].textContent = b.value > 0 && b.value < 1 ? `${i}:${b.value.toFixed(2)}` : String(i);
+    if (on) seen.buttons.add(i);
+  });
+  const ax = $('axes');
+  if (ax.children.length !== gp.axes.length) {
+    ax.replaceChildren(...gp.axes.map((_, i) => {
+      const d = document.createElement('div');
+      d.className = 'axis';
+      d.innerHTML = `<span>axis ${i}</span><div class="bar"><i></i></div><span>0.00</span>`;
+      return d;
+    }));
+  }
+  gp.axes.forEach((v, i) => {
+    const d = ax.children[i];
+    const bar = d.querySelector('i');
+    bar.style.left = `${50 + Math.min(0, v) * 50}%`;
+    bar.style.width = `${Math.abs(v) * 50}%`;
+    d.lastChild.textContent = v.toFixed(2);
+    if (Math.abs(v) > 0.5) seen.axes.add(i);
+  });
+}
+
+$('copy').onclick = async () => {
+  const text = [
+    'Lego Sky device check',
+    ...[...document.querySelectorAll('dl')].flatMap((dl) => [...dl.querySelectorAll('dt')].map((dt) => `${dt.textContent}: ${dt.nextElementSibling.textContent}`)),
+    `Buttons pressed: ${[...seen.buttons].sort((a, b) => a - b).join(', ') || 'none'}`,
+    `Axes moved: ${[...seen.axes].sort((a, b) => a - b).join(', ') || 'none'}`,
+    `Keys seen: ${[...seen.keys].join('; ') || 'none'}`,
+  ].join('\n');
+  try {
+    await navigator.clipboard.writeText(text);
+    $('copy').textContent = 'Copied ✓';
+  } catch {
+    log(text);
+    $('copy').textContent = 'Copy failed: the report is in the box above';
+  }
+};
+
+info();
+gl();
+frame();
+</script>
+</body>
+</html>
