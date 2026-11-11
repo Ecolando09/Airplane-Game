@@ -79,7 +79,7 @@
         <section class="how app" id="android" aria-labelledby="android-title">
           <img class="app-icon" src="images/legosky-icon.png" alt="" width="96" height="96" />
           <div>
-            <h3 id="android-title">Lego Sky for Android</h3>
+            <h3 id="android-title">Lego Sky for Android and PSG1</h3>
             <p>Full screen, always sideways, and the screen stays on while you fly. The app plays the live game, so
               it gets every update automatically.</p>
             <ol>
@@ -91,6 +91,12 @@
               <a class="btn primary" href="downloads/lego-sky.apk" download>Download the app</a>
               <span class="app-meta" id="appMeta">Android 7 or newer</span>
             </p>
+            <p class="actions">
+              <a class="btn primary" href="downloads/lego-sky-psg1.apk" download>Download for PSG1</a>
+              <span class="app-meta" id="psg1Meta">PlaySolana PSG1 · every city built in, plays offline</span>
+            </p>
+            <p class="phone-note">🎮 On a PSG1: tap <b>Download for PSG1</b> in its browser, then open the file.
+              If the PSG1 won't install it, just tap <b>Play now</b> and press a button: the game switches to PSG1 controls.</p>
           </div>
         </section>
 
@@ -136,6 +142,13 @@
         .then((a) => {
           document.getElementById('appMeta').textContent =
             `Version ${a.versionName} · ${Math.max(1, Math.round(a.size / 1024))} KB · Android 7 or newer`;
+        })
+        .catch(() => {});
+      fetch('downloads/lego-sky-psg1.json', { cache: 'no-store' })
+        .then((r) => r.json())
+        .then((a) => {
+          document.getElementById('psg1Meta').textContent =
+            `PlaySolana PSG1 · ${Math.max(1, Math.round(a.size / 1048576))} MB · every city built in, plays offline`;
         })
         .catch(() => {});
     </script>

@@ -115,9 +115,7 @@ if [ -s "$APK_DIR/lego-sky.apk" ]; then
 fi
 
 # The PSG1 app carries the whole game inside it (plays offline), so it is rebuilt
-# whenever the game changes. It is not put on the website: copy it from this
-# server to your computer and install it on the PSG1 with adb (see the end).
-rm -f "$WEB/downloads/lego-sky-psg1.apk"
+# whenever the game changes. It is offered on the homepage (Download for PSG1).
 if [ -f vite.config.js ] && [ -d node_modules/vite ]; then
   PSG1_HASH=$(find android deploy/build-apk.sh src public psg1 index.html vite.config.js package-lock.json -type f | sort | xargs sha256sum | sha256sum | cut -c1-16)
   if [ -s "$APK_DIR/lego-sky-psg1.apk" ] && [ "$(cat "$APK_DIR/psg1-hash" 2>/dev/null)" = "$PSG1_HASH" ]; then
@@ -127,6 +125,12 @@ if [ -f vite.config.js ] && [ -d node_modules/vite ]; then
   else
     echo "!! Couldn't build the PSG1 app; the website is updated anyway."
   fi
+fi
+if [ -s "$APK_DIR/lego-sky-psg1.apk" ]; then
+  mkdir -p "$WEB/downloads"
+  cp "$APK_DIR/lego-sky-psg1.apk" "$WEB/downloads/lego-sky-psg1.apk"
+  printf '{"size":%s}\n' "$(stat -c %s "$APK_DIR/lego-sky-psg1.apk")" > "$WEB/downloads/lego-sky-psg1.json"
+  echo "PSG1 download: https://$DOMAIN/downloads/lego-sky-psg1.apk"
 fi
 
 say "Starting the relay (phone controller + multiplayer)"
@@ -216,8 +220,7 @@ echo "Android:   https://$DOMAIN/downloads/lego-sky.apk"
 echo "PSG1:      open the game in the PSG1's browser and press a button (PSG1 mode turns on)"
 if [ -s "$APK_DIR/lego-sky-psg1.apk" ]; then
   echo
-  echo "PSG1 app (for PlayGate; the PSG1 itself refuses adb install): $APK_DIR/lego-sky-psg1.apk"
-  echo "  Copy it to your computer:  scp root@$DOMAIN:$APK_DIR/lego-sky-psg1.apk ."
+  echo "PSG1 app: https://$DOMAIN/downloads/lego-sky-psg1.apk (also kept at $APK_DIR/lego-sky-psg1.apk)"
 fi
 echo
 echo "If the site doesn't load yet, check DNS: Porkbun needs an A record for"
