@@ -50,6 +50,28 @@ try {
   await press(0); // B
   check('B in the menu resumes', await page.evaluate(() => window.__game.running));
 
+  // No triggers on the PSG1: the right stick works the throttle in the plane,
+  // and the left stick's up/down is forward speed in the helicopter.
+  const stickThrottle = await page.evaluate(() => {
+    const inp = window.__game.input;
+    const read = (axes) => {
+      window.legoSkyPad.set(Array(17).fill(0), axes);
+      return inp.read().throttle;
+    };
+    const heli = inp.heliMode;
+    inp.heliMode = false;
+    const plane = { up: read([0, 0, 0, -1]), down: read([0, 0, 0, 1]), idle: read([0, 0, 0, 0]) };
+    inp.heliMode = true;
+    const copter = { up: read([0, -1, 0, 0]), lift: read([0, 0, 0, -1]) };
+    inp.heliMode = heli;
+    read([0, 0, 0, 0]);
+    return { plane, copter };
+  });
+  check('plane: right stick up raises the throttle, down lowers it',
+    stickThrottle.plane.up > 0.9 && stickThrottle.plane.down < -0.9 && stickThrottle.plane.idle === 0, JSON.stringify(stickThrottle.plane));
+  check('copter: left stick up is forward speed, right stick stays lift',
+    stickThrottle.copter.up > 0.9 && stickThrottle.copter.lift === 0, JSON.stringify(stickThrottle.copter));
+
   // A pop-up: the crash box takes the highlight, and START respawns.
   await page.evaluate(() => {
     document.getElementById('crashBox').hidden = false;

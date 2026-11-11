@@ -1989,7 +1989,7 @@ function transform() {
     plane = bot.model;
     flight = bot.walk;
     isBot = true;
-    message(isPsg1() ? `🤖 Robot mode!<small>R1 smash · A grab, throw or drive · B jump (hold to fly) · R2 run · Y change back</small>`
+    message(isPsg1() ? `🤖 Robot mode!<small>R1 smash · A grab, throw or drive · B jump (hold to fly) · stick all the way to run · Y change back</small>`
       : input.isTouch ? '🤖 Robot mode! SMASH buildings, GRAB things and throw them'
       : '🤖 Robot mode!<small>X smash · G grab and throw · Space jump (hold to fly) · Shift run · F change back</small>', 4);
   } else {
@@ -2240,9 +2240,9 @@ function coachSteps() {
   const agl = () => flight.pos.y - plane.gearHeight - world.heightAt(flight.pos.x, flight.pos.z);
   const fly = isHeli ? [
     { text: () => (P ? `Push the right stick up to lift off` : t ? 'Slide <b>LIFT</b> up to take off' : `Hold ${K('W')} to lift off`), done: () => !isBot && agl() > 20 },
-    { text: () => (P ? `Hold ${pad('R2')} to fly forward` : t ? 'Slide <b>SPEED</b> up to fly forward' : `Hold ${K('Shift')} to fly forward`), done: () => flight.speed > 15 },
+    { text: () => (P ? 'Push the left stick up to fly forward' : t ? 'Slide <b>SPEED</b> up to fly forward' : `Hold ${K('Shift')} to fly forward`), done: () => flight.speed > 15 },
   ] : [
-    { text: () => (P ? `Hold ${pad('R2')} until the throttle bar is full` : t ? 'Slide the <b>THROTTLE</b> all the way up' : `Hold ${K('Shift')} until the throttle bar is full`), done: () => flight.throttle > 0.9 || !flight.onGround },
+    { text: () => (P ? 'Hold the right stick up until the throttle bar is full' : t ? 'Slide the <b>THROTTLE</b> all the way up' : `Hold ${K('Shift')} until the throttle bar is full`), done: () => flight.throttle > 0.9 || !flight.onGround },
     { text: () => (P ? 'At 60 mph, pull the left stick back to lift off' : t ? (tiltOn() ? 'At 60 mph, tip the top of the phone toward you to lift off' : 'At 60 mph, push the stick up to lift off')
       : `At 60 mph, hold ${K('W')} to lift off`), done: () => !isBot && agl() > 25 },
   ];

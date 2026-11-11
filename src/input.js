@@ -119,6 +119,14 @@ export class Input {
       const rt = gp.buttons[7]?.value ?? 0;
       const lt = gp.buttons[6]?.value ?? 0;
       if (rt || lt) throttle = rt - lt;
+      else if (this.heliMode && !this.botMode) {
+        // No triggers on the PSG1 (official specs): in the helicopter the left
+        // stick's up/down, unused otherwise, is forward speed.
+        if (dz(gp.axes[1])) throttle = -dz(gp.axes[1]);
+      } else if (dz(gp.axes[3] ?? 0)) {
+        // Plane (and robot run): right stick up/down works the throttle.
+        throttle = -dz(gp.axes[3]);
+      }
       if (gp.buttons[0]?.pressed) brake = true;
     }
 

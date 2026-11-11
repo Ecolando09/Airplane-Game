@@ -2,6 +2,8 @@
 
 Research date: 2026-11-11. Purpose: decide how to get Lego Sky (a Three.js web game) running on the Play Solana PSG1 handheld.
 
+> **Update 2026-11-10 (plan 04 Part A):** the facts below were checked against the PlaySolana extension's official tools. Rows marked **Official** come from there; full notes and the open conflicts are in `psg1-extension-notes.md`. Headline changes: the PSG1 has **no L2/R2 triggers**, storage is 128 GB, the chip is the RK3588S2, and the screen is 1240 wide × 1080 tall on a tall (portrait) body.
+
 ## How reliable each fact is
 
 Play Solana's own sites (playsolana.com, developers.playsolana.com, mcp.playsolana.com) were **blocked from the research session's network**, so nothing below was read directly from them. Facts come from three places, marked in the tables:
@@ -17,17 +19,17 @@ The first job of the build session is to confirm these with the PlaySolana exten
 | Item | Value | Source |
 |---|---|---|
 | Screen resolution | 1240 × 1080 (wider than tall, almost square, about 1.15:1) | SDK source (simulator device file) |
-| Screen | 3.92-inch OLED, capacitive multitouch | Search |
-| Chip | Rockchip RK3588S, octa-core ARM | Search |
-| Graphics | Mali-G610 | Search (litepaper) |
-| Memory | 8 GB | Search |
-| Storage | 128 GB (one outlet says 64 GB) | Search |
-| System | "EchOS", a custom Android 12 | Search |
-| Wireless | Wi-Fi 6, Bluetooth 5.4 | Search |
-| Battery | 5000 mAh | Search (litepaper) |
-| Extras | Fingerprint sensor, built-in hardware wallet | Search |
+| Screen | 3.92-inch OLED, capacitive multitouch | Official |
+| Chip | Rockchip RK3588S2, 4× Cortex-A76 + 4× Cortex-A55 | Official |
+| Graphics | Mali-G610 MP4 (OpenGL ES 3.2, Vulkan 1.2) | Official |
+| Memory | 8 GB | Official |
+| Storage | 128 GB | Official |
+| System | "EchOS", a custom Android 12, no Google services | Official |
+| Wireless | Wi-Fi 6, Bluetooth 5.4 | Official |
+| Battery | 5000 mAh | Official |
+| Extras | Fingerprint sensor, SvalGuard hardware wallet | Official |
 
-**Conflict to resolve on the device:** the community skill says the screen is portrait (1080 wide × 1240 tall). The official SDK's simulator file says width 1240, height 1080. Trust the SDK, but check `window.innerWidth/innerHeight` and `devicePixelRatio` on the device before designing the layout.
+**Resolved (Official):** the body is portrait, the screen is 1240 wide × 1080 tall. Originally: the community skill says the screen is portrait (1080 wide × 1240 tall). The official SDK's simulator file says width 1240, height 1080. Trust the SDK, but check `window.innerWidth/innerHeight` and `devicePixelRatio` on the device before designing the layout.
 
 ## Controls
 
@@ -41,11 +43,11 @@ From the SDK source (`Runtime/Psg1.cs`). The console shows up to Android as a st
 | X (top) | `BUTTON_Y` | |
 | Y (left) | `BUTTON_X` | |
 | L1, R1 | `BUTTON_L1`, `BUTTON_R1` | Shoulder buttons |
-| Left and right triggers | `AXIS_BRAKE`, `AXIS_GAS` | Analog |
+| Left and right triggers | `AXIS_BRAKE`, `AXIS_GAS` | **Not on the device** (Official). The game works the throttle with the sticks instead |
 | Left stick, right stick | X/Y and Z/RZ axes | Analog, with L3/R3 clicks |
 | Start, Select | `BUTTON_START`, `BUTTON_SELECT` | |
 
-**Conflict:** the community skill's diagram shows no sticks or triggers. The official SDK defines both sticks, both triggers, and ships glyph images for the sticks. Verify on the device.
+**Resolved (Official):** two analog sticks, no triggers. Still open: the ADB guide says A sends key code 96 (`BUTTON_A`), which contradicts the SDK source; check on the device. Originally: the community skill's diagram shows no sticks or triggers. The official SDK defines both sticks, both triggers, and ships glyph images for the sticks. Verify on the device.
 
 Because the labels are Nintendo-style, the browser's "button 0" (bottom button) is the one printed **B** on the PSG1. On-screen hints must use PSG1 labels, not Xbox ones.
 
