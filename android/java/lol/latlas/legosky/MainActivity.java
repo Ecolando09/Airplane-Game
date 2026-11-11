@@ -231,7 +231,12 @@ public class MainActivity extends Activity {
             if (b >= 0 && fromPad(e.getDevice(), e.getSource())) {
                 if (e.getAction() == KeyEvent.ACTION_DOWN) buttons[b] = 1;
                 else if (e.getAction() == KeyEvent.ACTION_UP) buttons[b] = 0;
-                if (e.getRepeatCount() == 0) sendPad();
+                if (e.getRepeatCount() == 0) {
+                    sendPad();
+                    // The raw key code too, for the device check page (which button sends what).
+                    web.evaluateJavascript("window.legoSkyKey&&window.legoSkyKey(" + e.getKeyCode() + ","
+                        + (e.getAction() == KeyEvent.ACTION_DOWN) + "," + b + ")", null);
+                }
                 return true; // handled here: B must not become Back, the D-pad must not scroll
             }
         }

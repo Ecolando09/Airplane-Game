@@ -28,7 +28,7 @@
 <body>
 <p style="margin:0 0 8px"><a href="../index.html" style="color:#ffd23f;font-weight:700">← Back to the game</a></p>
 <h1>Lego Sky: device check</h1>
-<p>Open this page on the PSG1 (or any device). Press every button and move both sticks, then tap "Copy report" and send it to the builder. Nothing is sent anywhere by this page.</p>
+<p>Press every button once, in this order: A, B, X, Y, L1, R1, D-pad up, down, left, right, SELECT, START. Move both sticks all the way around. Then tap "Copy report" (or take a photo) and send it to the builder. Nothing is sent anywhere by this page.</p>
 <div class="grid">
   <section>
     <h2>Screen and browser</h2>
@@ -106,10 +106,29 @@ addEventListener('pointerdown', (e) => log(`${e.pointerType} at ${Math.round(e.c
 addEventListener('gamepadconnected', (e) => log(`gamepad connected: ${e.gamepad.id} (mapping "${e.gamepad.mapping}")`));
 addEventListener('resize', info);
 
+// In the PSG1 app the buttons come through the app (it keeps them from acting
+// as Back): it calls these two instead of the browser's gamepad seeing them.
+const appPad = { id: 'PSG1 built-in controls (through the app)', mapping: 'standard', buttons: [], axes: [0, 0, 0, 0], live: false };
+window.legoSkyPad = {
+  set(buttons, axes) {
+    appPad.buttons = buttons.map((v) => ({ pressed: v > 0.5, value: v }));
+    appPad.axes = axes.slice();
+    appPad.live = true;
+  },
+};
+const KEY_NAMES = { 96: 'BUTTON_A', 97: 'BUTTON_B', 99: 'BUTTON_X', 100: 'BUTTON_Y', 102: 'L1', 103: 'R1', 104: 'L2', 105: 'R2',
+  108: 'START', 109: 'SELECT', 106: 'THUMBL', 107: 'THUMBR', 19: 'DPAD_UP', 20: 'DPAD_DOWN', 21: 'DPAD_LEFT', 22: 'DPAD_RIGHT', 110: 'MODE' };
+window.legoSkyKey = (code, down, button) => {
+  if (!down) return;
+  seen.keys.add(`Android ${code} ${KEY_NAMES[code] || ''} -> game button ${button}`);
+  log(`Android key ${code} (${KEY_NAMES[code] || '?'}) -> game button ${button}`);
+};
+
 let lastPad = null;
 function frame() {
   requestAnimationFrame(frame);
   const pads = (navigator.getGamepads?.() || []).filter(Boolean);
+  if (appPad.live) pads.unshift(appPad);
   const gp = pads[0];
   if (!gp) return;
   lastPad = gp;

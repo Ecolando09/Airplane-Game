@@ -17,8 +17,8 @@ Written 2026-11-11 for whoever (person or AI) does the building. Two projects:
 | `03` section 4 (invisible blockers) | **Done** (be7e96f). Tests: `tools/tests/blockers.mjs`. Collision view: backquote key or `?debug=colliders` |
 | PSG1 app (`02` Phases 1 to 5) | **Done**. The PSG1 app carries the whole game (all nine cities) and plays with no internet; when online it also gets multiplayer rooms and leaderboards from play.latlas.lol. PSG1 code is only in the app's build (`npm run build:psg1`), not on the website. The server builds `/opt/latlas-play/apk/lego-sky-psg1.apk` on each deploy (not published on the site). Tests: `npm run build:psg1 && node tools/tests/psg1.mjs` (loads the game the way the app does, offline) |
 | `02` Phase 0 device check | The check page is inside the PSG1 app (Menu → Settings → Device check). The checks on the PSG1 itself still need the owner |
-| `04` Part A (explore the extension) | **Not started**: needs a session in the Claude desktop app on the owner's computer |
-| `04` Track 1 (Unity shell) | Waiting on Part A. A Unity shell would show the same built-in game (`dist-psg1/`) and can feed buttons through `window.legoSkyPad` |
+| `04` Part A (explore the extension) | **Done** in a desktop session: `psg1-extension-notes.md`. Recommends the plain Android app (Track 2), which is what was built. Key facts: no L2/R2 triggers (throttle moved to the sticks); which code the A button sends is still to be checked with the device check page |
+| `04` Track 1 (Unity shell) | Skipped for now, per Part A's recommendation |
 | `02` Phase 6 (store listing) | Not started (only if a store listing is wanted) |
 
 Run all tests: `npx vite build && node tools/tests/robot.mjs && node tools/tests/blockers.mjs && npm run build:psg1 && node tools/tests/psg1.mjs`
