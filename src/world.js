@@ -895,6 +895,7 @@ export class World {
       return Math.abs(dx * c.c + dz * c.s) < c.hw + rad && Math.abs(-dx * c.s + dz * c.c) < c.hd + rad;
     }
     if (c.t === 'tree') return Math.hypot(x - c.x, z - c.z) < c.rad * 0.5 + rad;
+    if (c.t === 'cyl') return Math.hypot(x - c.x, z - c.z) < c.r + rad;
     if (x < c.minx - rad || x > c.maxx + rad || z < c.minz - rad || z > c.maxz + rad) return false;
     if (pointInPoly(x, z, c.p)) return true;
     if (!rad) return false;
@@ -903,6 +904,7 @@ export class World {
 
   /** For walking: a wall in the way at (x, z) for something whose feet are at feetY? */
   blockedAt(x, z, feetY, rad, height, step = 2.5) {
+    if (this.ghost) return null; // Google 3D: the map's buildings aren't drawn, so they don't block
     for (const c of this.colliders.get(Math.floor((x + this.halfX) / GRID) * 100000 + Math.floor((z + this.halfZ) / GRID)) || []) {
       if (c.dead || c.t === 'tree') continue;
       if (c.top < feetY + step || (c.bottom ?? -Infinity) > feetY + height) continue; // low enough to step on, or overhead
@@ -911,8 +913,73 @@ export class World {
     return null;
   }
 
+  /**
+   * Which way is "out" of collider c at (x, z): a unit vector { x, z } pointing
+   * away from the nearest face, for sliding along walls instead of sticking.
+   */
+  wallNormal(c, x, z) {
+    let nx = 0;
+    let nz = 0;
+    if (c.t === 'box') {
+      const dx = x - c.x;
+      const dz = z - c.z;
+      const u = dx * c.c + dz * c.s;
+      const v = -dx * c.s + dz * c.c;
+      // The face we're nearest to (least overlap), or a rounded corner.
+      const ou = Math.abs(u) - c.hw;
+      const ov = Math.abs(v) - c.hd;
+      let lu = 0;
+      let lv = 0;
+      if (ou > 0 && ov > 0) {
+        lu = Math.sign(u) * ou;
+        lv = Math.sign(v) * ov;
+      } else if (ou > ov) lu = Math.sign(u) || 1;
+      else lv = Math.sign(v) || 1;
+      nx = lu * c.c - lv * c.s;
+      nz = lu * c.s + lv * c.c;
+    } else if (c.t === 'cyl' || c.t === 'tree') {
+      nx = x - c.x;
+      nz = z - c.z;
+    } else {
+      // Outline: away from the closest point on its nearest edge.
+      let best = Infinity;
+      const p = c.p;
+      for (let i = 0, j = p.length - 2; i < p.length; j = i, i += 2) {
+        const ax = p[j];
+        const az = p[j + 1];
+        const ex = p[i] - ax;
+        const ez = p[i + 1] - az;
+        const t = Math.max(0, Math.min(1, ((x - ax) * ex + (z - az) * ez) / (ex * ex + ez * ez || 1)));
+        const qx = x - (ax + ex * t);
+        const qz = z - (az + ez * t);
+        const d = qx * qx + qz * qz;
+        if (d < best) {
+          best = d;
+          nx = qx;
+          nz = qz;
+          if (d < 1e-6) {
+            nx = ez; // on the edge: use the edge's perpendicular
+            nz = -ex;
+          }
+        }
+      }
+      if (pointInPoly(x, z, p)) {
+        nx = -nx;
+        nz = -nz;
+      }
+    }
+    const l = Math.hypot(nx, nz) || 1;
+    return { x: nx / l, z: nz / l };
+  }
+
+  /** Bare-earth height (the elevation grid), even when Google 3D replaces heightAt. */
+  groundAt(x, z) {
+    return this.bareHeightAt ? this.bareHeightAt(x, z) : this.heightAt(x, z);
+  }
+
   /** The underside of something overhead (a bridge deck, an arch) between heights y0 and y1, or null. */
   ceilingAt(x, z, y0, y1, rad = 0) {
+    if (this.ghost) return null;
     let low = null;
     for (const c of this.colliders.get(Math.floor((x + this.halfX) / GRID) * 100000 + Math.floor((z + this.halfZ) / GRID)) || []) {
       if (c.dead || c.bottom === undefined || c.bottom < y0 - 0.5 || c.bottom > y1) continue;
@@ -923,7 +990,8 @@ export class World {
 
   /** For walking: the height to stand at, counting roofs that are at or below step height. */
   standHeight(x, z, feetY) {
-    let y = this.heightAt(x, z);
+    let y = this.groundAt(x, z);
+    if (this.ghost) return y;
     for (const c of this.colliders.get(Math.floor((x + this.halfX) / GRID) * 100000 + Math.floor((z + this.halfZ) / GRID)) || []) {
       if (c.dead || c.t === 'tree') continue; // bridge decks and arches can be landed on too
       if (c.top > y && c.top <= feetY + 2.5 && this.inFootprint(c, x, z)) y = c.top;
@@ -1030,6 +1098,8 @@ export class World {
         const dx = p.x - c.x;
         const dz = p.z - c.z;
         if (Math.abs(dx * c.c + dz * c.s) < c.hw + rad && Math.abs(-dx * c.s + dz * c.c) < c.hd + rad) return true;
+      } else if (c.t === 'cyl') {
+        if (Math.hypot(p.x - c.x, p.z - c.z) < c.r + rad) return true;
       } else if (c.t === 'tree') {
         // Only the solid middle of a tree counts (clipping the leaves is fine),
         // and the treetop is a few meters forgiving.

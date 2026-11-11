@@ -210,6 +210,9 @@ export class RobotWalk {
     this.driving = 0; // size of the supersized car being driven, or 0
     this.onRam = null; // (collider) while driving: return true if it was knocked down
     this.onExit = null; // jump pressed while driving
+    this.blocker = null; // the unbreakable thing in the way, if any
+    this.blockedT = 0; // how long it has been in the way (s)
+    this.atEdge = false; // pressed against the edge of the map
     this._fwd = new THREE.Vector3();
     this._right = new THREE.Vector3();
   }
@@ -254,7 +257,7 @@ export class RobotWalk {
     this.turboNow += (this.turbo - this.turboNow) * (1 - Math.exp(-dt * 2));
 
     // Walk: ease toward the wanted speed (less grip in the air, slower in water).
-    this.onWater = w.isWater(this.pos.x, this.pos.z) && this.pos.y - w.heightAt(this.pos.x, this.pos.z) < 1;
+    this.onWater = w.isWater(this.pos.x, this.pos.z) && this.pos.y - w.groundAt(this.pos.x, this.pos.z) < 1;
     // Jets give running speed in the air and much better steering, so holding
     // jump turns the robot into something that flies.
     const jets = !this.onGround && input.brake;
@@ -276,7 +279,7 @@ export class RobotWalk {
     }
     this.jetting = !this.onGround && input.brake;
     if (this.jetting) {
-      const agl = this.pos.y - w.heightAt(this.pos.x, this.pos.z);
+      const agl = this.pos.y - w.groundAt(this.pos.x, this.pos.z);
       const climb = (JET_CLIMB + 10 * (this.turboNow - 1)) * THREE.MathUtils.clamp((JET_CEILING - agl) / 100, -0.3, 1);
       this.vel.y += (climb - this.vel.y) * (1 - Math.exp(-dt * 2.5));
     } else if (!this.onGround) {
@@ -290,25 +293,46 @@ export class RobotWalk {
     // On the ground the robot never climbs onto things: anything in its way,
     // however low, is a wall to walk through (see below). Up on a roof, or
     // landing from a jump, low roofs can be stepped onto.
-    const terrain = w.heightAt(this.pos.x, this.pos.z);
+    const terrain = w.groundAt(this.pos.x, this.pos.z);
     const walking = this.onGround && this.pos.y - terrain < 1;
     const step = walking ? 0.3 : 2.5;
     const hit = (x, z) => w.blockedAt(x, z, this.pos.y, rad, ROBOT_HEIGHT, step);
     let inside = hit(this.pos.x, this.pos.z);
     if (inside && this.onRam?.(inside)) inside = hit(this.pos.x, this.pos.z); // standing in something: break it
     const stuck = !!inside; // a landmark around the robot: let it walk out
+    const wantSpeed = Math.hypot(this.vel.x, this.vel.z);
+    let blocker = null;
     for (let i = 0; i < steps; i++) {
-      const nx = this.pos.x + (this.vel.x * dt) / steps;
-      const nz = this.pos.z + (this.vel.z * dt) / steps;
+      const sx = (this.vel.x * dt) / steps;
+      const sz = (this.vel.z * dt) / steps;
+      const nx = this.pos.x + sx;
+      const nz = this.pos.z + sz;
       // Walking into a building knocks it down (onRam); only landmarks stop the robot.
-      const c = stuck ? null : hit(nx, nz);
+      let c = stuck ? null : hit(nx, nz);
       if (c && this.onRam?.(c)) {
         this.vel.x *= 0.7;
         this.vel.z *= 0.7;
+        c = hit(nx, nz);
       }
-      if (stuck || !hit(nx, nz)) {
+      if (!c) {
         this.pos.x = nx;
         this.pos.z = nz;
+        continue;
+      }
+      // Slide along the wall: keep only the part of the motion that runs along it.
+      blocker = c;
+      const n = w.wallNormal(c, this.pos.x, this.pos.z);
+      const into = sx * n.x + sz * n.z;
+      const ax = sx - n.x * Math.min(0, into);
+      const az = sz - n.z * Math.min(0, into);
+      if ((ax || az) && !hit(this.pos.x + ax, this.pos.z + az)) {
+        this.pos.x += ax;
+        this.pos.z += az;
+        const vin = this.vel.x * n.x + this.vel.z * n.z;
+        if (vin < 0) {
+          this.vel.x -= n.x * vin;
+          this.vel.z -= n.z * vin;
+        }
       } else if (!hit(nx, this.pos.z)) {
         this.pos.x = nx;
         this.vel.z = 0;
@@ -320,9 +344,21 @@ export class RobotWalk {
         break;
       }
     }
-    // Stay on the map.
-    this.pos.x = THREE.MathUtils.clamp(this.pos.x, -w.halfX - 1400, w.halfX + 1400);
-    this.pos.z = THREE.MathUtils.clamp(this.pos.z, -w.halfZ - 1400, w.halfZ + 1400);
+    // Remember what's been holding the robot up, so the game can outline it.
+    const slowed = wantSpeed > 3 && Math.hypot(this.vel.x, this.vel.z) < wantSpeed * 0.5;
+    if (blocker && slowed) {
+      this.blockedT = this.blocker === blocker ? this.blockedT + dt : dt;
+      this.blocker = blocker;
+    } else if (!blocker) {
+      this.blockedT = 0;
+      this.blocker = null;
+    }
+    // Stay on the map (the game says so when you reach the edge).
+    const ex = w.halfX + 1400;
+    const ez = w.halfZ + 1400;
+    this.atEdge = Math.abs(this.pos.x) >= ex || Math.abs(this.pos.z) >= ez;
+    this.pos.x = THREE.MathUtils.clamp(this.pos.x, -ex, ex);
+    this.pos.z = THREE.MathUtils.clamp(this.pos.z, -ez, ez);
 
     // Head bump: flying up into a bridge deck or an arch stops at its underside.
     if (this.vel.y > 0) {
@@ -334,7 +370,7 @@ export class RobotWalk {
       }
     }
     this.pos.y += this.vel.y * dt;
-    const ground = walking ? w.heightAt(this.pos.x, this.pos.z)
+    const ground = walking ? w.groundAt(this.pos.x, this.pos.z)
       : w.standHeight(this.pos.x, this.pos.z, this.onGround ? this.pos.y : this.pos.y - this.vel.y * dt);
     if (this.pos.y <= ground) {
       if (!this.onGround && this.vel.y < -32) this.onSlam?.(-this.vel.y);
@@ -386,10 +422,13 @@ export class RobotWalk {
       this.pos.x = nx;
       this.pos.z = nz;
     }
-    this.pos.x = THREE.MathUtils.clamp(this.pos.x, -w.halfX - 1400, w.halfX + 1400);
-    this.pos.z = THREE.MathUtils.clamp(this.pos.z, -w.halfZ - 1400, w.halfZ + 1400);
+    const ex = w.halfX + 1400;
+    const ez = w.halfZ + 1400;
+    this.atEdge = Math.abs(this.pos.x) >= ex || Math.abs(this.pos.z) >= ez;
+    this.pos.x = THREE.MathUtils.clamp(this.pos.x, -ex, ex);
+    this.pos.z = THREE.MathUtils.clamp(this.pos.z, -ez, ez);
     this.vel.set(f.x * along, 0, f.z * along);
-    this.pos.y = w.heightAt(this.pos.x, this.pos.z);
+    this.pos.y = w.groundAt(this.pos.x, this.pos.z);
     this.onGround = true;
     this.onWater = false;
     this.speed = Math.abs(along);

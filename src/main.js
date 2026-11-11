@@ -16,6 +16,7 @@ import { createRobot, RobotWalk } from './robot.js';
 import { Props } from './props.js';
 import { Rampage } from './rampage.js';
 import { RingRace, RampageGame } from './games.js';
+import { ColliderView } from './colliderview.js';
 
 const $ = (id) => document.getElementById(id);
 const SKY = 0x9fd0ff;
@@ -45,6 +46,7 @@ function savePrefs() {
   } catch {}
 }
 const CONFIG = window.LEGOSKY_CONFIG || {};
+const DEBUG = new URLSearchParams(location.search).has('debug');
 const HAS_GOOGLE = !!CONFIG.googleMapsKey;
 const settings = (() => {
   const q = new URLSearchParams(location.search);
@@ -115,6 +117,7 @@ let labelEls = [];
 let pinEls = [];
 let worldObjects = [];
 let beerRun = null; // the Beer Run game, in cities that have one
+let colView = null; // collision-shape outlines (debug view, and flashing whatever blocks the robot)
 let props = null; // loose objects lying around the city
 let rampage = null; // robot-mode destruction
 // Robot mode: `plane` and `flight` point at the robot while it's out, and the
@@ -265,7 +268,13 @@ async function buildWorld() {
     // Fly over the real surface where it has loaded, the elevation grid elsewhere.
     const gridHeight = world.heightAt.bind(world);
     world.heightAt = (x, z) => google.heightAt(x, z) ?? gridHeight(x, z);
+    // The robot walks on the bare ground (Google's mesh includes rooftops), and
+    // passes through the map's buildings, which aren't drawn in this look.
+    world.bareHeightAt = gridHeight;
+    world.ghost = true;
   }
+  colView = new ColliderView(scene, world);
+  colView.on = new URLSearchParams(location.search).get('debug') === 'colliders';
   camera.far = google ? 60000 : 40000;
   camera.updateProjectionMatrix();
   scene.fog.near = google ? 6000 : data.fog?.[0] ?? 2500;
@@ -1202,6 +1211,11 @@ for (const b of $('segMode').querySelectorAll('button')) {
     saveSettings();
     pausedFlight = false; // a different game: start fresh
     updateMenu();
+    // Nothing can be smashed in Google 3D, so Rampage switches to the Lego look.
+    if (settings.mode === 'rampage' && settings.look === 'google' && !(mp.room && mp.settings)) {
+      toast('Rampage uses the Lego look (Google 3D buildings can\'t be smashed)', '#2f7fe0');
+      applySetting('look', 'lego');
+    }
   };
 }
 if (!HAS_GOOGLE) $('lookNote').hidden = false;
@@ -2459,6 +2473,36 @@ function updateAutoLand(dt) {
   }
 }
 
+// Nothing that stops the robot should be invisible: after half a second against
+// something unbreakable, its collision shape flashes (and ?debug logs it).
+// Also: say so at the edge of the map, and explain Google 3D's see-through city.
+let edgeCool = 0;
+let flashed = null;
+let ghostNoted = false;
+function updateBlockers(dt) {
+  colView.update(dt, flight.pos);
+  if (!isBot) return;
+  if (flight.blockedT > 0.5 && flight.blocker !== flashed) {
+    flashed = flight.blocker;
+    colView.flash(flashed);
+    if (DEBUG) console.log('robot blocked by', flashed.t, { id: flashed.id, x: Math.round(flashed.x ?? flashed.minx), z: Math.round(flashed.z ?? flashed.minz), bottom: flashed.bottom, top: Math.round(flashed.top), breakable: world.breakable(flashed) });
+  }
+  if (!flight.blocker) flashed = null;
+  edgeCool -= dt;
+  if (flight.atEdge && edgeCool <= 0) {
+    message('🚧 Edge of the map<small>Turn around: there\'s nothing more out here</small>', 2.5);
+    edgeCool = 6;
+  }
+  if (google && !ghostNoted) {
+    ghostNoted = true;
+    message('🤖 In Google 3D the robot walks through buildings<small>Pick the Lego or Realistic look to smash them</small>', 4);
+  }
+}
+input.on('colliders', () => {
+  colView.on = !colView.on;
+  message(colView.on ? 'Collision view on: yellow breakable, red solid, green trees' : 'Collision view off', 2);
+});
+
 // The DRIVE prompt: a supersized car (or bus, cart, truck) within reach.
 let driveTargetNow = null;
 function updateDriveButton() {
@@ -2557,6 +2601,7 @@ function frame() {
     updateBoosters(dt);
     poseAirplane(dt);
     rampage.update(dt, isBot ? flight : null);
+    updateBlockers(dt);
     if (google) props.settle(flight.pos.x, flight.pos.z, 500);
     if (!isHeli && !isBot) {
       const rpm = 8 + flight.throttle * 60;

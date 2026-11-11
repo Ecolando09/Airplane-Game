@@ -50,6 +50,14 @@ function solid(world, g, lx, lz, hw, hd, bottom, top) {
     x - R + world.halfX, z - R + world.halfZ, x + R + world.halfX, z + R + world.halfZ);
 }
 
+/** A round solid (local center lx, lz, radius r) from `bottom` to `top`. */
+function cyl(world, g, lx, lz, r, bottom, top) {
+  const a = -g.rotation.y;
+  const x = g.position.x + lx * Math.cos(a) - lz * Math.sin(a);
+  const z = g.position.z + lx * Math.sin(a) + lz * Math.cos(a);
+  world._addCollider({ t: 'cyl', x, z, r, bottom, top }, x - r + world.halfX, z - r + world.halfZ, x + r + world.halfX, z + r + world.halfZ);
+}
+
 /** Lowest ground under a footprint, so models never float on a slope. */
 function baseOf(world, { x, z, w = 40, d = 40, ang = 0 }) {
   const c = Math.cos(ang);
@@ -140,7 +148,18 @@ function sutro(world, f) {
     const [, top] = leg(i, 250, 250, 0, 26);
     beam(g, top, top.clone().setY(H), 2, i % 2 ? white : red);
   }
-  solid(world, g, 0, 0, 14, 14, -1e4, base + 160);
+  // One solid per leg segment (the space between the three legs is open).
+  for (let i = 0; i < 3; i++) {
+    for (const [y0, y1, r0, r1] of bands.slice(0, 4)) {
+      for (let k = 0; k < 2; k++) {
+        const ya = y0 + ((y1 - y0) * k) / 2;
+        const yb = y0 + ((y1 - y0) * (k + 1)) / 2;
+        const [p] = leg(i, (ya + yb) / 2, 0, r0 + ((r1 - r0) * (k + 0.5)) / 2, 0);
+        solid(world, g, p.x, p.z, 3, 3, y0 || k ? base + ya : -1e4, base + yb);
+      }
+    }
+  }
+  cyl(world, g, 0, 0, 16, base + 157, base + 163); // the lower crossarms
   solid(world, g, 0, 0, 30, 30, base + 245, base + 256);
   solid(world, g, 0, 0, 27, 27, base + 256, base + H);
 }
@@ -183,7 +202,14 @@ function tokyotower(world, f) {
   frustum(g, 24, 24, 150, 160, glass, 8); // main deck
   frustum(g, 8, 8, 245, 252, glass, 8); // top deck
   for (let i = 0; i < 5; i++) frustum(g, 3 - i * 0.5, 2.6 - i * 0.5, 252 + i * 16, 268 + i * 16, i % 2 ? orange : white, 8);
-  solid(world, g, 0, 0, half + 3, half + 3, -1e4, base + 60);
+  // One solid per leg below the first platform, so you can walk between them.
+  for (const [sx, sz] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) {
+    for (let y0 = 0; y0 < 40; y0 += 10) {
+      const o = half - ((half - 15) * (y0 + 5)) / 140;
+      solid(world, g, sx * o, sz * o, 5, 5, y0 ? base + y0 : -1e4, base + y0 + 10);
+    }
+  }
+  cyl(world, g, 0, 0, 25, base + 40, base + 60);
   solid(world, g, 0, 0, 20, 20, base + 60, base + 160);
   solid(world, g, 0, 0, 13, 13, base + 160, base + 205);
   solid(world, g, 0, 0, 8, 8, base + 205, base + 252);
@@ -203,7 +229,7 @@ function skytree(world, f) {
     [500, 634, 5, 1, shaft, 8],
   ];
   for (const [y0, y1, r0, r1, m, sides] of parts) frustum(g, r0, r1, y0, y1, m, sides);
-  for (const [y0, y1, r0, r1] of parts) solid(world, g, 0, 0, Math.max(r0, r1) * 0.85, Math.max(r0, r1) * 0.85, base + y0, base + y1);
+  for (const [y0, y1, r0, r1] of parts) cyl(world, g, 0, 0, Math.max(r0, r1) * 0.95, y0 ? base + y0 : -1e4, base + y1);
 }
 
 // ---------------------------------------------------------------- Golden Gate Bridge
@@ -361,8 +387,8 @@ function supertrees(world, s) {
   for (const [x, z, h] of spots) {
     mesh(g, new THREE.CylinderGeometry(2.2, 4, h - 6, 10), trunk, x, (h - 6) / 2, z);
     mesh(g, new THREE.CylinderGeometry(h * 0.28, 2.2, 7, 14, 1, true), canopy, x, h - 3.5, z).material.side = THREE.DoubleSide;
-    solid(world, g, x, z, 4, 4, -1e4, ground + h - 6);
-    solid(world, g, x, z, h * 0.26, h * 0.26, ground + h - 7, ground + h);
+    cyl(world, g, x, z, 4, -1e4, ground + h - 6);
+    cyl(world, g, x, z, h * 0.28, ground + h - 7, ground + h);
   }
   // The skyway between the two tallest.
   mesh(g, new THREE.BoxGeometry(45, 1.5, 3), mat(LEGO.darkGray), 22.5, 22, 5);
@@ -415,10 +441,12 @@ function buddha(world, s) {
     const y = world.heightAt(x, z) - ground;
     mesh(g, new THREE.BoxGeometry(12, 3, 6), stone, 0, Math.min(3, y) - 0.5, -d);
   }
-  solid(world, g, 0, 0, 30, 30, -1e4, ground + 4);
-  solid(world, g, 0, 0, 17, 17, ground + 4, ground + 16);
-  solid(world, g, 0, 0, 9, 8, ground + 16, ground + 34);
-  solid(world, g, 0, -0.4, 4, 4, ground + 34, ground + 44);
+  // Round, like the altar and the figure (the old square corners stuck out past the drawing).
+  cyl(world, g, 0, 0, 30, -1e4, ground + 4);
+  cyl(world, g, 0, 0, 23, ground + 4, ground + 8);
+  cyl(world, g, 0, 0, 17, ground + 8, ground + 16);
+  cyl(world, g, 0, 0, 9, ground + 16, ground + 34);
+  cyl(world, g, 0, -0.4, 4, ground + 34, ground + 44);
 }
 
 const BUILDERS = { buddha, tower, arch, sutro, pyramid, tokyotower, skytree, ggbridge, skypark, flyer, supertrees };
