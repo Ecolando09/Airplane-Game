@@ -17,7 +17,8 @@ import { Props } from './props.js';
 import { Rampage } from './rampage.js';
 import { RingRace, RampageGame } from './games.js';
 import { ColliderView } from './colliderview.js';
-import { PadNav, pad } from './psg1.js';
+import { PadNav, pad as padGlyph } from './psg1.js';
+const pad = padGlyph;
 import { wsUrl, SITE, SERVER_OK } from './server.js';
 
 const $ = (id) => document.getElementById(id);
@@ -1848,6 +1849,44 @@ input.on('dUp', () => (isBot ? running && rampage.resize(flight, 2) && updateBot
 input.on('dDown', () => (isBot ? running && rampage.resize(flight, 0.5) && updateBotHud() : goPotty()));
 input.on('dLeft', goPotty);
 input.on('dRight', () => (potty.need ? skipPotty() : coach && nextCoach()));
+// A controller plugged into a phone (like a GameSir) or a computer: once it's
+// used, the on-screen touch buttons go away so more of the screen is visible,
+// and hints name the controller's buttons (Xbox layout). Unplugging it, or
+// touching the screen's controls area, brings the touch buttons back.
+let padPlay = false;
+const PAD_HINTS = { autoLandBtn: 'LB', driveBtn: 'B', crashRespawn: 'START', crashRetry: '', crashMenu: '' };
+function setPadPlay(on) {
+  if (__PSG1__ || padPlay === on) return;
+  padPlay = on;
+  document.body.classList.toggle('pad-play', on);
+  for (const [id, name] of Object.entries(PAD_HINTS)) {
+    const k = $(id)?.querySelector('kbd');
+    if (!k) continue;
+    k.dataset.key ??= k.textContent;
+    k.textContent = on ? name : k.dataset.key;
+    k.classList.toggle('pad', on);
+    k.hidden = on && !name;
+  }
+  if (on && running) message('🎮 Controller on: touch buttons hidden<small>Menu → Controls &amp; tips lists the buttons</small>', 3);
+}
+input.on('padActive', () => setPadPlay(true));
+input.on('padGone', () => {
+  setPadPlay(false);
+  if (running) message('Controller unplugged: touch buttons are back', 2.5);
+});
+if (!__PSG1__) {
+  document.querySelector('details.help .controls')?.insertAdjacentHTML('beforebegin', `
+<div class="controls pad-only">
+  <div><b>Left stick</b> steer &amp; climb · <b>right stick</b> ◀▶ rudder, ▲▼ throttle (or <kbd class="pad">RT</kbd>/<kbd class="pad">LT</kbd>) · <kbd class="pad pad-A">A</kbd> brake</div>
+  <div>Copter: <b>left stick</b> ◀▶ turn, ▲▼ speed · <b>right stick</b> ▲▼ up / down</div>
+  <div><kbd class="pad pad-B">B</kbd> floats · <kbd class="pad">RB</kbd> turbo · <kbd class="pad">LB</kbd> auto-land · <kbd class="pad pad-Y">Y</kbd> camera</div>
+  <div><kbd class="pad pad-X">X</kbd> robot mode: left stick walks (all the way to run), <kbd class="pad pad-A">A</kbd> jump (hold to fly), <kbd class="pad">RB</kbd> smash,
+    <kbd class="pad pad-B">B</kbd> grab, throw or drive, <kbd class="pad">LB</kbd> turbo, <kbd class="pad">▲</kbd><kbd class="pad">▼</kbd> supersizer</div>
+  <div><kbd class="pad">◀</kbd> potty · <kbd class="pad">▶</kbd> not now · <kbd class="pad">VIEW</kbd> big map · <kbd class="pad">MENU</kbd> pause</div>
+  <div>Menus: D-pad moves · <kbd class="pad pad-A">A</kbd> choose · <kbd class="pad pad-B">B</kbd> back · <kbd class="pad">LB</kbd><kbd class="pad">RB</kbd> city · <kbd class="pad">MENU</kbd> play</div>
+</div>`);
+}
+
 /** Button names as printed on the PSG1 instead of keyboard keys. */
 function applyPsg1Hints() {
   const kbd = (id, html) => {
@@ -2010,6 +2049,7 @@ function transform() {
     flight = bot.walk;
     isBot = true;
     message(__PSG1__ ? `🤖 Robot mode!<small>R1 smash · A grab, throw or drive · B jump (hold to fly) · stick all the way to run · Y change back</small>`
+      : padPlay ? '🤖 Robot mode!<small>RB smash · B grab, throw or drive · A jump (hold to fly) · stick all the way to run · X change back</small>'
       : input.isTouch ? '🤖 Robot mode! SMASH buildings, GRAB things and throw them'
       : '🤖 Robot mode!<small>X smash · G grab and throw · Space jump (hold to fly) · Shift run · F change back</small>', 4);
   } else {
@@ -2254,7 +2294,10 @@ input.on('mute', () => {
 let coach = null; // { steps, i, mark }
 function coachSteps() {
   const t = input.isTouch;
-  const P = __PSG1__; // PSG1: hints name its buttons
+  // PSG1, or any controller in use: hints name buttons (Xbox names on a controller).
+  const P = __PSG1__ || padPlay;
+  const XBOX = { Y: 'X', A: 'B', R1: 'RB', L1: 'LB' };
+  const pad = (k) => padGlyph(__PSG1__ ? k : XBOX[k] || k);
   const tiltOn = () => input.tilt.active;
   const K = (k) => `<kbd>${k}</kbd>`;
   const agl = () => flight.pos.y - plane.gearHeight - world.heightAt(flight.pos.x, flight.pos.z);

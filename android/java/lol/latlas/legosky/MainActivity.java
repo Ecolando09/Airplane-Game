@@ -240,6 +240,15 @@ public class MainActivity extends Activity {
                 return true; // handled here: B must not become Back, the D-pad must not scroll
             }
         }
+        // Phone app with a controller plugged in (a GameSir, an Xbox pad...): the web
+        // view still gets the buttons (the game reads them through the browser's
+        // gamepad support), but they are always counted as handled, so Android
+        // never turns an unused B press into Back (which would open the menu).
+        if (!psg1 && buttonFor(e.getKeyCode()) >= 0 && fromPad(e.getDevice(), e.getSource())
+            && e.getKeyCode() != KeyEvent.KEYCODE_BACK) {
+            super.dispatchKeyEvent(e);
+            return true;
+        }
         return super.dispatchKeyEvent(e);
     }
 
