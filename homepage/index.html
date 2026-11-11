@@ -3,154 +3,188 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <title>Latlas Play</title>
-    <meta name="description" content="Browser games by Latlas. No downloads, just play." />
-    <meta property="og:title" content="Latlas Play" />
-    <meta property="og:description" content="Browser games by Latlas. No downloads, just play." />
+    <title>Latlas Play · Lego Sky</title>
+    <meta name="description" content="Lego Sky: a brick-built flight sim over 9 real cities. Free in your browser." />
+    <meta name="theme-color" content="#0A0B0E" />
+    <meta property="og:title" content="Latlas Play · Lego Sky" />
+    <meta property="og:description" content="A brick-built flight sim over 9 real cities. Free in your browser." />
     <meta property="og:image" content="images/legoplane.jpg" />
-    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='2' y='8' width='28' height='18' rx='3' fill='%23f2cd37'/%3E%3Ccircle cx='10' cy='8' r='4' fill='%23f2cd37'/%3E%3Ccircle cx='22' cy='8' r='4' fill='%23f2cd37'/%3E%3C/svg%3E" />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230A0B0E'/%3E%3Crect x='5' y='12' width='22' height='13' rx='2' fill='%2300FF9D'/%3E%3Crect x='8' y='7' width='6' height='5' rx='1' fill='%2300FF9D'/%3E%3Crect x='18' y='7' width='6' height='5' rx='1' fill='%2300FF9D'/%3E%3C/svg%3E" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Figtree:wght@400;500;700&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
-    <header class="site-header">
-      <a class="brand" href="https://latlas.lol/">latlas<span>.lol</span></a>
-      <nav>
-        <a href="https://latlas.lol/">Home</a>
-        <a href="./" aria-current="page">Play</a>
+    <!-- ============ 1. Sticky navigation (turns to blurred glass on scroll) ============ -->
+    <header class="nav" id="nav">
+      <a class="brand" href="#home" aria-label="Latlas Play, home">
+        <svg viewBox="0 0 32 32" aria-hidden="true"><rect x="3" y="12" width="26" height="15" rx="2" /><rect x="7" y="6" width="7" height="6" rx="1" /><rect x="18" y="6" width="7" height="6" rx="1" /></svg>
+        <span>LATLAS<b>//</b>PLAY</span>
+      </a>
+      <button class="nav-toggle" id="navToggle" aria-label="Menu" aria-expanded="false" aria-controls="navLinks">
+        <span></span><span></span><span></span>
+      </button>
+      <nav class="nav-links" id="navLinks" aria-label="Sections">
+        <a href="#home">Home</a>
+        <a href="#features">Features</a>
+        <a href="#media">Trailer</a>
+        <a href="#download">Download</a>
       </nav>
+      <a class="btn btn-neon nav-cta" href="legoplane/">Play now</a>
     </header>
 
     <main>
-      <section class="intro">
-        <p class="eyebrow">play.latlas.lol</p>
-        <h1>Games you can play right in your browser.</h1>
-        <p class="lede">No downloads, no accounts. Works with a keyboard, an Xbox controller, or your phone.</p>
+      <!-- ============ 2. Hero: copy on the left, floating game preview on the right ============ -->
+      <section class="hero" id="home">
+        <div class="hero-copy">
+          <p class="eyebrow"><span class="dot"></span>Lego Sky · out now</p>
+          <h1>Fly it.<br />Smash it.<br /><em>Land it.</em></h1>
+          <p class="sub">A brick-built flight sim over 9 real cities. Free in your browser.</p>
+          <ul class="badges" aria-label="Platforms">
+            <li><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="1.5" /><path d="M8 20h8M12 16v4" /></svg>PC</li>
+            <li><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="2.5" width="10" height="19" rx="2" /><path d="M11 18.5h2" /></svg>Android</li>
+            <li><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2.5" y="6" width="19" height="12" rx="3" /><path d="M7 10.5v3M5.5 12h3" /><circle cx="16.5" cy="12" r="1.2" /></svg>PSG1</li>
+          </ul>
+          <div class="cta-row">
+            <a class="btn btn-neon btn-lg" href="legoplane/">Play now</a>
+            <button class="btn btn-ghost btn-lg" type="button" data-open-media="0">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10" /><path d="M10 8.5v7l6-3.5z" class="fill" /></svg>
+              Watch
+            </button>
+          </div>
+        </div>
+
+        <div class="hero-stage" id="stage">
+          <canvas class="particles" id="particles" aria-hidden="true"></canvas>
+          <div class="device" id="device">
+            <div class="screen">
+              <img class="on" src="images/shot-night.jpg" alt="The bush plane over Hong Kong at night, windows lit" width="1280" height="720" />
+              <img src="images/shot-robot.jpg" alt="" width="1280" height="720" loading="lazy" />
+              <img src="images/shot-city.jpg" alt="" width="1280" height="720" loading="lazy" />
+            </div>
+            <span class="tag tag-a">9 cities</span>
+            <span class="tag tag-b">Robot mode</span>
+            <span class="tag tag-c">Multiplayer</span>
+          </div>
+        </div>
       </section>
 
-      <section class="games" aria-label="Games">
-        <article class="game">
-          <a class="shot" href="legoplane/" aria-label="Play Lego Sky">
-            <img src="images/legoplane.jpg" alt="The Lego Technic bush plane flying over a brick-built Spartanburg" width="1200" height="675" />
-            <img class="hover" src="images/legoplane-hud.jpg" alt="" width="1200" height="675" loading="lazy" />
-            <span class="badge">New</span>
-          </a>
-          <div class="info">
-            <h2>Lego Sky</h2>
-            <p class="tagline">Fly the LEGO Technic Bush Plane or Ghost-Spider's copter over nine real places, from Spartanburg to Tokyo, plus a beer-delivery game in Fort Collins.</p>
-            <p>
-              Spartanburg, Fort Collins, the Crystal River valley from Carbondale to Marble, Denver, St. Louis, San Francisco, Hong Kong, Tokyo and Singapore, all built
-              from real map data: real streets, buildings, lakes and hills, with Lego cars driving around. Fly under
-              the Golden Gate Bridge, through the Gateway Arch, around Tokyo Skytree, and land on the old Kai Tak
-              runway. Pick the Lego look, a realistic satellite look, or Google's photorealistic 3D city.
-              Light the booster rockets in T2X and T3X turbo, and drop the floats to land on Lake Craig, Horsetooth
-              Reservoir, San Francisco Bay or Victoria Harbour. Press the robot button and your plane or copter unfolds into a
-              <b>giant robot</b>: walk the streets, punch buildings into rubble, stomp from a jet-jump, and pick up
-              cars, boats and boulders to throw. Supersize a car and drive it through town, race through rings
-              around the landmarks, or go for a two-minute <b>Rampage</b> high score. Fly at sunset or at night with the
-              windows lit. In Fort Collins, try the <b>Beer Run</b>: haul kegs from
-              real breweries to local shops against the clock, keep your on-time streak alive and climb the weekly
-              leaderboard.
-            </p>
-            <ul class="chips" aria-label="Ways to play">
-              <li>Keyboard</li>
-              <li>Xbox controller</li>
-              <li>Phone tilt</li>
-              <li>Phone as controller</li>
-              <li>9 places</li>
-              <li>Ring Race</li>
-              <li>Rampage</li>
-              <li>Beer Run game</li>
-              <li>Robot mode</li>
-              <li>Plane or helicopter</li>
-              <li>Multiplayer</li>
-            </ul>
-            <div class="actions">
-              <a class="btn primary" href="legoplane/">Play now</a>
-              <a class="btn" href="#android">Android app</a>
-              <a class="btn" href="#legoplane-how">How to play</a>
+      <!-- ============ 3. Features: bento grid ============ -->
+      <section class="section" id="features">
+        <header class="section-head">
+          <p class="kicker">01 // Features</p>
+          <h2>What's inside</h2>
+        </header>
+        <div class="bento">
+          <article class="card wide has-bg" style="--shot: url('images/shot-city.jpg')">
+            <h3>9 real cities</h3>
+            <p>Spartanburg to Tokyo. Real streets, real hills.</p>
+          </article>
+          <article class="card">
+            <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="3" width="10" height="7" rx="1.5" /><path d="M9 6.5h.01M15 6.5h.01M5 21v-6a3 3 0 0 1 3-3h8a3 3 0 0 1 3 3v6M9 21v-4M15 21v-4" /></svg>
+            <h3>Robot mode</h3>
+            <p>Transform. Smash. Throw cars.</p>
+          </article>
+          <article class="card">
+            <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" /><circle cx="12" cy="12" r="4" /></svg>
+            <h3>3 games</h3>
+            <p>Ring Race · Rampage · Beer Run</p>
+          </article>
+          <article class="card">
+            <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="8" cy="9" r="3" /><circle cx="17" cy="10" r="2.5" /><path d="M2.5 20a5.5 5.5 0 0 1 11 0M14 20a4 4 0 0 1 7.5-2" /></svg>
+            <h3>Fly together</h3>
+            <p>Rooms, races and tag.</p>
+          </article>
+          <article class="card">
+            <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l9 5-9 5-9-5zM3 12.5l9 5 9-5M3 17l9 5 9-5" /></svg>
+            <h3>3 looks</h3>
+            <p>Lego · Satellite · Google 3D</p>
+          </article>
+          <article class="card">
+            <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="2.5" y="7" width="19" height="11" rx="4" /><path d="M7 11v3M5.5 12.5h3M15.5 11.5h.01M18 13.5h.01" /></svg>
+            <h3>Any controls</h3>
+            <p>Keys · gamepad · phone tilt</p>
+          </article>
+          <article class="card wide accent">
+            <div>
+              <h3>Free. No sign-up.</h3>
+              <p>Click and you're flying.</p>
             </div>
-            <p class="phone-note">📱 On a phone? Tap <b>Play now</b>, turn it sideways, and steer by tilting.</p>
-          </div>
-        </article>
+            <a class="btn btn-neon" href="legoplane/">Play now</a>
+          </article>
+        </div>
+      </section>
 
-        <section class="how app" id="android" aria-labelledby="android-title">
-          <img class="app-icon" src="images/legosky-icon.png" alt="" width="96" height="96" />
-          <div>
-            <h3 id="android-title">Lego Sky for Android and PSG1</h3>
-            <p>Full screen, always sideways, and the screen stays on while you fly. The app plays the live game, so
-              it gets every update automatically.</p>
-            <ol>
-              <li>On your Android phone, tap <b>Download the app</b>.</li>
-              <li>Open the downloaded file. If your phone asks, allow your browser to install apps.</li>
-              <li>Tap <b>Install</b>, then find <b>Lego Sky</b> with your other apps.</li>
-            </ol>
-            <p class="actions">
-              <a class="btn primary" href="downloads/lego-sky.apk" download>Download the app</a>
-              <span class="app-meta" id="appMeta">Android 7 or newer</span>
-            </p>
-            <p class="actions">
-              <a class="btn primary" href="downloads/lego-sky-psg1.apk" download>Download for PSG1</a>
-              <span class="app-meta" id="psg1Meta">PlaySolana PSG1 · every city built in, plays offline</span>
-            </p>
-            <p class="phone-note">🎮 On a PSG1: tap <b>Download for PSG1</b> in its browser, then open the file.
-              If the PSG1 won't install it, just tap <b>Play now</b> and press a button: the game switches to PSG1 controls.</p>
+      <!-- ============ 4. Media: big preview, thumbnails, pop-up viewer ============ -->
+      <section class="section" id="media">
+        <header class="section-head">
+          <p class="kicker">02 // Media</p>
+          <h2>See it fly</h2>
+        </header>
+        <div class="gallery">
+          <button class="viewer" id="viewer" type="button" aria-label="Open full size">
+            <img id="viewerImg" src="images/shot-night.jpg" alt="Hong Kong at night" width="1280" height="720" />
+            <span class="viewer-cap" id="viewerCap">Hong Kong at night</span>
+            <span class="viewer-zoom" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" /></svg></span>
+          </button>
+          <!-- To add a trailer: give a thumbnail data-video="trailer.mp4"; the pop-up plays it. -->
+          <div class="thumbs" id="thumbs" role="tablist" aria-label="Screenshots">
+            <button type="button" role="tab" class="on" aria-selected="true" data-src="images/shot-night.jpg" data-cap="Hong Kong at night"><img src="images/shot-night.jpg" alt="Hong Kong at night" width="1280" height="720" loading="lazy" /></button>
+            <button type="button" role="tab" aria-selected="false" data-src="images/shot-robot.jpg" data-cap="Robot mode"><img src="images/shot-robot.jpg" alt="Robot mode" width="1280" height="720" loading="lazy" /></button>
+            <button type="button" role="tab" aria-selected="false" data-src="images/shot-city.jpg" data-cap="Golden Gate, San Francisco"><img src="images/shot-city.jpg" alt="Golden Gate, San Francisco" width="1280" height="720" loading="lazy" /></button>
+            <button type="button" role="tab" aria-selected="false" data-src="images/shot-beer.jpg" data-cap="Beer Run at sunset"><img src="images/shot-beer.jpg" alt="Beer Run at sunset" width="1280" height="720" loading="lazy" /></button>
+            <button type="button" role="tab" aria-selected="false" data-src="images/shot-rings.jpg" data-cap="Ring Race, Tokyo"><img src="images/shot-rings.jpg" alt="Ring Race, Tokyo" width="1280" height="720" loading="lazy" /></button>
+            <button type="button" role="tab" aria-selected="false" data-src="images/shot-real.jpg" data-cap="Satellite look, Denver"><img src="images/shot-real.jpg" alt="Satellite look, Denver" width="1280" height="720" loading="lazy" /></button>
           </div>
-        </section>
+        </div>
+      </section>
 
-        <section class="how" id="legoplane-how" aria-labelledby="how-title">
-          <h3 id="how-title">How to play Lego Sky</h3>
-          <div class="how-grid">
-            <figure>
-              <img src="images/legoplane-phone.jpg" alt="The game on a phone held sideways, with tilt controls" width="1200" height="554" loading="lazy" />
-              <figcaption><b>On a phone:</b> turn it sideways and tap <b>TILT</b> to steer by tilting, like a steering wheel. Tip the top toward you to climb.</figcaption>
-            </figure>
-            <figure>
-              <img src="images/legoplane-remote.jpg" alt="The phone controller screen with a stick, buttons and throttle" width="844" height="390" loading="lazy" />
-              <figcaption><b>On a TV or projector:</b> click 📱 in the game and scan the QR code. Your phone becomes the controller.</figcaption>
-            </figure>
-            <div class="keys">
-              <p><b>Keyboard</b></p>
-              <dl>
-                <dt>W / S</dt><dd>Climb / dive</dd>
-                <dt>A / D</dt><dd>Bank left / right</dd>
-                <dt>Shift / Ctrl</dt><dd>Throttle</dd>
-                <dt>B</dt><dd>Boat floats</dd>
-                <dt>T</dt><dd>Turbo: 1X → T2X → T3X</dd>
-                <dt>Space</dt><dd>Brakes</dd>
-                <dt>C</dt><dd>Camera</dd>
-                <dt>N</dt><dd>Big map</dd>
-                <dt>R</dt><dd>Restart</dd>
-              </dl>
-              <p class="tip">Takeoff: full throttle, then pull up gently at about 55 kt.</p>
+      <!-- ============ 5. Downloads (Android app and PSG1 app) ============ -->
+      <section class="section" id="download">
+        <header class="section-head">
+          <p class="kicker">03 // Download</p>
+          <h2>Get the app</h2>
+        </header>
+        <div class="downloads">
+          <article class="card dl" id="android">
+            <img src="images/legosky-icon.png" alt="" width="72" height="72" loading="lazy" />
+            <div>
+              <h3>Android</h3>
+              <p>Full screen. Always up to date.</p>
+              <p class="meta" id="appMeta">Android 7 or newer</p>
             </div>
-          </div>
-        </section>
+            <a class="btn btn-neon" href="downloads/lego-sky.apk" download>Download</a>
+          </article>
+          <article class="card dl" id="psg1">
+            <img src="images/legosky-icon.png" alt="" width="72" height="72" loading="lazy" />
+            <div>
+              <h3>PSG1</h3>
+              <p>Every city built in. Plays offline.</p>
+              <p class="meta" id="psg1Meta">Or hit Play now in the PSG1 browser</p>
+            </div>
+            <a class="btn btn-neon" href="downloads/lego-sky-psg1.apk" download>Download</a>
+          </article>
+        </div>
       </section>
     </main>
 
-    <footer class="site-footer">
+    <footer class="footer">
       <p>Made in Spartanburg, SC · <a href="https://latlas.lol/">latlas.lol</a></p>
-      <p class="credit">Lego Sky map data © OpenStreetMap contributors, Overture Maps Foundation. LEGO® is a trademark of the LEGO Group, which does not sponsor or endorse this site.</p>
+      <p class="credit">Map data © OpenStreetMap contributors, Overture Maps Foundation. LEGO® is a trademark of the LEGO Group, which does not sponsor or endorse this site.</p>
     </footer>
-    <script>
-      // Show the app version and size next to the download button.
-      fetch('downloads/lego-sky.json', { cache: 'no-store' })
-        .then((r) => r.json())
-        .then((a) => {
-          document.getElementById('appMeta').textContent =
-            `Version ${a.versionName} · ${Math.max(1, Math.round(a.size / 1024))} KB · Android 7 or newer`;
-        })
-        .catch(() => {});
-      fetch('downloads/lego-sky-psg1.json', { cache: 'no-store' })
-        .then((r) => r.json())
-        .then((a) => {
-          document.getElementById('psg1Meta').textContent =
-            `PlaySolana PSG1 · ${Math.max(1, Math.round(a.size / 1048576))} MB · every city built in, plays offline`;
-        })
-        .catch(() => {});
-    </script>
+
+    <!-- ============ Pop-up viewer (pictures, or a video when a thumbnail has data-video) ============ -->
+    <dialog class="modal" id="modal" aria-label="Media viewer">
+      <button class="modal-x" id="modalClose" type="button" aria-label="Close">✕</button>
+      <button class="modal-nav prev" id="modalPrev" type="button" aria-label="Previous">‹</button>
+      <figure>
+        <div class="modal-media" id="modalMedia"></div>
+        <figcaption id="modalCap"></figcaption>
+      </figure>
+      <button class="modal-nav next" id="modalNext" type="button" aria-label="Next">›</button>
+    </dialog>
+
+    <script src="site.js" defer></script>
   </body>
 </html>
