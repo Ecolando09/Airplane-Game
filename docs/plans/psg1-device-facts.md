@@ -87,7 +87,12 @@ names, not the browser numbers, and were the source of the earlier doubt.
 ## What this means
 
 1. The game is playable on the PSG1 today: open the address above in the
-   PSG1's browser.
+   PSG1's browser. **Conflict:** commit 01b3ef3 (another session, same day)
+   took PSG1 mode off the website and made the app the only PSG1 route, and
+   its install step is `adb install`, which this device refuses. After the
+   next deploy, `?psg1` will no longer work in the browser. Decide between
+   bringing a browser PSG1 mode back (for example, switching on when a
+   `psg1_gamepad` is seen) or finding a working install route for the app.
 2. The PSG1 app cannot be installed by ADB. To get a full-screen icon: try the
    browser's "Add to Home screen", or the on-device installer, or PlayGate.
 3. Phase 4 (performance) is the next real work: 36 fps at 50 % scale is below
