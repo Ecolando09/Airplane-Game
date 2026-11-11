@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # Builds the Lego Sky Android app (android/) into a signed APK.
-#   bash deploy/build-apk.sh OUT.apk
+#   bash deploy/build-apk.sh OUT.apk          the phone app (lol.latlas.legosky)
+#   bash deploy/build-apk.sh OUT.apk psg1     the PSG1 app (lol.latlas.legosky.psg1):
+#       its own name and package, opens the game in PSG1 mode, passes the
+#       built-in buttons to the page (see MainActivity)
 #
 # Uses Ubuntu/Debian's Android build tools (aapt, dx, zipalign, apksigner) and the
 # Android 14 SDK jar, so no Android Studio is needed. The signing key is made on
@@ -8,7 +11,8 @@
 # update signed with the same key as the app already on the phone.
 set -euo pipefail
 
-OUT=$(realpath -m "${1:?usage: build-apk.sh OUT.apk}")
+OUT=$(realpath -m "${1:?usage: build-apk.sh OUT.apk [psg1]}")
+VARIANT=${2:-phone}
 SRC=$(cd "$(dirname "$0")/../android" && pwd)
 SDK_DIR=${SDK_DIR:-/opt/latlas-play/android-sdk}
 KEYSTORE=${KEYSTORE:-/etc/latlas-play/android-release.keystore}
@@ -43,7 +47,18 @@ W=$(mktemp -d)
 trap 'rm -rf "$W"' EXIT
 mkdir -p "$W/gen" "$W/classes"
 
-aapt package -f -m -J "$W/gen" -M "$SRC/AndroidManifest.xml" -S "$SRC/res" -I "$JAR" -F "$W/app.apk"
+# The PSG1 variant: same code, its own name, package and "psg1" flag.
+RES=$SRC/res
+RENAME=()
+if [ "$VARIANT" = psg1 ]; then
+  cp -r "$SRC/res" "$W/res"
+  RES=$W/res
+  sed -i 's|<string name="app_name">[^<]*</string>|<string name="app_name">Lego Sky PSG1</string>|' "$RES/values/strings.xml"
+  sed -i 's|<bool name="psg1">false</bool>|<bool name="psg1">true</bool>|' "$RES/values/bools.xml"
+  RENAME=(--rename-manifest-package lol.latlas.legosky.psg1)
+fi
+
+aapt package -f -m -J "$W/gen" -M "$SRC/AndroidManifest.xml" -S "$RES" -I "$JAR" -F "$W/app.apk" ${RENAME[@]+"${RENAME[@]}"}
 javac -nowarn -Xlint:-options -source 8 -target 8 -bootclasspath "$JAR" -classpath "$JAR" -d "$W/classes" \
   $(find "$SRC/java" "$W/gen" -name '*.java')
 dalvik-exchange --dex --min-sdk-version=24 --output="$W/classes.dex" "$W/classes"

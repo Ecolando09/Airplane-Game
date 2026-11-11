@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- true only in the PSG1 build (deploy/build-apk.sh OUT.apk psg1) -->
+    <bool name="psg1">false</bool>
+</resources>

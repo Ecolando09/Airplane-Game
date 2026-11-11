@@ -91,15 +91,15 @@ fi
 
 # Android app: a window onto the live game, so it only needs rebuilding when the
 # app itself (android/) changes. Kept between runs; a failure here doesn't stop the update.
-say "Android app"
+say "Android apps"
 APK_DIR=/opt/latlas-play/apk
 APK_HASH=$(find android deploy/build-apk.sh -type f | sort | xargs sha256sum | sha256sum | cut -c1-16)
-if [ -s "$APK_DIR/lego-sky.apk" ] && [ "$(cat "$APK_DIR/hash" 2>/dev/null)" = "$APK_HASH" ]; then
+if [ -s "$APK_DIR/lego-sky.apk" ] && [ -s "$APK_DIR/lego-sky-psg1.apk" ] && [ "$(cat "$APK_DIR/hash" 2>/dev/null)" = "$APK_HASH" ]; then
   echo "Up to date"
-elif bash deploy/build-apk.sh "$APK_DIR/lego-sky.apk"; then
+elif bash deploy/build-apk.sh "$APK_DIR/lego-sky.apk" && bash deploy/build-apk.sh "$APK_DIR/lego-sky-psg1.apk" psg1; then
   echo "$APK_HASH" > "$APK_DIR/hash"
 else
-  echo "!! Couldn't build the Android app; the website is updated anyway."
+  echo "!! Couldn't build the Android apps; the website is updated anyway."
 fi
 if [ -s "$APK_DIR/lego-sky.apk" ]; then
   mkdir -p "$WEB/downloads"
@@ -110,6 +110,12 @@ if [ -s "$APK_DIR/lego-sky.apk" ]; then
   printf '{"versionCode":%s,"versionName":"%s","size":%s}\n' "$VC" "$VN" "$(stat -c %s "$APK_DIR/lego-sky.apk")" \
     > "$WEB/downloads/lego-sky.json"
   echo "Download: https://$DOMAIN/downloads/lego-sky.apk"
+fi
+# The PSG1 build (Play Solana handheld): install with  adb install -r lego-sky-psg1.apk
+if [ -s "$APK_DIR/lego-sky-psg1.apk" ]; then
+  mkdir -p "$WEB/downloads"
+  cp "$APK_DIR/lego-sky-psg1.apk" "$WEB/downloads/lego-sky-psg1.apk"
+  echo "PSG1:     https://$DOMAIN/downloads/lego-sky-psg1.apk"
 fi
 
 say "Starting the relay (phone controller + multiplayer)"
@@ -196,6 +202,8 @@ say "Done!"
 echo "Homepage:  https://$DOMAIN/"
 echo "Game:      https://$DOMAIN/legoplane/"
 echo "Android:   https://$DOMAIN/downloads/lego-sky.apk"
+echo "PSG1 app:  https://$DOMAIN/downloads/lego-sky-psg1.apk"
+echo "Device check page: https://$DOMAIN/legoplane/diag.html"
 echo
 echo "If the site doesn't load yet, check DNS: Porkbun needs an A record for"
 echo "'${DOMAIN%%.latlas.lol}' pointing to ${IP:-this server}."

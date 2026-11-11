@@ -9,6 +9,21 @@ Written 2026-11-11 for whoever (person or AI) does the building. Two projects:
 2. **Robot fixes**: four changes to robot mode.
    - `03-robot-fixes-plan.md`: potty breaks optional, driving supersized cars, jetpack flight, invisible blockers.
 
+## Status (updated 2026-11-11)
+
+| Plan | Status |
+|---|---|
+| `03` sections 1 to 3 (potty, driving, jetpack) | **Done** (commit 4b09bb2). Tests: `tools/tests/robot.mjs` |
+| `03` section 4 (invisible blockers) | **Done** (be7e96f). Tests: `tools/tests/blockers.mjs`. Collision view: backquote key or `?debug=colliders` |
+| `02` Phase 0 diagnostics page | **Done**: `https://play.latlas.lol/legoplane/diag.html`. The on-device checks still need the owner and the PSG1 |
+| `02` Phases 1, 2, 4 (layout, controls, menus, performance) | **Done** (380bb00). Tests: `tools/tests/psg1.mjs`. Try on a computer with `?psg1&fps` in a 620 x 540 window |
+| `02` Phase 3 (PSG1 app) | **Done**: `deploy/build-apk.sh OUT.apk psg1`, published at `https://play.latlas.lol/downloads/lego-sky-psg1.apk` |
+| `04` Part A (explore the extension) | **Not started**: needs a session in the Claude desktop app on the owner's computer |
+| `04` Track 1 (Unity shell) | Waiting on Part A. The web side it loads (`?psg1`, `window.legoSkyPad`) is ready |
+| `02` Phases 5, 6 (offline build, store) | Not started (only if a store listing is wanted) |
+
+Run all tests: `npx vite build && node tools/tests/robot.mjs && node tools/tests/blockers.mjs && node tools/tests/psg1.mjs`
+
 ## Recommended order
 
 1. Robot fixes 1 to 3 (potty, driving, jetpack). Small, independent, testable without the device.

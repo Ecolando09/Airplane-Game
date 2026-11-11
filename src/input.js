@@ -36,7 +36,8 @@ export class Input {
     window.legoSkyPad = {
       id: 'psg1_gamepad (app bridge)', connected: true, t: -1e9, axes: [0, 0, 0, 0],
       buttons: Array.from({ length: 17 }, () => ({ pressed: false, value: 0 })),
-      set(buttons, axes) {
+      set(buttons, axes, app) {
+        if (app) this.app = true;
         (buttons || []).forEach((v, i) => this.buttons[i] && Object.assign(this.buttons[i], { pressed: v > 0.5, value: v }));
         (axes || []).forEach((v, i) => (this.axes[i] = v));
         this.t = performance.now();
@@ -58,9 +59,10 @@ export class Input {
    * app calls window.legoSkyPad.set(buttons, axes) with the standard layout.
    */
   pad() {
+    const v = window.legoSkyPad;
+    if (v?.app) return v; // the PSG1 app feeds its buttons here: always trust it
     const gp = navigator.getGamepads?.().find((g) => g && g.connected !== false);
     if (gp) return gp;
-    const v = window.legoSkyPad;
     return v && performance.now() - v.t < 5000 ? v : null;
   }
 
