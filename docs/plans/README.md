@@ -4,7 +4,8 @@ Written 2026-11-11 for whoever (person or AI) does the building. Two projects:
 
 1. **PSG1 version**: get the game running on the Play Solana PSG1 handheld.
    - `01-psg1-research.md`: what is known about the device, with how reliable each fact is.
-   - `02-psg1-port-plan.md`: the step-by-step plan.
+   - `02-psg1-port-plan.md`: the step-by-step plan (screen layout, controls, app, performance, store).
+   - `04-playsolana-extension-plan.md`: explore the PlaySolana extension, then build the PSG1 version with it.
 2. **Robot fixes**: four changes to robot mode.
    - `03-robot-fixes-plan.md`: potty breaks optional, driving supersized cars, jetpack flight, invisible blockers.
 
@@ -12,9 +13,10 @@ Written 2026-11-11 for whoever (person or AI) does the building. Two projects:
 
 1. Robot fixes 1 to 3 (potty, driving, jetpack). Small, independent, testable without the device.
 2. Robot fix 4 (invisible blockers). Start with the debug view; ask the owner which city and look they were in.
-3. PSG1 Phase 0 (check the device). Needs the owner and the PSG1.
-4. PSG1 Phases 1 to 4.
-5. PSG1 Phases 5 and 6 only if a store listing is wanted.
+3. Explore the PlaySolana extension (`04` Part A). Must run in the Claude desktop app on the owner's computer.
+4. PSG1 Phase 0 (check the device). Needs the owner and the PSG1.
+5. Build the PSG1 version: `04` Track 1 together with `02` Phases 1, 2 and 4.
+6. `02` Phases 5 and 6 only if a store listing is wanted.
 
 ## Questions for the owner before starting
 
@@ -23,6 +25,7 @@ Written 2026-11-11 for whoever (person or AI) does the building. Two projects:
 3. In Google 3D, should the robot pass through buildings (recommended) or should their outlines be drawn?
 4. PSG1: is the goal to play on your own device (sideload), or a public listing in the Play Solana store? A public listing needs the game renamed and the LEGO, Marvel and Denny's references and family pins removed.
 5. Can you run the Phase 0 checks on the PSG1 (Developer Options, USB debugging, browser)?
+6. Is Unity installed on your computer, or are you willing to install it (several GB)? The extension's build tools need it.
 
 ## Things the builder needs to know about this repo
 
@@ -41,4 +44,4 @@ Written 2026-11-11 for whoever (person or AI) does the building. Two projects:
 
 Copy this into a new session on the repo:
 
-> Read `docs/plans/README.md` and the three plan files next to it. Ask me the "Questions for the owner" first. Then implement `03-robot-fixes-plan.md` sections 1 to 3, test each in headless Chromium, commit and push to `claude/lego-airplane-game-ttd82x`, and give me the deploy command. After that, do section 4 starting with the debug view. For the PSG1, start with Phase 0 of `02-psg1-port-plan.md`: use the PlaySolana extension's tools to confirm the device facts and tell me exactly what to check on my PSG1.
+> Read `docs/plans/README.md` and the four plan files next to it. Ask me the "Questions for the owner" first. Then implement `03-robot-fixes-plan.md` sections 1 to 3, test each in headless Chromium, commit and push to `claude/lego-airplane-game-ttd82x`, and give me the deploy command. After that, do section 4 starting with the debug view. For the PSG1, start with Part A of `04-playsolana-extension-plan.md` (explore the PlaySolana extension and write the notes file), then Phase 0 of `02-psg1-port-plan.md`, and tell me exactly what to check on my PSG1. This part needs a session in the Claude desktop app on my computer.
