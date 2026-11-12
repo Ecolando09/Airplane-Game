@@ -8,6 +8,15 @@ import { ROBOT_HEIGHT } from './robot.js';
 const BRICKS = 500;
 const REACH = 10; // meters around the fist that a punch breaks
 const GRAB = 9; // meters from the robot an object can be picked up
+// How tall a building each robot size can knock down (meters); landmarks need 8x.
+export const ROBOT_SIZES = [1, 2, 4, 8];
+const STRENGTH = { 1: 80, 2: 200, 4: Infinity, 8: Infinity };
+const LANDMARK_SIZE = 8;
+/** The smallest robot size that can break collider c. */
+export function sizeToBreak(c) {
+  if (c.lm) return LANDMARK_SIZE;
+  return ROBOT_SIZES.find((s) => (c.h ?? 0) <= STRENGTH[s]) ?? 4;
+}
 
 export class Rampage {
   /**
@@ -52,6 +61,8 @@ export class Rampage {
     scene.add(this.marker);
     this.driving = null; // { item, mesh } while in a supersized car
     this.time = 0;
+    this.power = 1; // the robot's size: decides how big a thing it can break
+    this.toughNote = 0; // when the "too strong" hint was last shown
   }
 
   // ---------------------------------------------------------------- explosions
@@ -132,6 +143,17 @@ export class Rampage {
   wreck(c, dir) {
     const w = this.world;
     if (!this.hooks.canBreak()) return false;
+    if (c.t !== 'tree' && sizeToBreak(c) > this.power) {
+      // Too big for a robot this size: say how big it needs to be (now and then).
+      if (this.time - this.toughNote > 3) {
+        this.toughNote = this.time;
+        const need = sizeToBreak(c);
+        this.hooks.message(c.lm ? `🗿 Landmarks only fall to a ${need}× robot. Grow bigger!` : `💪 Too strong! Grow to ${need}× to smash this one`);
+        this.hooks.tough?.(c);
+      }
+      return false;
+    }
+    if (c.lm) return this._topple(c, dir);
     if (!w.destroy(c, dir)) return false;
     if (c.t === 'tree') {
       this.stats.trees++;
@@ -146,6 +168,20 @@ export class Rampage {
       this.score(Math.round(10 + c.h * 1.5), 'building');
       this.hooks.wrecked?.(c);
     }
+    return true;
+  }
+
+  /** A giant robot knocks down a whole landmark. */
+  _topple(c, dir) {
+    const g = c.lm;
+    if (!this.world.destroyLandmark(g, dir)) return false;
+    this.stats.buildings++;
+    const p = g.position;
+    for (let k = 0; k < 4; k++) this.explode(p.x + (Math.random() - 0.5) * 40, p.y + 10 + k * 25, p.z + (Math.random() - 0.5) * 40, 22);
+    this.burst(p.x, p.y + 20, p.z, 40, 0x9a9a94, 60);
+    this.score(2000, 'landmark');
+    this.hooks.message('🗿💥 You knocked down a LANDMARK!');
+    this.hooks.wrecked?.(c);
     return true;
   }
 
@@ -271,7 +307,7 @@ export class Rampage {
     let bestD = 12;
     for (const it of this.props.items) {
       if (it.held || (it.scale || 1) < 2 || !this.props.info(it.kind).drive) continue;
-      if (Math.abs(it.y - bot.pos.y) > ROBOT_HEIGHT) continue;
+      if (Math.abs(it.y - bot.pos.y) > ROBOT_HEIGHT * (bot.size || 1)) continue;
       const d = Math.hypot(it.x - bot.pos.x, it.z - bot.pos.z) - this.props.radius(it);
       if (d < bestD) {
         bestD = d;
@@ -306,7 +342,7 @@ export class Rampage {
 
   /** Landing hard from a jump shakes down everything around the feet. */
   slam(bot, speed) {
-    const r = THREE.MathUtils.clamp(speed * 0.3, 10, 22);
+    const r = THREE.MathUtils.clamp(speed * 0.3, 10, 22) * (bot.size || 1);
     this.burst(bot.pos.x, bot.pos.y, bot.pos.z, 8, 0xb5b0a4, 14);
     this.explode(bot.pos.x, bot.pos.y + 2, bot.pos.z, r * 0.8);
     return this.blast(bot.pos.x, bot.pos.y + 3, bot.pos.z, r, bot.pos);
@@ -324,21 +360,21 @@ export class Rampage {
     const ride = this.driveTarget(bot);
     if (ride) return this.enterCar(bot, ride);
     const f = bot.forward;
-    const cx = bot.pos.x + f.x * 4;
-    const cz = bot.pos.z + f.z * 4;
-    let it = this.props.nearest(cx, cz, GRAB);
+    const cx = bot.pos.x + f.x * 4 * (bot.size || 1);
+    const cz = bot.pos.z + f.z * 4 * (bot.size || 1);
+    let it = this.props.nearest(cx, cz, GRAB * (bot.size || 1));
     const car = this.traffic.near(cx, cz, GRAB + 2)[0];
     if (car && (!it || Math.hypot(car.x - cx, car.z - cz) < Math.hypot(it.x - cx, it.z - cz))) {
       this.traffic.remove(car);
       it = this.props.add('car', car.x, car.z, car.yaw, car.color) || it;
     }
-    if (!it || Math.abs(it.y - bot.pos.y) > ROBOT_HEIGHT) {
+    if (!it || Math.abs(it.y - bot.pos.y) > ROBOT_HEIGHT * (bot.size || 1)) {
       const h = this.nearestHint(bot);
       this.hooks.message(h ? `Nothing in reach. Nearest: ${h.name}, ${h.dist} m ${h.side} (yellow arrow)` : 'Nothing to grab here');
       return false;
     }
     if (this.props.info(it.kind).drive && it.scale >= 2) return this.enterCar(bot, it);
-    if (it.scale > 2) {
+    if (it.scale > 2 * (bot.size || 1)) {
       this.hooks.message(`That ${this.props.info(it.kind).name} is too big to lift now. Shrink it first!`);
       return false;
     }
@@ -409,9 +445,10 @@ export class Rampage {
       if (p.t > 0) continue;
       this.pending.splice(this.pending.indexOf(p), 1);
       const f = p.bot.forward;
-      const x = p.bot.pos.x + f.x * 7;
-      const z = p.bot.pos.z + f.z * 7;
-      this.blast(x, p.bot.pos.y + 8, z, REACH, p.bot.pos);
+      const k = p.bot.size || 1; // a bigger robot's fist lands farther out and hits a wider area
+      const x = p.bot.pos.x + f.x * 7 * k;
+      const z = p.bot.pos.z + f.z * 7 * k;
+      this.blast(x, p.bot.pos.y + 8 * k, z, REACH * k, p.bot.pos);
     }
     if (bot) {
       // Walking through trees knocks them over; walking into things kicks them.

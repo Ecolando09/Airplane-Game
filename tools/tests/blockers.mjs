@@ -17,8 +17,9 @@ try {
   // Walk from outside Tokyo Tower straight to its middle, between two legs.
   const tower = await page.evaluate(() => {
     const g = window.__game;
-    const { walk } = g.bot();
+    const { walk, rampage } = g.bot();
     const w = g.world;
+    rampage.power = 4; // strong enough to clear any building on the way (only the legs should matter)
     const t = w.data.custom.find((c) => c.kind === 'tokyotower');
     const a = -t.ang;
     const at = (lx, lz) => [t.x + lx * Math.cos(a) - lz * Math.sin(a), t.z + lx * Math.sin(a) + lz * Math.cos(a)];
@@ -69,6 +70,10 @@ try {
   // Collision view: toggling draws outlines near the robot.
   const view = await page.evaluate(async () => {
     const g = window.__game;
+    // Back next to Tokyo Tower, where there is plenty to outline.
+    const { walk } = g.bot();
+    const t = g.world.data.custom.find((c) => c.kind === 'tokyotower');
+    walk.place(new walk.pos.constructor(t.x + 70, g.world.heightAt(t.x + 70, t.z), t.z), 0, null);
     window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Backquote' }));
     await new Promise((r) => setTimeout(r, 1500));
     const scene = g.camera.parent || null;

@@ -213,8 +213,19 @@ export class RobotWalk {
     this.blocker = null; // the unbreakable thing in the way, if any
     this.blockedT = 0; // how long it has been in the way (s)
     this.atEdge = false; // pressed against the edge of the map
+    this.size = 1; // grown robot: 1, 2, 4 or 8 times normal (see setSize)
     this._fwd = new THREE.Vector3();
     this._right = new THREE.Vector3();
+  }
+
+  /** Grow or shrink the robot (1, 2, 4 or 8): bigger walks faster, jumps higher, hits harder. */
+  setSize(size) {
+    this.size = size;
+    this.plane.group.scale.setScalar(size);
+  }
+
+  get height() {
+    return ROBOT_HEIGHT * this.size;
   }
 
   /** Put the robot somewhere: feet at `pos`, facing `yaw`, moving at `vel`. */
@@ -261,7 +272,8 @@ export class RobotWalk {
     // Jets give running speed in the air and much better steering, so holding
     // jump turns the robot into something that flies.
     const jets = !this.onGround && input.brake;
-    const top = ((input.run ?? input.throttle > 0) || jets ? RUN : WALK) * (this.onWater ? 0.6 : 1) * this.turboNow; // T2X, T3X: rocket-powered
+    const big = Math.sqrt(this.size); // a bigger robot takes bigger steps
+    const top = ((input.run ?? input.throttle > 0) || jets ? RUN : WALK) * (this.onWater ? 0.6 : 1) * this.turboNow * big; // T2X, T3X: rocket-powered
     const f = this.forward;
     const r = this.right;
     const wantX = f.x * c.pitch * top + r.x * c.yaw * 12;
@@ -274,13 +286,13 @@ export class RobotWalk {
     // The climb rate eases toward JET_CLIMB (a tap is a hop, holding climbs, and
     // holding while falling cushions the landing) and fades out near the ceiling.
     if (input.brake && this.onGround) {
-      this.vel.y = 24;
+      this.vel.y = 24 * Math.sqrt(this.size);
       this.onGround = false;
     }
     this.jetting = !this.onGround && input.brake;
     if (this.jetting) {
       const agl = this.pos.y - w.groundAt(this.pos.x, this.pos.z);
-      const climb = (JET_CLIMB + 10 * (this.turboNow - 1)) * THREE.MathUtils.clamp((JET_CEILING - agl) / 100, -0.3, 1);
+      const climb = (JET_CLIMB + 10 * (this.turboNow - 1)) * Math.sqrt(this.size) * THREE.MathUtils.clamp((JET_CEILING - agl) / 100, -0.3, 1);
       this.vel.y += (climb - this.vel.y) * (1 - Math.exp(-dt * 2.5));
     } else if (!this.onGround) {
       this.vel.y = Math.max(-FALL_MAX, this.vel.y - GRAVITY * dt);
@@ -289,14 +301,14 @@ export class RobotWalk {
     // Move in short steps; walls stop you (slide along them), roofs you can stand on.
     const dist = Math.hypot(this.vel.x, this.vel.z) * dt;
     const steps = Math.max(1, Math.ceil(dist / 1.5));
-    const rad = this.plane.radius;
+    const rad = this.plane.radius * this.size;
     // On the ground the robot never climbs onto things: anything in its way,
     // however low, is a wall to walk through (see below). Up on a roof, or
     // landing from a jump, low roofs can be stepped onto.
     const terrain = w.groundAt(this.pos.x, this.pos.z);
     const walking = this.onGround && this.pos.y - terrain < 1;
     const step = walking ? 0.3 : 2.5;
-    const hit = (x, z) => w.blockedAt(x, z, this.pos.y, rad, ROBOT_HEIGHT, step);
+    const hit = (x, z) => w.blockedAt(x, z, this.pos.y, rad, this.height, step);
     let inside = hit(this.pos.x, this.pos.z);
     if (inside && this.onRam?.(inside)) inside = hit(this.pos.x, this.pos.z); // standing in something: break it
     const stuck = !!inside; // a landmark around the robot: let it walk out
@@ -362,10 +374,10 @@ export class RobotWalk {
 
     // Head bump: flying up into a bridge deck or an arch stops at its underside.
     if (this.vel.y > 0) {
-      const head = this.pos.y + ROBOT_HEIGHT;
+      const head = this.pos.y + this.height;
       const roof = w.ceilingAt(this.pos.x, this.pos.z, head, head + this.vel.y * dt, rad * 0.5);
       if (roof !== null) {
-        this.pos.y = roof - ROBOT_HEIGHT - 0.05;
+        this.pos.y = roof - this.height - 0.05;
         this.vel.y = 0;
       }
     }

@@ -46,7 +46,7 @@ function solid(world, g, lx, lz, hw, hd, bottom, top) {
   const x = g.position.x + lx * c - lz * s;
   const z = g.position.z + lx * s + lz * c;
   const R = Math.hypot(hw, hd);
-  world._addCollider({ t: 'box', x, z, c, s, hw, hd, bottom, top },
+  world._addCollider({ t: 'box', x, z, c, s, hw, hd, bottom, top, lm: g },
     x - R + world.halfX, z - R + world.halfZ, x + R + world.halfX, z + R + world.halfZ);
 }
 
@@ -55,7 +55,7 @@ function cyl(world, g, lx, lz, r, bottom, top) {
   const a = -g.rotation.y;
   const x = g.position.x + lx * Math.cos(a) - lz * Math.sin(a);
   const z = g.position.z + lx * Math.sin(a) + lz * Math.cos(a);
-  world._addCollider({ t: 'cyl', x, z, r, bottom, top }, x - r + world.halfX, z - r + world.halfZ, x + r + world.halfX, z + r + world.halfZ);
+  world._addCollider({ t: 'cyl', x, z, r, bottom, top, lm: g }, x - r + world.halfX, z - r + world.halfZ, x + r + world.halfX, z + r + world.halfZ);
 }
 
 /** Lowest ground under a footprint, so models never float on a slope. */

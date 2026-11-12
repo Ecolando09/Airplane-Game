@@ -154,6 +154,7 @@ export class World {
     }
     for (const fn of this.animate) fn(t);
     this._updateCollapses(t);
+    this._updateFallen(t);
   }
 
   // ---------------------------------------------------------------- terrain
@@ -1082,6 +1083,37 @@ export class World {
       }
     }
     this.destroyed = [];
+    for (const f of this.fallen || []) {
+      for (const c of f.parts) c.dead = false;
+      f.g.position.copy(f.pos);
+      f.g.quaternion.copy(f.quat);
+    }
+    this.fallen = [];
+  }
+
+  /**
+   * Knock down a whole hand-built landmark (the Gateway Arch, Tokyo Tower...):
+   * all its solids stop blocking and the model topples over and sinks.
+   * `dir` (x, z) is the way it falls. Undone by repair().
+   */
+  destroyLandmark(g, dir = { x: 1, z: 0 }) {
+    const parts = this.byId.filter((c) => c.lm === g && !c.dead);
+    if (!parts.length) return false;
+    for (const c of parts) c.dead = true;
+    this.fallen ||= [];
+    const axis = new THREE.Vector3(dir.z, 0, -dir.x).normalize();
+    this.fallen.push({ g, parts, pos: g.position.clone(), quat: g.quaternion.clone(), axis, t0: null });
+    return true;
+  }
+
+  _updateFallen(t) {
+    for (const f of this.fallen || []) {
+      f.t0 ??= t;
+      const u = Math.min(1, (t - f.t0) / 2.2);
+      const e = u * u; // slow start, then it really goes
+      f.g.quaternion.copy(new THREE.Quaternion().setFromAxisAngle(f.axis, e * 1.35).multiply(f.quat));
+      f.g.position.set(f.pos.x, f.pos.y - e * 25, f.pos.z);
+    }
   }
 
   // -------------------------------------------------------------- collision

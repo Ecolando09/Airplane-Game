@@ -14,7 +14,7 @@ import { Multiplayer, randomRoomCode } from './multiplayer.js';
 import { BeerRun } from './beerrun.js';
 import { createRobot, RobotWalk } from './robot.js';
 import { Props } from './props.js';
-import { Rampage } from './rampage.js';
+import { Rampage, ROBOT_SIZES } from './rampage.js';
 import { RingRace, RampageGame } from './games.js';
 import { ColliderView } from './colliderview.js';
 import { PadNav, pad as padGlyph, isPsg1, isPsg1Pad, enablePsg1 } from './psg1.js';
@@ -472,9 +472,10 @@ function updateCamera(dt) {
     // Over the robot's shoulder, far enough back to see what it's about to hit.
     // Pull back a little while flying on the jets, to see where you're going.
     botAir += ((isBot && !flight.onGround ? 1 : 0) - botAir) * (1 - Math.exp(-dt * 1.5));
-    const back = (mode === 'chase' ? 36 : 80) * (1 + 0.35 * (flight.driving || 0)) * (1 + 0.5 * botAir);
-    want = p.clone().addScaledVector(flatF, -back).add(new THREE.Vector3(0, mode === 'chase' ? 19 : 42, 0));
-    look = p.clone().addScaledVector(flatF, 14).add(new THREE.Vector3(0, 9, 0));
+    const big = (flight.size || 1) ** 0.85; // a grown robot needs the camera farther back
+    const back = (mode === 'chase' ? 36 : 80) * (1 + 0.35 * (flight.driving || 0)) * (1 + 0.5 * botAir) * big;
+    want = p.clone().addScaledVector(flatF, -back).add(new THREE.Vector3(0, (mode === 'chase' ? 19 : 42) * big * (1 + (big - 1) * 0.25), 0)); // higher too, to see over towers
+    look = p.clone().addScaledVector(flatF, 14 * big).add(new THREE.Vector3(0, 9 * big, 0));
     if (potty.sitting > 0) {
       // On the toilet: look from the front, so the tank isn't in the way.
       want = p.clone().addScaledVector(flatF, 30).addScaledVector(flight.right, 12).add(new THREE.Vector3(0, 13, 0));
@@ -1070,6 +1071,8 @@ function start(airborne, { lesson = false } = {}) {
   leaveBot();
   potty.sitting = 0;
   rampage.reset(); // a fresh start puts the city back together
+  bot.walk.setSize(1); // and the robot back to normal size
+  rampage.power = 1;
   updateBotHud();
   clearDebris();
   autoLand = null;
@@ -1759,7 +1762,12 @@ mp.onEvent = (m) => {
   if (m.t === 'smash' && m.city === settings.city && Array.isArray(m.ids)) {
     for (const id of m.ids.slice(0, 60)) {
       const c = world.byId[id];
-      if (!c || !world.breakable(c) || google) continue;
+      if (!c || google) continue;
+      if (c.lm) {
+        world.destroyLandmark(c.lm); // a friend's giant robot knocked down a landmark
+        continue;
+      }
+      if (!world.breakable(c)) continue;
       world.destroy(c);
       if (c.t !== 'tree' && Math.hypot(c.x - flight.pos.x, c.z - flight.pos.z) < 3000) rampage.explode(c.x, c.base + Math.min(c.h, 30) / 2, c.z, 14);
     }
@@ -1915,7 +1923,8 @@ if (!__PSG1__) {
   <div>Copter: <b>left stick</b> ◀▶ turn, ▲▼ speed · <b>right stick</b> ▲▼ up / down</div>
   <div><kbd class="pad pad-B">B</kbd> floats · <kbd class="pad">RB</kbd> turbo · <kbd class="pad">LB</kbd> auto-land · <kbd class="pad pad-Y">Y</kbd> camera</div>
   <div><kbd class="pad pad-X">X</kbd> robot mode: left stick walks (all the way to run), <kbd class="pad pad-A">A</kbd> jump (hold to fly), <kbd class="pad">RB</kbd> smash,
-    <kbd class="pad pad-B">B</kbd> grab, throw or drive, <kbd class="pad">LB</kbd> turbo, <kbd class="pad">▲</kbd><kbd class="pad">▼</kbd> supersizer</div>
+    <kbd class="pad pad-B">B</kbd> grab, throw or drive, <kbd class="pad">LB</kbd> turbo, <kbd class="pad">▲</kbd><kbd class="pad">▼</kbd> supersizer,
+    click the <b>right stick</b> to grow the robot, the <b>left stick</b> to shrink it</div>
   <div><kbd class="pad">◀</kbd> potty · <kbd class="pad">▶</kbd> not now · <kbd class="pad">VIEW</kbd> big map · <kbd class="pad">MENU</kbd> pause</div>
   <div>Menus: D-pad moves · <kbd class="pad pad-A">A</kbd> choose · <kbd class="pad pad-B">B</kbd> back · <kbd class="pad">LB</kbd><kbd class="pad">RB</kbd> city · <kbd class="pad">MENU</kbd> play</div>
 </div>`);
@@ -1954,7 +1963,8 @@ const PSG1_CONTROLS = `
             <div>Copter: <b>left stick</b> ◀▶ turn, ▲▼ speed · <b>right stick</b> ▲▼ up / down</div>
             <div><kbd class="pad">A</kbd> floats · <kbd class="pad">R1</kbd> turbo · <kbd class="pad">L1</kbd> auto-land · <kbd class="pad">X</kbd> camera</div>
             <div><kbd class="pad">Y</kbd> robot mode: walk with the left stick (all the way to run), <kbd class="pad">B</kbd> jump (hold to fly),
-              <kbd class="pad">R1</kbd> smash, <kbd class="pad">A</kbd> grab, throw or drive, <kbd class="pad">L1</kbd> turbo, <kbd class="pad">▲</kbd><kbd class="pad">▼</kbd> supersizer</div>
+              <kbd class="pad">R1</kbd> smash, <kbd class="pad">A</kbd> grab, throw or drive, <kbd class="pad">L1</kbd> turbo, <kbd class="pad">▲</kbd><kbd class="pad">▼</kbd> supersizer,
+              click the <b>right stick</b> to grow the robot, the <b>left stick</b> to shrink it</div>
             <div><kbd class="pad">◀</kbd> potty · <kbd class="pad">▶</kbd> not now · <kbd class="pad">SELECT</kbd> big map · <kbd class="pad">START</kbd> menu</div>
             <div>Menus: <kbd class="pad">✚</kbd> move · <kbd class="pad">A</kbd> choose · <kbd class="pad">B</kbd> back · <kbd class="pad">L1</kbd><kbd class="pad">R1</kbd> city · <kbd class="pad">START</kbd> play</div>
           </div>`;
@@ -2123,8 +2133,8 @@ function transform() {
 function finishMorph() {
   if (!morph) return;
   morph.from.visible = false;
-  morph.from.scale.setScalar(1);
-  morph.to.scale.setScalar(1);
+  morph.from.scale.setScalar(morphSize(morph.from));
+  morph.to.scale.setScalar(morphSize(morph.to));
   morph = null;
 }
 
@@ -2142,14 +2152,17 @@ function leaveBot() {
   setBotUi();
 }
 
+/** Full size of a shape: the robot keeps its grown size. */
+const morphSize = (g) => (g === bot.model.group ? bot.walk.size : 1);
+
 /** The shape change: the old shape spins and shrinks while the new one grows. */
 function updateMorph(dt) {
   morph.t = Math.min(1, morph.t + dt / 0.55);
   const u = morph.t * morph.t * (3 - 2 * morph.t);
   morph.from.position.copy(plane.group.position);
-  morph.from.scale.setScalar(Math.max(0.001, 1 - u));
+  morph.from.scale.setScalar(Math.max(0.001, 1 - u) * morphSize(morph.from));
   morph.from.rotation.y += dt * 14;
-  morph.to.scale.setScalar(Math.max(0.001, u));
+  morph.to.scale.setScalar(Math.max(0.001, u) * morphSize(morph.to));
   if (morph.t >= 1) finishMorph();
 }
 
@@ -2172,7 +2185,7 @@ function setBotUi() {
 function updateBotHud() {
   const n = rampage?.total || 0;
   $('botHud').hidden = !isBot && !n;
-  $('botHud').textContent = `🤖 💥 ${n} smashed${rampage?.held ? ` · holding ${props.info(rampage.held.item.kind).name}` : ''}${rampage?.driving ? ` · driving ${props.info(rampage.driving.item.kind).name}` : ''}`;
+  $('botHud').textContent = `🤖${bot?.walk.size > 1 ? ` ${bot.walk.size}×` : ''} 💥 ${n} smashed${rampage?.held ? ` · holding ${props.info(rampage.held.item.kind).name}` : ''}${rampage?.driving ? ` · driving ${props.info(rampage.driving.item.kind).name}` : ''}`;
 }
 function botSmash() {
   if (!running || !isBot) return;
@@ -2189,6 +2202,26 @@ input.on('transform', transform);
 // (the vehicle's TURBO button doubles as SMASH for the robot).
 input.on('turboKey', () => setTurbo((flight.turbo % 3) + 1));
 input.on('botTurbo', () => setTurbo((flight.turbo % 3) + 1));
+// Growing the robot itself: 1x, 2x, 4x, 8x. A bigger robot breaks taller
+// buildings, and at 8x even the hand-built landmarks.
+function growBot(step) {
+  if (!running || !isBot || potty.sitting > 0) return;
+  const w = bot.walk;
+  const i = ROBOT_SIZES.indexOf(w.size);
+  const next = ROBOT_SIZES[THREE.MathUtils.clamp(i + step, 0, ROBOT_SIZES.length - 1)];
+  if (next === w.size) return message(step > 0 ? '🤖 That\'s as big as the robot gets (8×)!' : '🤖 The robot is already normal size', 2);
+  rampage.release(w);
+  w.setSize(next);
+  rampage.power = next;
+  sound.blip(step > 0 ? 'grow' : 'shrink');
+  shake = Math.min(1.6, shake + (step > 0 ? 0.8 : 0.3));
+  rampage.burst(w.pos.x, w.pos.y + 6 * next, w.pos.z, 8 * next, step > 0 ? 0x4fd8ff : 0xc06bff, 16);
+  const can = { 1: 'buildings up to 80 m', 2: 'buildings up to 200 m', 4: 'any building', 8: 'any building AND landmarks' }[next];
+  message(`🤖 ${step > 0 ? 'Grew' : 'Shrank'} to ${next}×!<small>Can smash ${can}</small>`, 3);
+  updateBotHud();
+}
+input.on('grow', () => growBot(1));
+input.on('shrink', () => growBot(-1));
 input.on('bigger', () => running && isBot && rampage.resize(flight, 2) && updateBotHud());
 input.on('smaller', () => running && isBot && rampage.resize(flight, 0.5) && updateBotHud());
 input.on('smash', botSmash);

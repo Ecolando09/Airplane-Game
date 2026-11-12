@@ -20,7 +20,7 @@ export class Input {
     const actions = {
       KeyC: 'cam', KeyR: 'reset', KeyM: 'mute', KeyI: 'invert', KeyB: 'floats', KeyN: 'map',
       KeyP: 'potty', Period: 'bigger', Comma: 'smaller', KeyF: 'transform', KeyG: 'grab', KeyX: 'smash',
-      KeyT: 'turboKey', KeyL: 'autoland', Enter: 'respawn', NumpadEnter: 'respawn', Digit1: 'turbo1', Digit2: 'turbo2', Digit3: 'turbo3', Escape: 'pause', Backquote: 'colliders',
+      KeyT: 'turboKey', KeyL: 'autoland', Enter: 'respawn', NumpadEnter: 'respawn', Digit1: 'turbo1', Digit2: 'turbo2', Digit3: 'turbo3', Escape: 'pause', Backquote: 'colliders', BracketRight: 'grow', BracketLeft: 'shrink',
     };
     addEventListener('keydown', (e) => {
       if (e.repeat || e.target.closest?.('input, textarea')) return; // typing a name, not flying
@@ -323,8 +323,8 @@ export class Input {
     } else {
       this._navDir = 'hold'; // a direction held while a menu closes doesn't count as a move
       const map = P
-        ? { 1: 'floats', 2: 'transform', 3: 'cam', 4: 'l1', 5: 'turbo', 8: 'map', 9: 'pause', 12: 'dUp', 13: 'dDown', 14: 'dLeft', 15: 'dRight' }
-        : { 1: 'floats', 2: 'transform', 3: 'cam', 4: 'l1', 5: 'turbo', 8: 'map', 9: 'pause', 12: 'dUp', 13: 'dDown', 14: 'dLeft', 15: 'dRight' };
+        ? { 1: 'floats', 2: 'transform', 3: 'cam', 4: 'l1', 5: 'turbo', 8: 'map', 9: 'pause', 10: 'shrink', 11: 'grow', 12: 'dUp', 13: 'dDown', 14: 'dLeft', 15: 'dRight' }
+        : { 1: 'floats', 2: 'transform', 3: 'cam', 4: 'l1', 5: 'turbo', 8: 'map', 9: 'pause', 10: 'shrink', 11: 'grow', 12: 'dUp', 13: 'dDown', 14: 'dLeft', 15: 'dRight' };
       for (const i in map) if (fresh(Number(i))) this.emit(map[i]);
     }
     gp.buttons.forEach((b, i) => (prev[i] = !!b.pressed));
