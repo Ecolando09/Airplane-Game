@@ -14,7 +14,7 @@ import { Multiplayer, randomRoomCode } from './multiplayer.js';
 import { BeerRun } from './beerrun.js';
 import { createRobot, RobotWalk } from './robot.js';
 import { Props } from './props.js';
-import { Rampage, ROBOT_SIZES } from './rampage.js';
+import { Rampage, ROBOT_SIZES, sizeName } from './rampage.js';
 import { RingRace, RampageGame } from './games.js';
 import { PottyTime } from './pottytime.js';
 import { ColliderView } from './colliderview.js';
@@ -3387,7 +3387,7 @@ function setBotUi() {
 function updateBotHud() {
   const n = rampage?.total || 0;
   $('botHud').hidden = !isBot && !n;
-  $('botHud').textContent = `🤖${bot?.walk.size > 1 ? ` ${bot.walk.size}×` : ''} 💥 ${n} smashed${rampage?.held ? ` · holding ${props.info(rampage.held.item.kind).name}` : ''}${rampage?.driving ? ` · driving ${props.info(rampage.driving.item.kind).name}` : ''}`;
+  $('botHud').textContent = `🤖${bot?.walk.size !== 1 ? ` ${sizeName(bot.walk.size)}×` : ''} 💥 ${n} smashed${rampage?.held ? ` · holding ${props.info(rampage.held.item.kind).name}` : ''}${rampage?.driving ? ` · driving ${props.info(rampage.driving.item.kind).name}` : ''}`;
 }
 function botSmash() {
   if (!running || !isBot) return;
@@ -3413,22 +3413,22 @@ input.on('transform', () => (isBot && driveTargetNow && !rampage.driving ? enter
 // (the vehicle's TURBO button doubles as SMASH for the robot).
 input.on('turboKey', () => setTurbo((flight.turbo % 3) + 1));
 input.on('botTurbo', () => setTurbo((flight.turbo % 3) + 1));
-// Growing the robot itself: 1x, 2x, 4x, 8x. A bigger robot breaks taller
-// buildings, and at 8x even the hand-built landmarks.
+// Growing the robot itself: 1/4x, 1/2x, 1x, 2x, 4x, 8x. A bigger robot breaks
+// taller buildings, and at 8x even the hand-built landmarks; a shrunk one only sheds and small houses.
 function growBot(step) {
   if (!running || !isBot || potty.sitting > 0) return;
   const w = bot.walk;
   const i = ROBOT_SIZES.indexOf(w.size);
   const next = ROBOT_SIZES[THREE.MathUtils.clamp(i + step, 0, ROBOT_SIZES.length - 1)];
-  if (next === w.size) return message(step > 0 ? '🤖 That\'s as big as the robot gets (8×)!' : '🤖 The robot is already normal size', 2);
+  if (next === w.size) return message(step > 0 ? '🤖 That\'s as big as the robot gets (8×)!' : '🤖 That\'s as small as the robot gets (¼×)!', 2);
   rampage.release(w);
   w.setSize(next);
   rampage.power = next;
   sound.blip(step > 0 ? 'grow' : 'shrink');
   shake = Math.min(1.6, shake + (step > 0 ? 0.8 : 0.3));
   rampage.burst(w.pos.x, w.pos.y + 6 * next, w.pos.z, 8 * next, step > 0 ? 0x4fd8ff : 0xc06bff, 16);
-  const can = { 1: 'buildings up to 80 m', 2: 'buildings up to 200 m', 4: 'any building', 8: 'any building AND landmarks' }[next];
-  message(`🤖 ${step > 0 ? 'Grew' : 'Shrank'} to ${next}×!<small>Can smash ${can}</small>`, 3);
+  const can = { 0.25: 'sheds and the smallest houses', 0.5: 'small houses up to 30 m', 1: 'buildings up to 80 m', 2: 'buildings up to 200 m', 4: 'any building', 8: 'any building AND landmarks' }[next];
+  message(`🤖 ${step > 0 ? 'Grew' : 'Shrank'} to ${sizeName(next)}×!<small>Can smash ${can}</small>`, 3);
   updateBotHud();
 }
 input.on('grow', () => growBot(1));

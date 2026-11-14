@@ -32,6 +32,35 @@ try {
   check('the robot model is drawn bigger', grow.model === 4);
   check('[ shrinks it again', grow.back === 2);
 
+  // Shrink below normal: [ from 1x goes to 1/2x then 1/4x, and no smaller.
+  const small = await page.evaluate(() => {
+    const g = window.__game;
+    const { walk, rampage } = g.bot();
+    const key = (code) => { window.dispatchEvent(new KeyboardEvent('keydown', { code })); window.dispatchEvent(new KeyboardEvent('keyup', { code })); };
+    walk.setSize(1);
+    rampage.power = 1;
+    key('BracketLeft');
+    const half = walk.size;
+    key('BracketLeft');
+    const quarter = walk.size;
+    key('BracketLeft');
+    const out = { half, quarter, floor: walk.size, model: walk.plane.group.scale.x, hud: document.getElementById('botHud').textContent, msg: document.getElementById('message').textContent };
+    // A tiny robot only breaks small things.
+    const w = g.world;
+    const all = w.byId.filter((c) => c.t !== 'tree' && !c.dead && w.breakable(c) && !c.lm);
+    const shed = all.find((c) => c.h > 3 && c.h < 11);
+    const mid = all.find((c) => c.h > 40 && c.h < 75);
+    out.shed = shed && rampage.wreck(shed, { x: 1, z: 0 });
+    out.mid = mid && rampage.wreck(mid, { x: 1, z: 0 });
+    rampage.reset();
+    walk.setSize(1);
+    rampage.power = 1;
+    return out;
+  });
+  check('[ shrinks the robot below normal: 1/2x, then 1/4x, and no smaller', small.half === 0.5 && small.quarter === 0.25 && small.floor === 0.25 && small.model === 0.25, JSON.stringify(small));
+  check('... the HUD says ¼×', small.hud.includes('¼×'));
+  check('a ¼× robot can still smash a small shed or house, but not a 40-75 m building', small.shed === true && small.mid === false);
+
   const smash = await page.evaluate(() => {
     const g = window.__game;
     const { rampage, walk } = g.bot();

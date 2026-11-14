@@ -213,12 +213,12 @@ export class RobotWalk {
     this.blocker = null; // the unbreakable thing in the way, if any
     this.blockedT = 0; // how long it has been in the way (s)
     this.atEdge = false; // pressed against the edge of the map
-    this.size = 1; // grown robot: 1, 2, 4 or 8 times normal (see setSize)
+    this.size = 1; // robot size: 1/4, 1/2, 1 (normal), 2, 4 or 8 (see setSize)
     this._fwd = new THREE.Vector3();
     this._right = new THREE.Vector3();
   }
 
-  /** Grow or shrink the robot (1, 2, 4 or 8): bigger walks faster, jumps higher, hits harder. */
+  /** Grow or shrink the robot (1/4 .. 8): bigger walks faster, jumps higher, hits harder. */
   setSize(size) {
     this.size = size;
     this.plane.group.scale.setScalar(size);

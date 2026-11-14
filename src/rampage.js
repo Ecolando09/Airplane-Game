@@ -9,8 +9,11 @@ const BRICKS = 500;
 const REACH = 10; // meters around the fist that a punch breaks
 const GRAB = 9; // meters from the robot an object can be picked up
 // How tall a building each robot size can knock down (meters); landmarks need 8x.
-export const ROBOT_SIZES = [1, 2, 4, 8];
-const STRENGTH = { 1: 80, 2: 200, 4: Infinity, 8: Infinity };
+// Shrunk to 1/2 or 1/4, it is weaker too: only small houses and sheds.
+export const ROBOT_SIZES = [0.25, 0.5, 1, 2, 4, 8];
+const STRENGTH = { 0.25: 12, 0.5: 30, 1: 80, 2: 200, 4: Infinity, 8: Infinity };
+/** A robot size for messages: ¼, ½, 1, 2, 4, 8. */
+export const sizeName = (s) => (s === 0.25 ? '¼' : s === 0.5 ? '½' : String(s));
 const LANDMARK_SIZE = 8;
 /** The smallest robot size that can break collider c. */
 export function sizeToBreak(c) {
