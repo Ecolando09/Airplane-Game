@@ -20,6 +20,8 @@ Written 2026-11-11 for whoever (person or AI) does the building. Two projects:
 | `02` Phase 0 device check | The check page is inside the PSG1 app (Menu → Settings → Device check). The checks on the PSG1 itself still need the owner |
 | `04` Part A (explore the extension) | **Done** in a desktop session: `psg1-extension-notes.md`. Recommends the plain Android app (Track 2), which is what was built. Key facts: no L2/R2 triggers (throttle moved to the sticks); which code the A button sends is still to be checked with the device check page |
 | `04` Track 1 (Unity shell) | Skipped for now, per Part A's recommendation |
+| `05` Multiplayer plan (Notion) | **Built, all 8 steps** (commits 947471a to 456f0cf): host and 30 s countdown started from 🎮 inside the game, same start line, server clock and results, trophies, rematch; Sky Race, Rampage Battle, Infection Tag, Potty Time, Keg Rush, Landing Contest, Car Toss; shared world (objects, throws, driving, robot actions, late-join catch-up, same traffic); get in cars, boats and parked planes; detailed vehicles; emotes, horn, ping, teleport, high-five, shoving; formation trails; carrying friends; "Pilot" players asked for a name. Player-to-player growing (1e) left out on the owner's choice. Tests: `tools/tests/{roomgame,sharedworld,friends,traffic,roomgames2,roomgames3,formation}.mjs` |
+| `06` Two-device test (Notion) | Runs in the Claude desktop app on the owner's computer (Chrome + PSG1). Helper: `tools/psg1/cdp.cjs` |
 | `02` Phase 6 (store listing) | Not started (only if a store listing is wanted) |
 
 Run all tests: `npx vite build && node tools/tests/robot.mjs && node tools/tests/blockers.mjs && npm run build:psg1 && node tools/tests/psg1.mjs`
