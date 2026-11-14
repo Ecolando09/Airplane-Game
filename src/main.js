@@ -240,6 +240,8 @@ async function buildWorld() {
   world = new World(scene, data, { satImage });
   traffic = new Traffic(scene, world, prefs.low ? 350 : IS_TOUCH || isPsg1() ? 900 : 2500, { city: settings.city, detail: prefs.low || isPsg1() ? 40 : IS_TOUCH ? 80 : 150 });
   props = new Props(scene, world);
+  // A car taken off the road (grabbed, kicked, squashed) vanishes for the whole room.
+  traffic.onRemove = (i) => mp.room && mp.send({ t: 'car-gone', city: settings.city, i });
   rampage = new Rampage(scene, world, traffic, props, {
     message: (t) => message(t, 2.5),
     sound: (k) => sound.blip(k),
@@ -885,6 +887,7 @@ function updateHud(dt) {
       const where = onPad ? 'Right on the helipad! 🚁' : flight.onWater ? 'Splashdown! 🌊' : onRunway ? 'On the runway 🛬' : 'Landed in a field';
       message(`${where} ${'★'.repeat(stars)}${'☆'.repeat(3 - stars)} ${word}<small>${(sink * 197).toFixed(0)} ft/min${onRunway ? ` · ${off.toFixed(0)} m off the centerline` : ''}</small>`, 4);
       if (flight.onWater) sound.noiseHit('splash');
+      rgLanded({ sink, off, onRunway, p });
       if (stars === 3) {
         logbook.butter++;
         saveLogbook();
@@ -991,6 +994,14 @@ function updateLabels() {
   } else {
     pottyLabel.style.display = 'none';
   }
+  if (kegBeam.visible) {
+    const ks = kegSpot();
+    if (ks) {
+      const d = Math.hypot(ks.x - p.x, ks.z - p.z);
+      kegLabel.textContent = `🍺 ${ks.what}${ks.name ? `: ${ks.name}` : ''} · ${fmtDist(d)}`;
+      items.push({ el: kegLabel, x: ks.x, y: (ks.y ?? world.heightAt(ks.x, ks.z)) + 80, z: ks.z, d, pin: true });
+    }
+  } else kegLabel.style.display = 'none';
   for (const pg of pings) {
     const d = Math.hypot(pg.x - p.x, pg.z - p.z);
     pg.label.textContent = `📍 ${pg.name} · ${fmtDist(d)}`;
@@ -1788,6 +1799,9 @@ const ROOM_GAMES = {
   sky: { name: '🏁 Sky Race', about: 'Fly through the same rings across the city. Miss one and you must go back for it. Fastest time wins.', vehicle: true },
   rampage: { name: '🤖 Rampage Battle', about: 'Two minutes as robots in the same downtown. Every building counts once: if a friend smashes it first, it\'s gone. Most points wins.', robot: true },
   tag: { name: '🧟 Infection Tag', about: 'One player starts as IT. Everyone they catch joins the IT team. Last one free wins.', vehicle: true },
+  keg: { name: '🍺 Keg Rush', about: 'One keg at a time somewhere in the city. Grab it, fly it to the drop-off. Bump the carrier to make them drop it. First to 5 deliveries wins.', vehicle: true },
+  landing: { name: '🛬 Landing Contest', about: 'Everyone starts on approach to the runway. Land softly, on the centerline, near the target mark. Best of 3 landings.', plane: true },
+  toss: { name: '🚗 Car Toss', about: 'Robots throw a supersized car as far as they can. Bonus for landing it on a toilet! Best of 3 throws.', robot: true },
   potty: { name: '🚽 Potty Time', about: 'Robots race potty, snack, potty, snack across the city to the golden toilet. One seat per toilet: wait your turn! Mash SMASH on the seat.', robot: true, laps: true },
 };
 let rgGame = null; // the room's game record from the relay ({ game, phase, players, ... }), or null
@@ -1806,6 +1820,7 @@ const rgFrozen = () => !!rgRun && !rgRun.started;
 // moved objects and smashed buildings for players who join later.
 const propInfo = (it) => ({ pid: String(it.id), kind: it.kind, tint: it.tint, x: Math.round(it.x * 10) / 10, z: Math.round(it.z * 10) / 10, yaw: +it.yaw.toFixed(2), scale: it.scale || 1 });
 function mpShareProp(type, it, extra) {
+  tossTrack(type, it, extra);
   if (!mp.room || mp.status !== 'on') return;
   const m = { t: type, city: settings.city, ...propInfo(it) };
   if (type === 'prop') m.held = it.held ? 1 : 0;
@@ -1883,6 +1898,7 @@ function onRobotAct(m) {
 const mpAct = (a) => mp.room && mp.send({ t: 'act', a });
 let pendingCatchup = [];
 function applyCatchup(m) {
+  for (const i of m.cars || []) traffic.removeIndex(Number(i));
   for (const pm of m.props || []) onSharedProp({ ...pm, t: 'prop', city: m.city, id: 0 });
   if (m.smashed?.length) mp.onEvent({ t: 'smash', city: m.city, ids: m.smashed });
 }
@@ -1905,7 +1921,8 @@ function rgSyncPicker() {
 $('rgGame').onchange = rgSyncPicker;
 rgSyncPicker();
 $('rgStart').onclick = () => openRoomGames(false) || mp.send({ t: 'game-start', game: $('rgGame').value, name: mp.name,
-  options: { vehicle: ROOM_GAMES[$('rgGame').value]?.vehicle ? $('rgVehicle').value : 'bot', laps: Number($('rgLaps').value) } });
+  options: { vehicle: ROOM_GAMES[$('rgGame').value]?.vehicle ? $('rgVehicle').value : ROOM_GAMES[$('rgGame').value]?.plane ? 'plane' : 'bot',
+    laps: Number($('rgLaps').value), spots: world.landmarks.length } });
 $('rgGoNow').onclick = $('rgBannerGo').onclick = () => mp.send({ t: 'game-go-now' });
 $('rgCancel').onclick = () => mp.send({ t: rgGame?.phase === 'live' ? 'game-end' : 'game-cancel' });
 $('rgJoin').onclick = () => mp.send({ t: 'game-join', name: mp.name });
@@ -1948,7 +1965,132 @@ function updateRoomGamesUi() {
   })));
 }
 
+// ---- Keg Rush, Landing Contest and Car Toss: the per-player parts.
+let rgKeg = null; // { at, to, holder, x, z } from the server
+const kegBeam = new THREE.Mesh(new THREE.CylinderGeometry(4, 4, 600, 12, 1, true), new THREE.MeshBasicMaterial({ color: 0xffb300, transparent: true, opacity: 0.35, depthWrite: false, fog: false }));
+kegBeam.visible = false;
+const kegLabel = Object.assign(document.createElement('div'), { className: 'label pin' });
+kegLabel.style.setProperty('--pin', '#ffb300');
+kegLabel.style.display = 'none';
+$('labels').appendChild(kegLabel);
+function kegSpot() {
+  if (!rgKeg) return null;
+  const me = rgKeg.holder === mp.myId;
+  if (me) return { ...world.landmarks[rgKeg.to], what: 'Drop-off' };
+  if (rgKeg.holder) {
+    const pl = mp.players.get(rgKeg.holder);
+    return pl ? { x: pl.pos.x, z: pl.pos.z, y: pl.pos.y, name: pl.name, what: 'Bump them!' } : null;
+  }
+  if (rgKeg.x !== null && rgKeg.x !== undefined) return { x: rgKeg.x, z: rgKeg.z, y: world.heightAt(rgKeg.x, rgKeg.z), name: 'dropped keg', what: 'Keg' };
+  return { ...world.landmarks[rgKeg.at], what: 'Keg' };
+}
+function updateKeg() {
+  const on = rgRun?.game === 'keg' && rgRun.started && rgGame?.phase === 'live' && rgKeg;
+  kegBeam.visible = !!on;
+  if (!on) return;
+  if (!kegBeam.parent) scene.add(kegBeam);
+  const s = kegSpot();
+  if (!s) return;
+  kegBeam.position.set(s.x, world.heightAt(s.x, s.z) + 300, s.z);
+  kegBeam.material.color.setHex(rgKeg.holder === mp.myId ? 0x3ee06a : 0xffb300);
+  const p = flight.pos;
+  const d = Math.hypot(s.x - p.x, s.z - p.z);
+  const agl = p.y - world.heightAt(p.x, p.z);
+  const now = performance.now();
+  if (now - (rgRun.kegAt || 0) < 1000) return;
+  if (!rgKeg.holder && d < 90 && agl < 200) {
+    rgRun.kegAt = now;
+    mp.send({ t: 'game-keg-pick' });
+  } else if (rgKeg.holder === mp.myId && d < 90 && agl < 200) {
+    rgRun.kegAt = now;
+    mp.send({ t: 'game-keg-deliver' });
+  } else if (rgKeg.holder && rgKeg.holder !== mp.myId) {
+    const pl = mp.players.get(rgKeg.holder);
+    if (pl && pl.target.pos.distanceTo(p) < 35 && now - (rgRun.bumpAt || 0) > 3000) {
+      rgRun.bumpAt = rgRun.kegAt = now;
+      mp.send({ t: 'game-keg-bump', x: Math.round(pl.target.pos.x), z: Math.round(pl.target.pos.z) });
+    }
+  }
+}
+function onKeg(k) {
+  const before = rgKeg;
+  rgKeg = k;
+  if (!k) return;
+  if (k.holder === mp.myId && before?.holder !== mp.myId) {
+    sound.blip('load');
+    message(`🍺 Got the keg! Fly it to ${world.landmarks[k.to]?.name || 'the drop-off'} (green beam)`, 3);
+  } else if (before?.holder === mp.myId && !k.holder && k.x !== null) {
+    sound.blip('miss');
+    message(`💥 ${nameOf(k.bumpedBy)} bumped you: you dropped the keg!`, 3);
+  } else if (k.holder && k.holder !== mp.myId && before?.holder !== k.holder) {
+    toast(`🍺 ${nameOf(k.holder)} has the keg!`, '#ffb300');
+  } else if (before && k.at !== before.at && !k.holder) {
+    sound.blip('cash');
+  }
+}
+/** Landing Contest: score a touchdown, then back on approach for the next try (3 in all). */
+function rgLanded({ sink, off, onRunway, p }) {
+  if (rgRun?.game !== 'landing' || !rgRun.started || rgRun.done || rgRun.landing) return;
+  const rw = world.runway;
+  const thr = { x: rw.x - rw.fx * rw.length / 2, z: rw.z - rw.fz * rw.length / 2 };
+  const along = (p.x - thr.x) * rw.fx + (p.z - thr.z) * rw.fz;
+  const score = onRunway ? Math.max(0, Math.round(1000 - sink * 90 - off * 12 - Math.abs(along - 250) * 0.8)) : Math.max(0, Math.round(150 - sink * 20));
+  rgLandingDone(score, `${onRunway ? '' : 'Off the runway! '}${score} points`);
+}
+function rgLandingDone(score, text) {
+  rgRun.landing = true;
+  rgRun.tries++;
+  rgRun.best = Math.max(rgRun.best, score);
+  const last = rgRun.tries >= 3;
+  mp.send({ t: 'game-score', score: rgRun.best, ...(last ? { done: true } : {}) });
+  message(`🛬 Landing ${rgRun.tries} of 3: ${text}<small>${last ? `Best: ${rgRun.best}. Waiting for the others…` : 'Back on approach in 3 s'}</small>`, 3);
+  if (!last) {
+    setTimeout(() => {
+      if (rgRun?.game !== 'landing') return;
+      const a = rgRun.approach;
+      flight.resetAirborne();
+      flight.pos.set(a.x, world.heightAt(a.x, a.z) + 180, a.z);
+      flight.quat.setFromAxisAngle(Y_AXIS, a.yaw);
+      $('crashBox').hidden = true;
+      camInit = false;
+      rgRun.landing = false;
+    }, 3000);
+  } else rgRun.done = true;
+}
+/** Car Toss: a supersized car to throw, next to the robot. */
+function tossSpawnCar() {
+  const f = flight.forward;
+  const x = flight.pos.x + f.x * 14;
+  const z = flight.pos.z + f.z * 14;
+  const it = props.add('car', x, z, flight.yaw || 0, 0xd01712);
+  if (!it) return;
+  props.resize(it, 2);
+  mpShareProp('prop', it);
+  rgRun.tossCar = it;
+  rampage.prefer = it;
+}
+/** Watch the thrown car: where it lands is the throw's length. */
+function tossTrack(type, it, extra) {
+  if (rgRun?.game !== 'toss' || !rgRun.started || rgRun.done || it !== rgRun.tossCar) return;
+  if (type === 'throw') rgRun.tossFrom = { x: extra.p.x, z: extra.p.z };
+  else if (type === 'prop' && rgRun.tossFrom && !it.held) {
+    let dist = Math.round(Math.hypot(it.x - rgRun.tossFrom.x, it.z - rgRun.tossFrom.z));
+    const potty = world.toilets.some((t) => Math.hypot(t.x - it.x, t.z - it.z) < 30);
+    if (potty) dist += 200; // right on a toilet!
+    rgRun.tossFrom = null;
+    rgRun.throws++;
+    rgRun.best = Math.max(rgRun.best, dist);
+    const last = rgRun.throws >= 3;
+    mp.send({ t: 'game-score', score: rgRun.best, ...(last ? { done: true } : {}) });
+    message(`🚗 Throw ${rgRun.throws} of 3: ${dist} m${potty ? ' (TOILET BONUS +200!)' : ''}<small>${last ? `Best: ${rgRun.best} m. Waiting for the others…` : 'Here comes the next car'}</small>`, 3);
+    if (last) rgRun.done = true;
+    else setTimeout(() => rgRun?.game === 'toss' && tossSpawnCar(), 1500);
+  }
+}
+
 function rgCleanup() {
+  if (rampage) rampage.noDrive = false;
+  if (rampage) rampage.prefer = null;
   if (rgRun?.started && game?.active) game.stop();
   if (game instanceof PottyTime) {
     game.dispose();
@@ -1969,6 +2111,8 @@ function onRoomGame(m) {
   rgGame = m.phase === 'none' ? null : m;
   rgScores = m.scores || null;
   if (m.trophies) mp.trophies = m.trophies;
+  if (m.keg !== undefined) onKeg(m.keg);
+  if (!rgGame || m.phase === 'results') rgKeg = null;
   if (!rgGame) {
     rgCleanup();
   } else if (m.phase === 'countdown' && prev?.phase !== 'countdown') {
@@ -2010,6 +2154,21 @@ async function rgPrepare(m) {
     flight.place(new THREE.Vector3(x, world.heightAt(x, z), z), 0, null);
     flight.onGround = true;
     rgRun = { game: m.game, base: flight.pos.clone(), heading: 0, started: false, done: false, laps: m.options?.laps || 3 };
+    camInit = false;
+    message(`${spec.name}<small>Get ready: everyone starts together</small>`, 3);
+    return;
+  }
+  if (spec.plane) {
+    // On approach: lined up a couple of kilometres out, side by side, facing the runway.
+    const rw = world.runway;
+    const thr = { x: rw.x - rw.fx * rw.length / 2, z: rw.z - rw.fz * rw.length / 2 };
+    const side = (slot % 2 ? 1 : -1) * Math.ceil(slot / 2) * 45;
+    const x = thr.x - rw.fx * 2200 - rw.fz * side;
+    const z = thr.z - rw.fz * 2200 + rw.fx * side;
+    flight.resetAirborne();
+    flight.pos.set(x, world.heightAt(x, z) + 180, z);
+    flight.quat.setFromAxisAngle(Y_AXIS, Math.atan2(-rw.fx, -rw.fz));
+    rgRun = { game: m.game, base, heading, started: false, done: false, approach: { x, z, yaw: Math.atan2(-rw.fx, -rw.fz) }, tries: 0, best: 0 };
     camInit = false;
     message(`${spec.name}<small>Get ready: everyone starts together</small>`, 3);
     return;
@@ -2060,6 +2219,16 @@ function rgGo() {
     rgRun.goReal = performance.now();
     rgRun.tagCool = new Map();
     message(rgScores?.[mp.myId]?.it ? '🧟 You are IT! Catch the others (5 s head start for them)' : '🏃 Run! Someone is IT…', 3.5);
+  } else if (rgRun.game === 'keg') {
+    message('🍺 KEG RUSH! Follow the amber beam to the keg', 3);
+  } else if (rgRun.game === 'landing') {
+    message('🛬 Land on the runway: soft, on the centerline, at the target mark', 3.5);
+  } else if (rgRun.game === 'toss') {
+    rampage.noDrive = true;
+    rgRun.throws = 0;
+    rgRun.best = 0;
+    tossSpawnCar();
+    message('🚗 CAR TOSS! Grab the car and throw it as far as you can (3 throws)', 3.5);
   } else if (rgRun.game === 'potty') {
     game?.dispose();
     game = new PottyTime({
@@ -2092,7 +2261,9 @@ function rgGo() {
 
 function rgShowResults(m) {
   const fmt = (r) => {
-    if (m.game === 'rampage') return `${(r.score || 0).toLocaleString()} pts`;
+    if (m.game === 'rampage' || m.game === 'landing') return `${(r.score || 0).toLocaleString()} pts`;
+    if (m.game === 'keg') return `${r.score || 0} 🍺`;
+    if (m.game === 'toss') return `${r.score || 0} m`;
     if (m.game === 'tag') return r.caughtAt ? `caught at ${fmtClock(r.caughtAt / 1000)}` : r.it && !r.caughtAt ? 'started IT' : 'never caught!';
     if (r.done && r.time) return fmtClock(r.time / 1000);
     return m.game === 'sky' ? `${r.progress || 0} rings` : m.game === 'potty' ? `${r.progress || 0} stops` : String(r.score || 0);
@@ -2133,6 +2304,8 @@ mp.onEvent = (m) => {
     onSharedProp(m);
   } else if (m.t === 'act') {
     onRobotAct(m);
+  } else if (m.t === 'car-gone') {
+    if (m.city === settings.city && !google) traffic.removeIndex(Number(m.i));
   } else if (['emote', 'honk', 'ping', 'hi5', 'hi5ok', 'hit', 'room-opts'].includes(m.t)) {
     onFriendEvent(m);
   } else if (m.t === 'catchup') {
@@ -2145,6 +2318,8 @@ mp.onEvent = (m) => {
   } else if (m.t === 'game-scores') {
     rgScores = m.scores;
     if (rgGame) rgGame.finished = m.finished;
+  } else if (m.t === 'keg') {
+    onKeg(m.keg);
   } else if (m.t === 'potty-seat') {
     if (game instanceof PottyTime) game.onSeat(m);
   } else if (m.t === 'potty-done') {
@@ -2202,6 +2377,7 @@ function updateRoomGames() {
     rgGoShown = 0;
     $('rgGo').hidden = true;
   }
+  updateKeg();
   // Rampage Battle: report my score every second. Infection Tag: catch friends in range.
   if (rgRun?.started && g?.phase === 'live') {
     const nowMs = performance.now();
@@ -2233,9 +2409,10 @@ function updateRoomGames() {
       const it = ids.filter((id) => rgScores[id].it);
       chip.push(rgScores[mp.myId]?.it ? `🧟 You're IT · ${ids.length - it.length} still free` : rgIn() ? `🏃 Run! ${it.length} IT · ${ids.length - it.length} free` : `🧟 ${it.length} IT · ${ids.length - it.length} free`);
     } else {
-      const key = (id) => (g.game === 'rampage' ? -rgScores[id].score : fin.includes(id) ? -1000 + fin.indexOf(id) : -rgScores[id].progress);
+      const byScore = ['rampage', 'keg', 'landing', 'toss'].includes(g.game);
+      const key = (id) => (byScore ? -rgScores[id].score : fin.includes(id) ? -1000 + fin.indexOf(id) : -rgScores[id].progress);
       const order = ids.sort((a, b) => key(a) - key(b));
-      chip.push(order.slice(0, 4).map((id, i) => `${i + 1}. ${id === mp.myId ? 'You' : nameOf(id)}${g.game === 'rampage' ? ` ${rgScores[id].score}` : ''}${fin.includes(id) ? ' 🏁' : ''}`).join('  '));
+      chip.push(order.slice(0, 4).map((id, i) => `${i + 1}. ${id === mp.myId ? 'You' : nameOf(id)}${byScore ? ` ${rgScores[id].score}${g.game === 'toss' ? ' m' : g.game === 'keg' ? '🍺' : ''}` : ''}${fin.includes(id) ? ' 🏁' : ''}`).join('  '));
     }
     if (g.endsAt) {
       const left = Math.max(0, Math.round((g.endsAt - now) / 1000));
@@ -3551,7 +3728,7 @@ function frame() {
   world.update(timer.getElapsed());
   if (beerRun && !beerRun.active) beerRun.update(dt, {}); // finish the kegs' flight animations
   if (google) google.update(renderer);
-  else traffic.update(dt, camera.position);
+  else traffic.update(dt, camera.position, mp.room && mp.status === 'on' ? mp.serverNow() : Date.now());
   if (plane && mp.room) {
     mp.update(dt, {
       group: plane.group, city: settings.city, vehicle: settings.vehicle, speed: flight.speed,
@@ -3581,6 +3758,7 @@ function frame() {
         sound.noiseHit(/Splash/.test(flight.crashReason) ? 'splash' : 'crash');
         shake = 1.2;
         beerRun?.onCrash();
+        if (rgRun?.game === 'landing' && rgRun.started && !rgRun.done && !rgRun.landing) rgLandingDone(0, 'Crashed! 0 points');
         crashTimer = 0;
         $('crashReason').textContent = `💥 ${flight.crashReason}`;
         $('crashBox').hidden = false;
@@ -3674,7 +3852,7 @@ if (new URLSearchParams(location.search).has('debug')) {
     autoLandApi: { start: (l) => { autoLandTarget = l; startAutoLand(); }, step: (dt) => autoLand && updateAutoLand(dt), active: () => !!autoLand },
     step: (dt, ctl) => flight.update(dt, ctl), beer: () => beerRun, gameObj: () => game,
     bot: () => ({ isBot, walk: bot.walk, rampage, props }),
-    roomGame: () => ({ g: rgGame, run: rgRun, game, scores: rgScores }),
+    roomGame: () => ({ g: rgGame, run: rgRun, game, scores: rgScores, keg: rgKeg, landed: rgLanded }),
   };
   window.__tilt = input.tilt;
   window.__traffic = traffic;

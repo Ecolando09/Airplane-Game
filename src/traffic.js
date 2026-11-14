@@ -58,22 +58,29 @@ export class Traffic {
       }
       return roads[lo];
     };
+    // Everything about a car comes from the seeded random numbers, one car at a
+    // time, so car number i is the same car for every player (a phone with fewer
+    // cars just has the first ones). Where it is on its street comes from the
+    // clock (see update), so in a room everyone sees the same traffic.
+    const kinds = trafficKinds(city);
     this.cars = Array.from({ length: count }, () => {
       const road = pick();
-      return {
+      const car = {
         road,
-        s: rand() * road.len,
-        dir: rand() < 0.5 ? 1 : -1,
+        s0: rand() * road.len,
+        dir0: rand() < 0.5 ? 1 : -1,
         speed: road.cfg.speed * (0.8 + rand() * 0.4),
         truck: rand() < 0.12,
       };
-    });
-    const kinds = trafficKinds(city);
-    for (const car of this.cars) {
       car.kind = car.truck ? 'van' : kinds[Math.floor(rand() * kinds.length)];
+      car.color = car.truck ? LEGO.lightGray : COLORS[Math.floor(rand() * COLORS.length)];
+      if (car.kind === 'taxi') car.color = LEGO.yellow;
       car.propKind = car.kind === 'sedan' ? 'car' : car.kind; // what it becomes when a robot grabs it
       car.spin = 0;
-    }
+      car.s = car.s0;
+      car.dir = car.dir0;
+      return car;
+    });
 
     // Instanced meshes: body (per-car color), cabin with windows, and a stud on the roof.
     const n = this.cars.length;
@@ -84,11 +91,7 @@ export class Traffic {
     this.cabin = new THREE.InstancedMesh(cabinGeo, legoMaterial({ color: 0x2a3d4d }), n);
     this.wheels = new THREE.InstancedMesh(wheelGeo, legoMaterial({ color: LEGO.black }), n);
     const c = new THREE.Color();
-    this.cars.forEach((car, i) => {
-      car.color = car.truck ? LEGO.lightGray : COLORS[Math.floor(rand() * COLORS.length)];
-      if (car.kind === 'taxi') car.color = LEGO.yellow;
-      this.body.setColorAt(i, c.setHex(car.color));
-    });
+    this.cars.forEach((car, i) => this.body.setColorAt(i, c.setHex(car.color)));
     for (const m of [this.body, this.cabin, this.wheels]) {
       m.castShadow = true;
       m.frustumCulled = false; // cars are spread across the whole map
@@ -137,7 +140,8 @@ export class Traffic {
     for (const d of Object.values(this.detail)) for (const m of [d.body, d.lamps, d.wheel]) m.visible = on;
   }
 
-  update(dt, focus = null) {
+  /** @param now shared clock in ms (the room's server time), so every player's cars line up */
+  update(dt, focus = null, now = Date.now()) {
     const { _m: m, _q: q, _p: p, _s: sc } = this;
     for (const d of Object.values(this.detail)) d.n = 0;
     let detailed = 0;
@@ -145,14 +149,14 @@ export class Traffic {
     this.cars.forEach((car, i) => {
       if (car.gone) return;
       const r = car.road;
-      car.s += car.speed * dt * car.dir;
-      if (car.s > r.len) {
-        car.s = r.len;
-        car.dir = -1;
-      } else if (car.s < 0) {
-        car.s = 0;
-        car.dir = 1;
-      }
+      // Back and forth along the street: position from the clock, the same everywhere.
+      // Unfold the out-and-back trip into one loop of length 2L: a car starting
+      // backwards is on the return leg.
+      const L2 = 2 * r.len;
+      const p0 = car.dir0 > 0 ? car.s0 : L2 - car.s0;
+      const u = (p0 + car.speed * ((now / 1000) % 86400)) % L2;
+      car.s = u < r.len ? u : L2 - u;
+      car.dir = u < r.len ? 1 : -1;
       // Find the segment the car is on.
       let k = car.seg ?? 0;
       while (k < r.cum.length - 2 && r.cum[k + 1] < car.s) k++;
@@ -225,9 +229,11 @@ export class Traffic {
   }
 
   /** Take a car off the road (grabbed, kicked or squashed). */
-  remove(car) {
+  remove(car, { quiet = false } = {}) {
+    if (car.gone) return;
     car.gone = true;
     const i = this.cars.indexOf(car);
+    if (!quiet) this.onRemove?.(i); // tell the room
     this._m.makeScale(0, 0, 0);
     for (const m of [this.body, this.cabin, this.wheels]) {
       m.setMatrixAt(i, this._m);
@@ -238,5 +244,11 @@ export class Traffic {
   /** Put every removed car back on its street. */
   restore() {
     for (const car of this.cars) car.gone = false;
+  }
+
+  /** A car another player took off the road. */
+  removeIndex(i) {
+    const car = this.cars[i];
+    if (car) this.remove(car, { quiet: true });
   }
 }

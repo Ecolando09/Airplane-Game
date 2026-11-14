@@ -179,6 +179,7 @@ function goLive(code) {
   g.scores = Object.fromEntries(g.players.map((id) => [id, { score: 0, progress: 0, done: false }]));
   g.finished = [];
   if (g.game === 'potty') g.seats = {}; // toilet index -> { holder, until, queue }
+  if (g.game === 'keg') kegNew(g, null);
   if (g.game === 'tag') {
     // One player starts "it", picked by the server.
     const it = g.players[Math.floor(Math.random() * g.players.length)];
@@ -225,6 +226,18 @@ function finishGame(code) {
   g.trophies = m.trophies;
   sendGame(code);
 }
+// Keg Rush: one keg at a time, at a landmark (index into the city's list; the
+// host's game tells the server how many there are). First to reach it holds it;
+// delivering it to the target scores; a bump drops it where the carrier was.
+function kegNew(g, from) {
+  const n = Math.max(2, g.options.spots || 2);
+  let at;
+  do at = Math.floor(Math.random() * n); while (at === from && n > 1);
+  let to;
+  do to = Math.floor(Math.random() * n); while (to === at);
+  g.keg = { at, to, holder: null, x: null, z: null };
+}
+
 // Potty Time: one seat per toilet. The server keeps the queue and the clock, so
 // every screen shows the same robot on the seat. Sitting takes 4 s; mashing the
 // button takes 0.15 s off per press, down to 1.5 s.
@@ -286,6 +299,7 @@ function onGameMessage(code, id, m) {
     const clean = {
       vehicle: options.vehicle === 'heli' ? 'heli' : options.vehicle === 'bot' ? 'bot' : 'plane',
       laps: Math.max(1, Math.min(5, Math.round(Number(options.laps) || 3))),
+      spots: Math.max(2, Math.min(500, Math.round(Number(options.spots) || 2))),
     };
     const room = flights.get(code);
     meta_.game = g = {
@@ -331,6 +345,25 @@ function onGameMessage(code, id, m) {
       return;
     }
   }
+  if (g.game === 'keg' && g.phase === 'live' && g.players.includes(id) && now >= g.goAt && g.keg) {
+    const k = g.keg;
+    if (m.t === 'game-keg-pick' && !k.holder && !(k.lock === id && now < k.lockUntil)) k.holder = id;
+    else if (m.t === 'game-keg-bump' && k.holder && k.holder !== id && Number.isFinite(+m.x) && Number.isFinite(+m.z)) {
+      // Dropped where the carrier was; the one who dropped it can't grab it back for 3 s.
+      Object.assign(k, { holder: null, x: +m.x, z: +m.z, bumpedBy: id, lock: k.holder, lockUntil: now + 3000 });
+    } else if (m.t === 'game-keg-deliver' && k.holder === id) {
+      const sc = g.scores[id];
+      sc.score = (sc.score || 0) + 1;
+      if (sc.score >= GAMES.keg.target) {
+        roomBroadcast(code, { t: 'game-scores', scores: g.scores, finished: g.finished });
+        return finishGame(code);
+      }
+      kegNew(g, k.at);
+      roomBroadcast(code, { t: 'game-scores', scores: g.scores, finished: g.finished });
+    } else return;
+    roomBroadcast(code, { t: 'keg', keg: g.keg, now });
+    return;
+  }
   if (m.t === 'game-score' && g.phase === 'live' && g.players.includes(id) && now >= g.goAt) {
     const sc = g.scores[id];
     const spec = GAMES[g.game];
@@ -341,7 +374,7 @@ function onGameMessage(code, id, m) {
     if ((progress === sc.progress + 1 && okStep) || progress === sc.progress) sc.progress = progress;
     const score = Math.round(Number(m.score) || 0);
     const secs = (now - g.goAt) / 1000;
-    if (score >= 0 && score <= 5000 + secs * 2000) sc.score = score;
+    if (g.game !== 'keg' && score >= 0 && score <= 5000 + secs * 2000) sc.score = score;
     if (spec.kind === 'tag' && m.caught && !sc.caughtAt && !sc.it) {
       sc.caughtAt = now - g.goAt;
       sc.it = true; // infection: the caught join the "it" team
@@ -399,6 +432,7 @@ function joinFlight(ws, code, wanted) {
   for (let k = 0; k < chunks; k++) {
     ws.send(JSON.stringify({ t: 'catchup', city, props: ps.slice(k * 150, k * 150 + 150), smashed: sm.slice(k * 600, k * 600 + 600) }));
   }
+  if (rmeta.cars?.size) ws.send(JSON.stringify({ t: 'catchup', city, cars: [...rmeta.cars].slice(0, 3000) }));
   if (rmeta.game?.phase === 'countdown') {
     rmeta.game.players.push(id); // joined during the countdown: you're in
     sendGame(code);
@@ -434,6 +468,8 @@ function joinFlight(ws, code, wanted) {
       if (pid && (rmeta.props.size < 600 || rmeta.props.has(pid))) {
         rmeta.props.set(pid, { pid, kind: String(m.kind || '').slice(0, 16), tint: +m.tint || 0, x: +m.x || 0, z: +m.z || 0, yaw: +m.yaw || 0, scale: +m.scale || 1, held: m.t === 'pick' ? 1 : m.held ? 1 : 0 });
       }
+    } else if (m.t === 'car-gone' && Number.isInteger(m.i)) {
+      if ((rmeta.cars ||= new Set()).size < 3000) rmeta.cars.add(m.i);
     } else if (m.t === 'smash' && Array.isArray(m.ids)) {
       for (const sid of m.ids.slice(0, 60)) if (rmeta.smashed.size < 6000 && Number.isInteger(sid)) rmeta.smashed.add(sid);
     }

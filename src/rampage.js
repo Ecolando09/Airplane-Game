@@ -365,12 +365,15 @@ export class Rampage {
     if (this.driving) return this.exitCar(bot);
     if (this.held) return this._throw(bot);
     const ride = this.driveTarget(bot);
-    if (ride && (ride.scale || 1) >= 2 && !this.props.info(ride.kind).fly) return this.enterCar(bot, ride);
+    if (ride && !this.noDrive && (ride.scale || 1) >= 2 && !this.props.info(ride.kind).fly) return this.enterCar(bot, ride);
     const f = bot.forward;
     const cx = bot.pos.x + f.x * 4 * (bot.size || 1);
     const cz = bot.pos.z + f.z * 4 * (bot.size || 1);
     let it = this.props.nearest(cx, cz, GRAB * (bot.size || 1));
-    const car = this.traffic.near(cx, cz, GRAB + 2)[0];
+    // A game's own object (Car Toss) wins when it's in reach.
+    const pref = this.prefer;
+    if (pref && !pref.held && Math.hypot(pref.x - cx, pref.z - cz) - this.props.radius(pref) < GRAB * (bot.size || 1) + 2) it = pref;
+    const car = it === pref && pref ? null : this.traffic.near(cx, cz, GRAB + 2)[0];
     if (car && (!it || Math.hypot(car.x - cx, car.z - cz) < Math.hypot(it.x - cx, it.z - cz))) {
       this.traffic.remove(car);
       const added = this.props.add(car.propKind || 'car', car.x, car.z, car.yaw, car.color);
@@ -382,7 +385,7 @@ export class Rampage {
       this.hooks.message(h ? `Nothing in reach. Nearest: ${h.name}, ${h.dist} m ${h.side} (yellow arrow)` : 'Nothing to grab here');
       return false;
     }
-    if (this.props.info(it.kind).drive && it.scale >= 2 && !this.props.info(it.kind).fly) return this.enterCar(bot, it);
+    if (this.props.info(it.kind).drive && it.scale >= 2 && !this.props.info(it.kind).fly && !this.noDrive) return this.enterCar(bot, it);
     if (it.scale > 2 * (bot.size || 1)) {
       this.hooks.message(`That ${this.props.info(it.kind).name} is too big to lift now. Shrink it first!`);
       return false;
