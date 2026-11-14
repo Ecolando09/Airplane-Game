@@ -12,7 +12,8 @@ import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
  * Tiles API enabled. Each game load starts one 3D Tiles session (billed by Google).
  */
 export class GoogleWorld {
-  constructor({ scene, camera, renderer, apiKey, lat, lon, height }) {
+  /** @param opts.light fewer, coarser tiles (PSG1, Low graphics): smoother on small devices */
+  constructor({ scene, camera, renderer, apiKey, lat, lon, height, light = false }) {
     this.camera = camera;
     const tiles = (this.tiles = new TilesRenderer());
     tiles.registerPlugin(new GoogleCloudAuthPlugin({ apiToken: apiKey, autoRefreshToken: true }));
@@ -25,7 +26,24 @@ export class GoogleWorld {
     tiles.registerPlugin(new ReorientationPlugin({
       lat: THREE.MathUtils.degToRad(lat), lon: THREE.MathUtils.degToRad(lon), height, azimuth: Math.PI, recenter: true,
     }));
-    tiles.errorTarget = 8;
+    tiles.errorTarget = light ? 16 : 8;
+    // Night: the photo city has no night version, so its colours are dimmed and tinted.
+    this.mats = new Set();
+    this.tint = new THREE.Color(1, 1, 1);
+    tiles.addEventListener('load-model', ({ scene: model }) => {
+      model?.traverse?.((o) => {
+        for (const m of o.material ? (Array.isArray(o.material) ? o.material : [o.material]) : []) {
+          if (!m.color) continue;
+          this.mats.add(m);
+          m.color.copy(this.tint);
+        }
+      });
+    });
+    tiles.addEventListener('dispose-model', ({ scene: model }) => {
+      model?.traverse?.((o) => {
+        for (const m of o.material ? (Array.isArray(o.material) ? o.material : [o.material]) : []) this.mats.delete(m);
+      });
+    });
     tiles.setCamera(camera);
     tiles.setResolutionFromRenderer(camera, renderer);
     scene.add(tiles.group);
@@ -41,6 +59,13 @@ export class GoogleWorld {
     this.ray.firstHitOnly = true;
     this.cache = new Map();
     this.frame = 0;
+  }
+
+  /** 0 = day .. 1 = night (dark blue), with a warm tint for sunset in between. */
+  setNight(v, sunset = false) {
+    if (sunset) this.tint.setRGB(1, 0.78, 0.62);
+    else this.tint.setRGB(1 - 0.8 * v, 1 - 0.77 * v, 1 - 0.6 * v);
+    for (const m of this.mats) m.color.copy(this.tint);
   }
 
   update(renderer) {

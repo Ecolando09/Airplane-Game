@@ -25,7 +25,7 @@ try {
     const p = g.plane;
     const out = {
       flying: !g.isBot, parked: !!p.parked, tint: p.parked?.tint === it.tint, scale: p.parked?.scale,
-      ownHidden: p.group.children.filter((c) => c !== p.parked?.mesh && c !== p.floats).every((c) => !c.visible),
+      ownHidden: p.group.children.filter((c) => c !== p.parked?.mesh && c !== p.floats && c.name !== 'navLights').every((c) => !c.visible),
       meshShown: !!p.parked?.mesh.visible,
     };
     // Change to the robot and back: still that plane.

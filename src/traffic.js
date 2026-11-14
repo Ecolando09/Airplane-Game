@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { LEGO, legoMaterial, isLego } from './lego.js';
 import { CAR_KINDS, carModel, carWheels, wheelGeometry, trafficKinds } from './vehicles.js';
+import { glowPoints } from './nightlights.js';
 
 const DETAIL_RANGE = 320; // meters: nearer cars are drawn in detail (wheels, glass, lamps)
 
@@ -21,7 +22,7 @@ const COLORS = [LEGO.red, LEGO.blue, LEGO.yellow, LEGO.white, LEGO.black, LEGO.g
 
 export class Traffic {
   /** @param opts.detail how many nearby cars may be drawn in detail at once; opts.city picks local car kinds */
-  constructor(scene, world, count, { detail = 150, city = '' } = {}) {
+  constructor(scene, world, count, { detail = 150, city = '', lightCap = null } = {}) {
     this.world = world;
     this.scene = scene;
     this.detailCap = detail;
@@ -131,13 +132,31 @@ export class Traffic {
       body.setColorAt(0, new THREE.Color()); // allocate per-car paint
       this.detail[kind] = { body, lamps, wheel, wheels };
     }
+    // Car lights at night: a headlight glow in front and a tail light behind each
+    // car, near or far (in Google 3D, where cars aren't drawn, just the lights).
+    const lightCars = Math.min(this.cars.length, Math.round(lightCap ?? this.cars.length));
+    this.lightCars = lightCars;
+    const lp = new Float32Array(lightCars * 6).fill(-1e5);
+    const lc = new Float32Array(lightCars * 6);
+    for (let i = 0; i < lightCars; i++) lc.set([1, 0.93, 0.75, 1, 0.12, 0.08], i * 6);
+    this.lights = glowPoints(lp, lc, 5.5);
+    this.lights.visible = false;
+    scene.add(this.lights);
     this.update(0);
   }
 
   /** Show or hide all traffic (the Google 3D look has none). */
   setVisible(on) {
+    this.hiddenCars = !on;
     for (const m of [this.body, this.cabin, this.wheels]) m.visible = on;
     for (const d of Object.values(this.detail)) for (const m of [d.body, d.lamps, d.wheel]) m.visible = on;
+  }
+
+  /** 0 = day .. 1 = night: car lights fade in after dark. */
+  setNight(v) {
+    this.night = v;
+    this.lights.visible = v > 0.15;
+    this.lights.material.opacity = Math.min(1, v * 1.2);
   }
 
   /** @param now shared clock in ms (the room's server time), so every player's cars line up */
@@ -185,6 +204,17 @@ export class Traffic {
       car.yaw = Math.atan2(-dx, -dz);
       q.setFromAxisAngle(this._up, Math.atan2(-dx, -dz));
       car.spin += (car.speed * dt) / 0.5;
+      if (this.lights.visible && i < this.lightCars) {
+        const a = this.lights.geometry.attributes.position.array;
+        const y = p.y + 1.1;
+        a[i * 6] = x + dx * 3.3;
+        a[i * 6 + 1] = y;
+        a[i * 6 + 2] = z + dz * 3.3;
+        a[i * 6 + 3] = x - dx * 3.1;
+        a[i * 6 + 4] = y;
+        a[i * 6 + 5] = z - dz * 3.1;
+      }
+      if (this.hiddenCars) return; // Google 3D: lights only
       // Near the camera: the detailed model. Farther away: three simple blocks.
       const d = this.detail[car.kind];
       const near = d && focus && detailed < this.detailCap && Math.abs(x - focus.x) < DETAIL_RANGE && Math.abs(z - focus.z) < DETAIL_RANGE;
@@ -212,6 +242,7 @@ export class Traffic {
       this.wheels.setMatrixAt(i, m);
       this.cabin.setMatrixAt(i, m);
     });
+    if (this.lights.visible) this.lights.geometry.attributes.position.needsUpdate = true;
     this.body.instanceMatrix.needsUpdate = true;
     this.cabin.instanceMatrix.needsUpdate = true;
     this.wheels.instanceMatrix.needsUpdate = true;
@@ -233,6 +264,10 @@ export class Traffic {
     if (car.gone) return;
     car.gone = true;
     const i = this.cars.indexOf(car);
+    if (i < this.lightCars) {
+      this.lights.geometry.attributes.position.array.fill(-1e5, i * 6, i * 6 + 6);
+      this.lights.geometry.attributes.position.needsUpdate = true;
+    }
     if (!quiet) this.onRemove?.(i); // tell the room
     this._m.makeScale(0, 0, 0);
     for (const m of [this.body, this.cabin, this.wheels]) {

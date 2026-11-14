@@ -18,6 +18,8 @@ import { Rampage, ROBOT_SIZES } from './rampage.js';
 import { RingRace, RampageGame } from './games.js';
 import { PottyTime } from './pottytime.js';
 import { ColliderView } from './colliderview.js';
+import { NightLights } from './nightlights.js';
+import { addNavLights, updateNavLights, parkedPlaneSpec } from './navlights.js';
 import { PadNav, pad as padGlyph, isPsg1, isPsg1Pad, enablePsg1 } from './psg1.js';
 const pad = padGlyph;
 import { wsUrl, SITE, SERVER_OK } from './server.js';
@@ -125,6 +127,7 @@ let labelEls = [];
 let pinEls = [];
 let worldObjects = [];
 let beerRun = null; // the Beer Run game, in cities that have one
+let nightLights = null; // street lamps (and Google 3D's lit windows) after dark
 let colView = null; // collision-shape outlines (debug view, and flashing whatever blocks the robot)
 let props = null; // loose objects lying around the city
 let rampage = null; // robot-mode destruction
@@ -149,9 +152,14 @@ const mp = new Multiplayer({
       const [, kind, tint] = v.split(':');
       const group = new THREE.Group();
       if (props.info(kind)) group.add(props.mesh(kind, Number(tint)));
-      return { group };
+      const model = { group };
+      if (kind === 'plane') addNavLights(model, parkedPlaneSpec(1, 0)); // a friend flying a parked plane
+      return model;
     }
-    return v.startsWith('bot-') ? createRobot(v.slice(4)) : v === 'heli' ? createGhostSpiderHeli() : createLegoPlane();
+    if (v.startsWith('bot-')) return createRobot(v.slice(4));
+    const m = v === 'heli' ? createGhostSpiderHeli() : createLegoPlane();
+    addNavLights(m, v === 'heli' ? 'heli' : 'plane'); // friends' aircraft blink too
+    return m;
   },
   onChange: () => updateMpUi(),
   onJoin: (p) => toast(`👋 ${p.name} joined${p.city !== settings.city ? ` (in ${CITIES[p.city] || 'another city'})` : ''}`, p.color),
@@ -238,7 +246,7 @@ async function buildWorld() {
   data = cityData;
   const before = new Set(scene.children);
   world = new World(scene, data, { satImage });
-  traffic = new Traffic(scene, world, prefs.low ? 350 : IS_TOUCH || isPsg1() ? 900 : 2500, { city: settings.city, detail: prefs.low || isPsg1() ? 40 : IS_TOUCH ? 80 : 150 });
+  traffic = new Traffic(scene, world, prefs.low ? 350 : IS_TOUCH || isPsg1() ? 900 : 2500, { city: settings.city, detail: prefs.low || isPsg1() ? 40 : IS_TOUCH ? 80 : 150, lightCap: prefs.low || isPsg1() ? 300 : 1200 });
   props = new Props(scene, world);
   // A car taken off the road (grabbed, kicked, squashed) vanishes for the whole room.
   traffic.onRemove = (i) => mp.room && mp.send({ t: 'car-gone', city: settings.city, i });
@@ -289,6 +297,7 @@ async function buildWorld() {
     google = new GoogleWorld({
       scene, camera, renderer, apiKey: CONFIG.googleMapsKey,
       lat: data.origin[1], lon: data.origin[0], height: world.baseElevation + (data.geoid || 0),
+      light: isPsg1() || prefs.low, // coarser tiles: smoother on the PSG1 and Low graphics
     });
     for (const m of world.meshes) m.visible = false;
     traffic.setVisible(false);
@@ -300,6 +309,10 @@ async function buildWorld() {
     world.bareHeightAt = gridHeight;
     world.ghost = true;
   }
+  // Night: street lamps everywhere; lit windows for Google 3D (its photo city has no night).
+  const lightBudget = isPsg1() || prefs.low ? 0.3 : IS_TOUCH ? 0.6 : 1;
+  nightLights = new NightLights(scene, world, { windows: !!google, budget: lightBudget });
+  applyNight();
   colView = new ColliderView(scene, world);
   colView.on = new URLSearchParams(location.search).get('debug') === 'colliders';
   scene.fog.near = google ? 6000 : data.fog?.[0] ?? 2500;
@@ -333,6 +346,7 @@ function buildVehicle() {
   isHeli = settings.vehicle === 'heli';
   plane = isHeli ? createGhostSpiderHeli() : createLegoPlane();
   scene.add(plane.group);
+  addNavLights(plane, isHeli ? 'heli' : 'plane'); // wingtip, tail, beacon and strobe lights
   flight = isHeli ? new HeliFlight(world, plane) : new Flight(world, plane);
   const model = createRobot(settings.vehicle);
   model.group.visible = false;
@@ -3289,6 +3303,14 @@ function applySky() {
   sun.intensity = k.sun[1];
   SUN_DIR.set(...k.dir).normalize();
   NIGHT.value = k.night;
+  applyNight();
+}
+/** Night lights for this look: street lamps, car lights, Google 3D dimmed with lit windows. */
+function applyNight() {
+  const v = NIGHT.value;
+  nightLights?.setNight(v);
+  traffic?.setNight(v);
+  google?.setNight(v, prefs.sky === 'sunset');
 }
 for (const b of $('segSky').querySelectorAll('button')) {
   b.onclick = () => {
@@ -3888,6 +3910,7 @@ function dressAsParked(model, it) {
   model.cockpitHidden = [];
   model.updateBoosters = () => {}; // (the bush plane's turbo flames would float in the wrong place)
   model.wheels = []; // its own wheels are part of its model
+  addNavLights(model, parkedPlaneSpec(it.scale || 1, model.gearHeight)); // lights on its own wingtips
 }
 /** Give a model's accent parts a colour (a parked plane you took keeps its paint). */
 function paintModel(model, hex) {
@@ -3927,6 +3950,7 @@ function frame() {
   const dt = Math.min(rawDt, 0.05);
   updatePerf(Math.min(rawDt, 0.25));
   if (input.pad() && !codePick) padNav.sync();
+  updateNavLights(timer.getElapsed(), NIGHT.value);
   updateRoomGames(); // countdowns run in the menu too
   updateFriends();
   if (running) updateFormation(dt);
@@ -3939,7 +3963,8 @@ function frame() {
   world.update(timer.getElapsed());
   if (beerRun && !beerRun.active) beerRun.update(dt, {}); // finish the kegs' flight animations
   if (google) google.update(renderer);
-  else traffic.update(dt, camera.position, mp.room && mp.status === 'on' ? mp.serverNow() : Date.now());
+  // (In Google 3D the cars aren't drawn, but their lights drive the roads at night.)
+  if (!google || NIGHT.value > 0.15) traffic.update(dt, camera.position, mp.room && mp.status === 'on' ? mp.serverNow() : Date.now());
   if (plane && mp.room) {
     mp.update(dt, {
       group: plane.group, city: settings.city, vehicle: settings.vehicle, speed: flight.speed,
