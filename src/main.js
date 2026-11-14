@@ -665,8 +665,10 @@ function updateCamera(dt) {
   } else {
     // Behind and well above, looking down a little: you see the top of the
     // wings (or rotor), not just the tail.
-    want = p.clone().addScaledVector(f, -21).addScaledVector(flatF, -2).add(new THREE.Vector3(0, 10.5, 0));
-    look = p.clone().addScaledVector(f, 10).add(new THREE.Vector3(0, 1.5, 0));
+    // A grown parked plane you took gets the camera farther back, in proportion.
+    const k = plane.parked?.scale || 1;
+    want = p.clone().addScaledVector(f, -25 * k).addScaledVector(flatF, -2 * k).add(new THREE.Vector3(0, 12.5 * k, 0));
+    look = p.clone().addScaledVector(f, 10 * k).add(new THREE.Vector3(0, 1.5 * k, 0));
   }
   if (flight.crashed) {
     // Pull back and up so the whole wreck is in view.
