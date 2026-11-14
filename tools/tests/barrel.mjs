@@ -4,6 +4,8 @@ import { serve, launch, openGame, check, failed } from './helpers.mjs';
 
 const stop = await serve();
 const { browser, page } = await launch({ width: 640, height: 420 });
+const errors = [];
+page.on('pageerror', (e) => errors.push(e.message));
 try {
   await openGame(page, 'city=spartanburg&vehicle=plane&look=lego&mode=free');
   const r = await page.evaluate(() => {
@@ -60,6 +62,20 @@ try {
   check('a single tap does not', single);
   const st = await page.evaluate(() => { const f = window.__game.flight; return { speed: f.speed, ground: f.onGround, crashed: f.crashed, y: f.pos.y, h: window.__game.world.heightAt(f.pos.x, f.pos.z), running: window.__game.running, msg: document.getElementById('message').textContent }; });
   check('tapping D twice quickly does a barrel roll', started, JSON.stringify(st));
+  // First person in the plane: the instrument panel shows, the view sits above it, no errors.
+  const cp = await page.evaluate(async () => {
+    const g = window.__game;
+    g.cam('cockpit');
+    await new Promise((r) => setTimeout(r, 2500));
+    const out = { dash: g.dashboard.visible && g.dashboard.type, h: g.dashboard.height, offset: !!g.camera.view?.enabled, ih: innerHeight };
+    g.cam('chase');
+    await new Promise((r) => setTimeout(r, 1500));
+    out.back = !g.dashboard.visible && !g.camera.view?.enabled;
+    return out;
+  });
+  check('plane first person: instrument panel about a quarter of the screen, view moved above it', cp.dash === 'plane' && cp.h > cp.ih * 0.15 && cp.h < cp.ih * 0.3 && cp.offset, JSON.stringify(cp));
+  check('... and back to normal in the chase view', cp.back);
+  check('no errors in the page', errors.length === 0, errors.slice(0, 3).join(' | '));
 } finally {
   await browser.close();
   stop();

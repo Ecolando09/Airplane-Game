@@ -92,7 +92,7 @@ const OTHER = {
   truck: { L: 6.8, W: 2.8, eye: [-0.6, 2.7, -2.0], lampY: 1.1, dash: 'car' },
   tanker: { L: 9.6, W: 2.7, eye: [-0.6, 2.8, -3.9], lampY: 1.2, dash: 'car' },
   cart: { L: 3.0, W: 1.7, eye: [-0.4, 1.9, 0.3], lampY: 0.9, dash: 'car' },
-  boat: { L: 8.0, W: 2.7, eye: [0, 2.5, 0.9], lampY: 1.6, dash: 'boat' },
+  boat: { L: 8.0, W: 2.7, eye: [0, 2.85, 0.5], lampY: 1.6, dash: 'boat' }, // standing, eyes over the windscreen
   police: { L: 5.6, W: 2.3, eye: [-0.5, 1.55, -0.1], lampY: 1.0, dash: 'police' },
   ambulance: { L: 7.0, W: 2.6, eye: [-0.6, 2.05, -2.2], lampY: 1.0, dash: 'ambulance' },
   firetruck: { L: 10.0, W: 2.8, eye: [-0.65, 2.5, -3.7], lampY: 1.1, dash: 'fire' },

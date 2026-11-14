@@ -111,6 +111,7 @@ const SUN_DIR = new THREE.Vector3(-0.45, 0.8, 0.35).normalize();
 scene.add(sun, sun.target);
 
 addEventListener('resize', () => {
+  dashView = -1; // worked out again for the new size
   camera.aspect = innerWidth / innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(innerWidth, innerHeight);
@@ -480,6 +481,33 @@ function clearDebris() {
 /** Size, seat and dashboard of a drivable object (car kinds go by their model). */
 const driveInfo = (it) => vehicleInfo(props.kinds[it.kind]?.model || it.kind);
 const dashboard = new Dashboard();
+/**
+ * With the dashboard up, the 3D view is moved up into the space above it (the
+ * camera's centre sits in the middle of what's left), so the road ahead isn't
+ * hidden behind the dials. A little more of the scene is squeezed in too.
+ */
+let dashView = 0;
+let dashBaseFov = null;
+function setDashView(d) {
+  d = Math.round(d);
+  if (d === dashView) return;
+  dashView = d;
+  const W = innerWidth;
+  const H = innerHeight;
+  if (!d) {
+    if (dashBaseFov != null) camera.fov = dashBaseFov;
+    dashBaseFov = null;
+    camera.clearViewOffset();
+    camera.aspect = W / H;
+  } else {
+    dashBaseFov ??= camera.fov;
+    const f = (H / 2 / Math.tan(THREE.MathUtils.degToRad(dashBaseFov / 2))) * ((H - d / 2) / H); // pixels per unit
+    camera.fov = THREE.MathUtils.radToDeg(2 * Math.atan((H + d) / 2 / f));
+    camera.aspect = W / (H + d);
+    camera.setViewOffset(W, H + d, 0, d, W, H);
+  }
+  camera.updateProjectionMatrix();
+}
 /** The dashboard for the first-person view: what you're in, tinted its colour, needles live. */
 function updateDashboard() {
   const dr = isBot && rampage?.driving;
@@ -491,6 +519,7 @@ function updateDashboard() {
   const tint = dr ? '#' + new THREE.Color(props.kinds[dr.item.kind]?.tint ? dr.item.tint : 0xf2c200).getHexString()
     : takenPlane?.it && !isHeli ? '#' + new THREE.Color(takenPlane.it.tint).getHexString() : isHeli ? '#5b6770' : '#c62828';
   dashboard.show(type, tint);
+  setDashView(dashboard.height);
   if (!type) return;
   const c = flight.ctrl || {};
   const mph = (dr ? Math.hypot(flight.vel.x, flight.vel.z) : flight.speed) * 2.237;
@@ -507,7 +536,7 @@ function updateDashboard() {
     steer: THREE.MathUtils.clamp(c.roll || 0, -1, 1),
     stick: THREE.MathUtils.clamp(c.pitch || 0, -1, 1),
     gear: mph < 1 ? 'P' : (c.pitch || 0) < -0.1 ? 'R' : 'D',
-    lights: !!dr && dr.item.lights !== false, siren: !!dr?.item.siren,
+    lights: !!dr && dr.item.lights !== false, siren: !!dr && !!dr.item.siren,
   });
 }
 const CAMS = ['chase', 'cockpit']; // behind and above, or the driver's seat
@@ -4128,7 +4157,10 @@ function frame() {
   updatePerf(Math.min(rawDt, 0.25));
   if (input.pad() && !codePick) padNav.sync();
   updateNavLights(timer.getElapsed(), NIGHT.value);
-  if (!running && dashboard.visible) dashboard.show(null);
+  if (!running && dashboard.visible) {
+    dashboard.show(null);
+    setDashView(0);
+  }
   updateEmergencyLights(timer.getElapsed(), NIGHT.value);
   if (running && emergencyProps) emergencyProps.update(flight.pos.x, flight.pos.z);
   updateSiren();

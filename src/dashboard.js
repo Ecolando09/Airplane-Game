@@ -5,9 +5,9 @@
 
 const NS = 'http://www.w3.org/2000/svg';
 const css = `
-#dash { position: fixed; left: 0; right: 0; bottom: 0; height: 36vh; pointer-events: none; display: none; }
+#dash { position: fixed; left: 0; right: 0; bottom: 0; height: min(25vh, 260px); pointer-events: none; display: none; }
 #dash.on { display: block; }
-#dash svg { width: 100%; height: 100%; display: block; }
+#dash svg { width: 100%; height: 100%; display: block; overflow: visible; }
 #dash text { font: 700 15px system-ui, sans-serif; fill: #f2f2f2; text-anchor: middle; }
 #dash .small { font-size: 11px; fill: #b8c0c8; }
 `;
@@ -53,8 +53,8 @@ const switchBox = (x, y, chrome = false) => `
 /** The light bar's glow reflected along the top of the dashboard. */
 const flashBar = ([a, b]) => `
   <g id="iFlash" opacity="0">
-    <rect id="iFlashA" x="0" y="0" width="500" height="26" fill="${a}" opacity="0.55"/>
-    <rect id="iFlashB" x="500" y="0" width="500" height="26" fill="${b}" opacity="0.55"/>
+    <rect id="iFlashA" x="-3000" y="0" width="3500" height="26" fill="${a}" opacity="0.55"/>
+    <rect id="iFlashB" x="500" y="0" width="3500" height="26" fill="${b}" opacity="0.55"/>
   </g>`;
 
 /** A digital readout box. */
@@ -63,8 +63,8 @@ const readout = (x, y, w, id, label) =>
 
 const BUILD = {
   car: (tint) => `
-    <path d="M0 300 L0 120 Q500 40 1000 120 L1000 300 Z" fill="#1d2126"/>
-    <path d="M0 122 Q500 42 1000 122 L1000 136 Q500 58 0 136 Z" fill="${tint}" opacity="0.85"/>
+    <path d="M-3000 300 L-3000 120 L0 120 Q500 40 1000 120 L4000 120 L4000 300 Z" fill="#1d2126"/>
+    <path d="M-3000 122 L0 122 Q500 42 1000 122 L4000 122 L4000 136 L1000 136 Q500 58 0 136 L-3000 136 Z" fill="${tint}" opacity="0.85"/>
     ${dial(250, 190, 62, 'MPH', 'nSpeed')}
     ${dial(400, 190, 52, 'RPM ×1000', 'nRpm', { ticks: 8 })}
     ${readout(560, 175, 100, 'tGear', 'GEAR')}
@@ -76,8 +76,8 @@ const BUILD = {
       <circle cx="320" cy="300" r="40" fill="${tint}"/><circle cx="320" cy="300" r="40" fill="none" stroke="#111" stroke-width="5"/>
     </g>`,
   boat: (tint) => `
-    <path d="M0 300 L0 150 Q500 70 1000 150 L1000 300 Z" fill="#6b4524"/>
-    <path d="M0 150 Q500 70 1000 150 L1000 164 Q500 86 0 164 Z" fill="${tint}"/>
+    <path d="M-3000 300 L-3000 150 L0 150 Q500 70 1000 150 L4000 150 L4000 300 Z" fill="#6b4524"/>
+    <path d="M-3000 150 L0 150 Q500 70 1000 150 L4000 150 L4000 164 L1000 164 Q500 86 0 164 L-3000 164 Z" fill="${tint}"/>
     ${dial(635, 205, 58, 'COMPASS', null, { ticks: 13, a0: -180, a1: 180, face: '#efe6cf' })}
     <g id="nCompass"><text x="635" y="160" style="fill:#c0281e">N</text></g>
     ${dial(200, 210, 46, 'KNOTS', 'nSpeed')}
@@ -91,8 +91,8 @@ const BUILD = {
     </g>`,
   // Patrol car: dark dash, wheel, speedo and rpm, a laptop on a stand, the radio and the light/siren switch box.
   police: () => `
-    <path d="M0 300 L0 120 Q500 40 1000 120 L1000 300 Z" fill="#15181c"/>
-    <path d="M0 122 Q500 42 1000 122 L1000 134 Q500 56 0 134 Z" fill="#0d0f12"/>
+    <path d="M-3000 300 L-3000 120 L0 120 Q500 40 1000 120 L4000 120 L4000 300 Z" fill="#15181c"/>
+    <path d="M-3000 122 L0 122 Q500 42 1000 122 L4000 122 L4000 134 L1000 134 Q500 56 0 134 L-3000 134 Z" fill="#0d0f12"/>
     ${flashBar(['#ff2020', '#2a6bff'])}
     ${dial(250, 190, 62, 'MPH', 'nSpeed', { ticks: 11 })}
     ${dial(400, 190, 50, 'RPM ×1000', 'nRpm', { ticks: 8 })}
@@ -107,8 +107,8 @@ const BUILD = {
     ${steeringWheel(320, 300, '#1b1d20', '#2a62d8')}`,
   // Ambulance: light grey dash, wheel, speedo, a heart monitor and the switch box.
   ambulance: () => `
-    <path d="M0 300 L0 120 Q500 40 1000 120 L1000 300 Z" fill="#5c636b"/>
-    <path d="M0 122 Q500 42 1000 122 L1000 136 Q500 58 0 136 Z" fill="#d81b1b"/>
+    <path d="M-3000 300 L-3000 120 L0 120 Q500 40 1000 120 L4000 120 L4000 300 Z" fill="#5c636b"/>
+    <path d="M-3000 122 L0 122 Q500 42 1000 122 L4000 122 L4000 136 L1000 136 Q500 58 0 136 L-3000 136 Z" fill="#d81b1b"/>
     ${flashBar(['#ff2020', '#ffffff'])}
     ${dial(250, 192, 60, 'MPH', 'nSpeed')}
     ${dial(395, 195, 44, 'FUEL', 'nRpm', { a0: -60, a1: 60, ticks: 5 })}
@@ -121,8 +121,8 @@ const BUILD = {
     ${steeringWheel(320, 300, '#2b2f34', '#d81b1b')}`,
   // Fire engine: red dash, a big wheel, chrome-rimmed speedo, air pressure and water tank gauges, chrome toggles.
   fire: () => `
-    <path d="M0 300 L0 110 Q500 30 1000 110 L1000 300 Z" fill="#8e0c20"/>
-    <path d="M0 112 Q500 32 1000 112 L1000 126 Q500 48 0 126 Z" fill="#d7dbe0"/>
+    <path d="M-3000 300 L-3000 110 L0 110 Q500 30 1000 110 L4000 110 L4000 300 Z" fill="#8e0c20"/>
+    <path d="M-3000 112 L0 112 Q500 32 1000 112 L4000 112 L4000 126 L1000 126 Q500 48 0 126 L-3000 126 Z" fill="#d7dbe0"/>
     ${flashBar(['#ff2020', '#ff2020'])}
     ${dial(225, 190, 58, 'MPH', 'nSpeed', { face: '#101418' })}
     ${dial(365, 178, 38, 'AIR PSI', 'nAir', { a0: -120, a1: 120, ticks: 7 })}
@@ -132,8 +132,8 @@ const BUILD = {
     ${switchBox(690, 196, true)}
     ${steeringWheel(300, 310, '#111', '#c8102e', 170)}`,
   plane: (tint) => `
-    <path d="M0 300 L0 95 Q500 30 1000 95 L1000 300 Z" fill="#2c3238"/>
-    <path d="M0 95 Q500 30 1000 95 L1000 110 Q500 46 0 110 Z" fill="${tint}"/>
+    <path d="M-3000 300 L-3000 95 L0 95 Q500 30 1000 95 L4000 95 L4000 300 Z" fill="#2c3238"/>
+    <path d="M-3000 95 L0 95 Q500 30 1000 95 L4000 95 L4000 110 L1000 110 Q500 46 0 110 L-3000 110 Z" fill="${tint}"/>
     ${dial(120, 170, 46, 'AIRSPEED', 'nSpeed')}
     ${horizon(235, 170, 46, 'ATTITUDE')}
     ${dial(350, 170, 46, 'ALT ×100 FT', 'nAlt', { a0: 0, a1: 324, ticks: 10 })}
@@ -147,8 +147,8 @@ const BUILD = {
       <circle cx="400" cy="245" r="16" fill="${tint}"/>
     </g>`,
   heli: (tint) => `
-    <path d="M0 300 L0 130 Q500 60 1000 130 L1000 300 Z" fill="#262b30"/>
-    <path d="M0 130 Q500 60 1000 130 L1000 144 Q500 76 0 144 Z" fill="${tint}"/>
+    <path d="M-3000 300 L-3000 130 L0 130 Q500 60 1000 130 L4000 130 L4000 300 Z" fill="#262b30"/>
+    <path d="M-3000 130 L0 130 Q500 60 1000 130 L4000 130 L4000 144 L1000 144 Q500 76 0 144 L-3000 144 Z" fill="${tint}"/>
     ${dial(220, 205, 46, 'KNOTS', 'nSpeed')}
     ${horizon(335, 205, 46, 'ATTITUDE')}
     ${dial(450, 205, 46, 'ALT ×100 FT', 'nAlt', { a0: 0, a1: 324, ticks: 10 })}
@@ -182,9 +182,19 @@ export class Dashboard {
     if (key === this.key) return;
     this.key = key;
     this.type = type;
-    this.el.innerHTML = `<svg xmlns="${NS}" viewBox="0 0 1000 300" preserveAspectRatio="xMidYMax slice">${BUILD[type](tint)}</svg>`;
+    // Only the part from the top of the panel down is drawn into the (short) box, whole
+    // and centred; the panel itself carries on flat to the screen's edges.
+    const body = BUILD[type](tint);
+    const m = body.match(/L0 (\d+) Q500 (\d+) 1000/);
+    const top = m ? Math.round((+m[1] + +m[2]) / 2) - 6 : 60;
+    this.el.innerHTML = `<svg xmlns="${NS}" viewBox="0 ${top} 1000 ${300 - top}" preserveAspectRatio="xMidYMax meet">${body}</svg>`;
     this.n = {};
     for (const id of ['nSpeed', 'nRpm', 'nAlt', 'nVs', 'nAtt', 'nCompass', 'nWheel', 'nThrottle', 'tGear', 'nAir', 'nWater', 'iLights', 'iSiren', 'iFlash', 'iFlashA', 'iFlashB', 'tEcg', 'tBpm', 'tPlate']) this.n[id] = this.el.querySelector(`#${id}`);
+  }
+
+  /** How much of the screen's height the dashboard covers, in pixels (0 when hidden). */
+  get height() {
+    return this.visible ? this.el.getBoundingClientRect().height : 0;
   }
 
   get visible() {
