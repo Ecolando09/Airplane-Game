@@ -96,6 +96,7 @@ export class RingRace {
     if (v.pos.distanceTo(new THREE.Vector3(r.x, r.y, r.z)) < RING_R + 4) {
       this.next++;
       this.hooks.sound('ring');
+      this.hooks.onRing?.(this.next);
       if (r.name) this.hooks.toast(`⭕ ${r.name}`, '#ffd21f');
       if (this.next >= this.rings.length) return this._finish();
       this._paint();

@@ -23,6 +23,13 @@
       <div id="buddies" aria-live="polite"></div>
       <div id="botHud" class="panel" hidden></div>
       <div id="roomGame" class="panel" hidden></div>
+      <div id="rgBanner" class="panel" hidden>
+        <span id="rgBannerText"></span>
+        <button class="small-btn" id="rgJoin">Join</button>
+        <button class="small-btn ghost" id="rgSkip">Sit out</button>
+        <button class="small-btn" id="rgBannerGo" hidden>Start now</button>
+      </div>
+      <div id="rgGo" hidden></div>
       <div class="panel" id="over"></div>
       <canvas id="minimap" width="480" height="480" title="Tap to enlarge (N)"></canvas>
       <div id="message"></div>
@@ -182,9 +189,19 @@
               <button class="small-btn" id="mpCopy">Copy invite link</button>
               <button class="small-btn ghost" id="mpLeave">Leave</button>
             </div>
-            <div class="mp-row">
-              <button class="small-btn" id="mpRace">🏁 Race to a landmark</button>
-              <button class="small-btn" id="mpTag">🏷️ Play tag</button>
+            <div class="rg-box" id="rgBox">
+              <p class="rg-host" id="rgHost"></p>
+              <div id="rgPick" hidden>
+                <label>Game <select id="rgGame"></select></label>
+                <label id="rgVehicleRow">Vehicle <select id="rgVehicle"><option value="plane">Bush Plane</option><option value="heli">Copter</option></select></label>
+                <label id="rgLapsRow" hidden>Laps <select id="rgLaps"><option>2</option><option selected>3</option><option>4</option><option>5</option></select></label>
+                <p class="look-note" id="rgAbout"></p>
+                <button class="small-btn" id="rgStart">Start (30 s countdown)</button>
+              </div>
+              <div class="mp-row" id="rgHostLive" hidden>
+                <button class="small-btn" id="rgGoNow">Start now</button>
+                <button class="small-btn ghost" id="rgCancel">Cancel game</button>
+              </div>
             </div>
             <p class="look-note">Everyone in the room sees what the robots smash.</p>
             <ul id="mpList"></ul>
@@ -271,6 +288,19 @@
       <div id="previewTag" aria-live="polite">
         <span class="dot"></span><span id="previewText">Preview</span>
         <span id="previewBusy" hidden>· building…</span>
+      </div>
+    </div>
+
+    <div id="rgResults" class="overlay" hidden>
+      <div class="rg-card">
+        <h2 id="rgResTitle">Results</h2>
+        <ol id="rgResList"></ol>
+        <p class="rg-trophies" id="rgResTrophies"></p>
+        <div class="crash-actions">
+          <button class="big go" id="rgAgain" hidden>🔁 Play again</button>
+          <button class="big alt" id="rgDone">Keep flying</button>
+        </div>
+        <p class="look-note" id="rgResNote"></p>
       </div>
     </div>
 

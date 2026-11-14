@@ -44,6 +44,7 @@ export class Multiplayer {
     this.room = null;
     this.settings = null;
     this.status = 'off';
+    this.host = null;
     if (this.ws) {
       this.ws.onclose = null;
       this.ws.close();
@@ -68,12 +69,20 @@ export class Multiplayer {
       if (m.t === 'welcome') {
         this.myId = m.id;
         this.status = 'on';
+        this.host = m.host; // the room's host (starts room games)
+        this.trophies = m.trophies || {};
+        if (m.now) this.clockOffset = m.now - Date.now();
         if (m.settings?.city) {
           this.settings = m.settings;
           this.onRoomSettings?.(m.settings);
         }
         this.onChange?.();
       } else if (m.t === 'state') this._onState(m);
+      else if (m.t === 'host') {
+        this.host = m.host;
+        this.onChange?.();
+        this.onEvent?.(m);
+      }
       else if (m.t !== 'leave') this.onEvent?.(m); // room games: races, tag, smashing
       else if (m.t === 'leave') this._remove(m.id);
     };
@@ -121,6 +130,15 @@ export class Multiplayer {
     this.players.delete(id);
     if (this.room) this.onLeave?.(p);
     this.onChange?.();
+  }
+
+  /** The server's clock (ms), so countdowns agree on every device. */
+  serverNow() {
+    return Date.now() + (this.clockOffset || 0);
+  }
+
+  get isHost() {
+    return !!this.room && this.status === 'on' && this.host === this.myId;
   }
 
   /** Send something to everyone else in the room (they get it with our id on it). */

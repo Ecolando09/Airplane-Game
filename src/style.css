@@ -2492,3 +2492,117 @@ kbd.pad-Y { background: #e8b923; color: #23272b; }
   font-size: 11px;
   color: #5b6570;
 }
+
+/* ---------- room games: host, countdown banner, 3-2-1-GO, results */
+.rg-box {
+  display: grid;
+  gap: 6px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: #f3f6fa;
+}
+
+.rg-box label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13.5px;
+}
+
+.rg-box select {
+  flex: 1;
+  font: inherit;
+  padding: 4px 6px;
+}
+
+.rg-host {
+  margin: 0;
+  font-size: 13.5px;
+  font-weight: 700;
+}
+
+#rgBanner {
+  position: fixed;
+  top: 56px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  font-weight: 800;
+  font-size: 14px;
+  white-space: nowrap;
+  z-index: 8;
+}
+
+#rgBanner .small-btn {
+  padding: 4px 10px;
+}
+
+#rgGo {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  font: 900 min(28vw, 220px)/1 system-ui, sans-serif;
+  color: #fff;
+  text-shadow: 0 6px 30px rgba(0, 0, 0, 0.55);
+  z-index: 9;
+}
+
+#rgGo.go {
+  color: #3ee06a;
+}
+
+.rg-card {
+  background: #fff;
+  color: var(--ink);
+  border-radius: 18px;
+  padding: 18px 22px;
+  width: min(420px, 92vw);
+  max-height: 90vh;
+  overflow: auto;
+  text-align: center;
+}
+
+.rg-card h2 {
+  margin: 0 0 8px;
+}
+
+#rgResList {
+  text-align: left;
+  margin: 0 0 8px;
+  padding-left: 0;
+  list-style: none;
+}
+
+#rgResList li {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  font-weight: 700;
+}
+
+#rgResList li:nth-child(1) {
+  background: #fff4c2;
+}
+
+#rgResList li.me {
+  outline: 2px solid #2f7fe0;
+}
+
+.rg-trophies {
+  font-size: 13px;
+  margin: 4px 0 10px;
+}
+
+@media (max-height: 500px) {
+  #rgBanner {
+    top: 46px;
+    font-size: 12.5px;
+  }
+}

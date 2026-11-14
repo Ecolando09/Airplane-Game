@@ -968,13 +968,6 @@ function updateLabels() {
   });
   if (beerRun) items.push(...beerRun.labelItems(p));
   if (game) items.push(...game.labelItems(p));
-  if (race) {
-    const d = Math.hypot(race.target.x - p.x, race.target.z - p.z);
-    raceLabel.textContent = `🏁 ${race.target.name} · ${fmtDist(d)}`;
-    items.push({ el: raceLabel, x: race.target.x, y: race.target.y + 120, z: race.target.z, d, pin: true });
-  } else {
-    raceLabel.style.display = 'none';
-  }
   if (potty.need) {
     const t = nearestToilet();
     const d = Math.hypot(t.x - p.x, t.z - p.z);
@@ -1065,7 +1058,7 @@ function airborneRestart() {
   boosterLevel = 0;
 }
 
-function start(airborne, { lesson = false } = {}) {
+function start(airborne, { lesson = false, roomGame = false } = {}) {
   // Runs inside the tap, so the motion-sensor permission prompt is allowed here.
   if (input.isTouch) input.setTilt(phoneSteering === 'tilt').then((on) => on && !isBot && !coach && message('Tilt to steer — tap CENTER to re-center', 3));
   leaveBot();
@@ -1107,7 +1100,7 @@ function start(airborne, { lesson = false } = {}) {
   $('beerEnd').hidden = true;
   logbook.cities[settings.city] = 1;
   saveLogbook();
-  if (startGame()) {
+  if (roomGame || startGame()) {
     if (coach) endCoach(false);
     return;
   }
@@ -1313,15 +1306,18 @@ function updateMpUi() {
   $('mpStatus').classList.toggle('bad', mp.status === 'error');
   const list = $('mpList');
   list.innerHTML = '';
+  const crown = (id) => (id === mp.host ? '👑 ' : '');
+  const cups = (id) => (mp.trophies?.[id] ? ` · ${mp.trophies[id]} 🏆` : '');
   const me = document.createElement('li');
-  me.textContent = `${mp.name} (you)`;
+  me.textContent = `${crown(mp.myId)}${mp.name} (you)${cups(mp.myId)}`;
   list.appendChild(me);
   for (const pl of mp.players.values()) {
     const li = document.createElement('li');
     li.style.setProperty('--c', pl.color);
-    li.textContent = `${pl.name || 'Pilot'} · ${VEHICLE_NAMES[pl.vehicle] || ''} · ${CITIES[pl.city] || ''}`;
+    li.textContent = `${crown(pl.id)}${pl.name || 'Pilot'} · ${VEHICLE_NAMES[pl.vehicle] || ''} · ${CITIES[pl.city] || ''}${cups(pl.id)}`;
     list.appendChild(li);
   }
+  updateRoomGamesUi();
 }
 $('mpCreate').onclick = () => joinRoom(randomRoomCode());
 $('mpJoin').onclick = () => {
@@ -1725,17 +1721,21 @@ function renderLogbook() {
 }
 
 // ------------------------------------------------------------------ room games
-// In a multiplayer room: races to a landmark, tag, and robots' destruction
-// shown to everyone. All of it rides on the room's connection as small messages.
-let race = null; // { target (landmark), by }
-let tagIt = null; // id of the player who is "it" ('me' for this player)
-let tagCool = 0;
-const raceLabel = document.createElement('div');
-raceLabel.className = 'label pin';
-raceLabel.style.setProperty('--pin', '#e8590c');
-raceLabel.style.display = 'none';
-$('labels').appendChild(raceLabel);
-const nameOf = (id) => mp.players.get(id)?.name || 'Someone';
+// Plan 05, part 3. The room's host picks a game; a 30-second countdown lets
+// everyone join; at zero everyone is put on the same start line in the same
+// vehicle, held for 3-2-1-GO, and plays. The relay keeps the clock and the
+// order of finishes, so every player sees the same winner. Robots' smashing
+// is shared with the room all the time.
+const ROOM_GAMES = {
+  sky: { name: '🏁 Sky Race', about: 'Fly through the same rings across the city. Miss one and you must go back for it. Fastest time wins.', vehicle: true },
+};
+let rgGame = null; // the room's game record from the relay ({ game, phase, players, ... }), or null
+let rgScores = null; // live scores during a game
+let rgRun = null; // my part in a live game: { game, base, heading, started, done }
+let rgGoShown = 0;
+const nameOf = (id) => (id === mp.myId ? mp.name || 'You' : mp.players.get(id)?.name || rgGame?.names?.[id] || 'Someone');
+const rgIn = () => !!rgGame && rgGame.players?.includes(mp.myId);
+const rgFrozen = () => !!rgRun && !rgRun.started;
 
 // Smashing: tell the room which buildings and trees went down (batched).
 let smashQueue = [];
@@ -1745,19 +1745,146 @@ setInterval(() => {
   mp.send({ t: 'smash', city: settings.city, ids: smashQueue.splice(0, 60) });
 }, 300);
 
-function startRace(index, by) {
-  const target = world.landmarks[index];
-  if (!target) return;
-  race = { target, by };
-  toast(`🏁 ${by} started a race to ${target.name}! First one there wins`, '#e8590c');
-  sound.blip('load');
+for (const [k, g] of Object.entries(ROOM_GAMES)) $('rgGame').append(new Option(g.name, k));
+function rgSyncPicker() {
+  const g = ROOM_GAMES[$('rgGame').value];
+  $('rgAbout').textContent = g?.about || '';
+  $('rgVehicleRow').hidden = !g?.vehicle;
+  $('rgLapsRow').hidden = !g?.laps;
 }
-function endRace(winner) {
-  if (!race) return;
-  toast(`🏆 ${winner} won the race to ${race.target.name}!`, '#e8b923');
-  sound.blip('star');
-  race = null;
+$('rgGame').onchange = rgSyncPicker;
+rgSyncPicker();
+$('rgStart').onclick = () => mp.send({ t: 'game-start', game: $('rgGame').value, name: mp.name,
+  options: { vehicle: ROOM_GAMES[$('rgGame').value]?.vehicle ? $('rgVehicle').value : 'bot', laps: Number($('rgLaps').value) } });
+$('rgGoNow').onclick = $('rgBannerGo').onclick = () => mp.send({ t: 'game-go-now' });
+$('rgCancel').onclick = () => mp.send({ t: rgGame?.phase === 'live' ? 'game-end' : 'game-cancel' });
+$('rgJoin').onclick = () => mp.send({ t: 'game-join', name: mp.name });
+$('rgSkip').onclick = () => mp.send({ t: 'game-skip', name: mp.name });
+$('rgAgain').onclick = () => {
+  $('rgResults').hidden = true;
+  mp.send({ t: 'game-start', game: rgGame?.game, options: rgGame?.options, name: mp.name });
+};
+$('rgDone').onclick = () => {
+  $('rgResults').hidden = true;
+  if (mp.isHost) mp.send({ t: 'game-close' });
+};
+
+/** Room games box in the menu: who the host is, and the host's game picker. */
+function updateRoomGamesUi() {
+  const phase = rgGame?.phase;
+  const hostName = mp.host ? nameOf(mp.host) : '';
+  $('rgHost').textContent = !mp.host ? '' : mp.isHost ? '👑 You are the host: pick a game for everyone'
+    : `👑 ${hostName} is the host and picks the games`;
+  $('rgPick').hidden = !mp.isHost || phase === 'countdown' || phase === 'live';
+  $('rgHostLive').hidden = !mp.isHost || !(phase === 'countdown' || phase === 'live');
+  $('rgGoNow').hidden = phase !== 'countdown';
+  $('rgCancel').textContent = phase === 'live' ? 'End game now' : 'Cancel game';
 }
+
+function rgCleanup() {
+  if (rgRun?.started && game?.active) game.stop();
+  if (rgRun) {
+    document.body.classList.remove('beer');
+    $('beerHud').hidden = true;
+  }
+  rgRun = null;
+  $('rgGo').hidden = true;
+}
+
+function onRoomGame(m) {
+  if (m.now) mp.clockOffset = m.now - Date.now();
+  const prev = rgGame;
+  rgGame = m.phase === 'none' ? null : m;
+  rgScores = m.scores || null;
+  if (m.trophies) mp.trophies = m.trophies;
+  if (!rgGame) {
+    rgCleanup();
+  } else if (m.phase === 'countdown' && prev?.phase !== 'countdown') {
+    $('rgResults').hidden = true;
+    toast(`${ROOM_GAMES[m.game]?.name || 'A game'}: ${nameOf(mp.host)} started a countdown. Join in!`, '#e8590c');
+    sound.blip('load');
+  } else if (m.phase === 'live' && prev?.phase !== 'live') {
+    if (rgIn()) rgPrepare(m);
+  } else if (m.phase === 'results' && prev?.phase !== 'results') {
+    rgCleanup();
+    rgShowResults(m);
+  }
+  updateMpUi();
+}
+
+/** Everyone to the start line: same vehicle, side by side, held until GO. */
+async function rgPrepare(m) {
+  const spec = ROOM_GAMES[m.game];
+  if (!spec) return;
+  rgCleanup();
+  game?.stop();
+  beerRun?.stop();
+  $('beerEnd').hidden = $('rgResults').hidden = true;
+  const v = m.options?.vehicle === 'heli' ? 'heli' : 'plane';
+  if (settings.vehicle !== v) await applySettings({ vehicle: v });
+  $('menu').hidden = true;
+  start(false, { roomGame: true });
+  const base = flight.pos.clone();
+  const heading = flight.heading;
+  const slot = m.slots?.[mp.myId] ?? 0;
+  // Planes line up one behind the other on the runway; copters side by side.
+  if (isHeli) {
+    const side = (slot % 2 ? 1 : -1) * Math.ceil(slot / 2) * 26;
+    flight.pos.addScaledVector(flight.right, side);
+    flight.pos.y = world.heightAt(flight.pos.x, flight.pos.z) + plane.gearHeight;
+  } else {
+    flight.pos.addScaledVector(flight.forward.clone().setY(0).normalize(), -slot * 45);
+  }
+  camInit = false;
+  rgRun = { game: m.game, base, heading, started: false, done: false };
+  message(`${spec.name}<small>Get ready: everyone starts together</small>`, 3);
+}
+
+function rgGo() {
+  rgRun.started = true;
+  rgRun.startedAt = mp.serverNow();
+  if (rgRun.game === 'sky') {
+    game?.dispose();
+    game = new RingRace(scene, world, $('labels'), {
+      toast, sound: (k) => sound.blip(k),
+      onRing: (n) => mp.send({ t: 'game-score', progress: n }),
+      onEnd: (r) => {
+        if (r.rings >= r.total) {
+          rgRun.done = true;
+          mp.send({ t: 'game-score', progress: r.total, done: true });
+          message(`🏁 Finished in ${fmtClock(r.time)}!<small>Waiting for the others…</small>`, 4);
+        }
+        document.body.classList.remove('beer');
+        $('beerHud').hidden = true;
+      },
+    });
+    game.start(rgRun.base, rgRun.heading, !isHeli);
+    document.body.classList.add('beer');
+    $('beerHud').hidden = false;
+  }
+}
+
+function rgShowResults(m) {
+  const fmt = (r) => (r.done && r.time ? fmtClock(r.time / 1000) : m.game === 'sky' ? `${r.progress || 0} rings` : String(r.score || 0));
+  $('rgResTitle').textContent = `${ROOM_GAMES[m.game]?.name || 'Game'}: results`;
+  $('rgResList').replaceChildren(...(m.results || []).map((r) => {
+    const li = document.createElement('li');
+    if (r.id === mp.myId) li.className = 'me';
+    const medal = ['🥇', '🥈', '🥉'][r.place - 1] || `${r.place}.`;
+    li.append(Object.assign(document.createElement('span'), { textContent: `${medal} ${r.id === mp.myId ? `${r.name} (you)` : r.name}${r.left ? ' (left)' : ''}` }),
+      Object.assign(document.createElement('b'), { textContent: fmt(r) }));
+    return li;
+  }));
+  const t = Object.entries(m.trophies || {}).filter(([, n]) => n > 0).map(([id, n]) => `${nameOf(Number(id))} ${n} 🏆`);
+  $('rgResTrophies').textContent = t.length ? `Room trophies: ${t.join(' · ')}` : '';
+  $('rgAgain').hidden = !mp.isHost;
+  $('rgResNote').textContent = mp.isHost ? '' : `${nameOf(mp.host)} (the host) can start a rematch.`;
+  $('rgResults').hidden = false;
+  const won = m.results?.[0]?.id === mp.myId;
+  sound.blip(won ? 'star' : 'cash');
+  if (won) message('🏆 You won!', 3);
+}
+
 mp.onEvent = (m) => {
   if (m.t === 'smash' && m.city === settings.city && Array.isArray(m.ids)) {
     for (const id of m.ids.slice(0, 60)) {
@@ -1771,59 +1898,66 @@ mp.onEvent = (m) => {
       world.destroy(c);
       if (c.t !== 'tree' && Math.hypot(c.x - flight.pos.x, c.z - flight.pos.z) < 3000) rampage.explode(c.x, c.base + Math.min(c.h, 30) / 2, c.z, 14);
     }
-  } else if (m.t === 'race') {
-    startRace(Number(m.lm), nameOf(m.id));
-  } else if (m.t === 'won') {
-    endRace(nameOf(m.id));
-  } else if (m.t === 'tag') {
-    tagIt = m.it === mp.myId ? 'me' : m.it;
-    tagCool = 3;
-    toast(tagIt === 'me' ? `🏷️ ${nameOf(m.id)} tagged you. You're IT!` : `🏷️ ${nameOf(tagIt)} is IT!`, '#c06bff');
-    sound.blip(tagIt === 'me' ? 'potty' : 'load');
+  } else if (m.t === 'game') {
+    onRoomGame(m);
+  } else if (m.t === 'game-scores') {
+    rgScores = m.scores;
+    if (rgGame) rgGame.finished = m.finished;
+  } else if (m.t === 'host') {
+    if (m.host === mp.myId) toast('👑 You are now the room host', '#e8b923');
+    updateMpUi();
   }
 };
-$('mpRace').onclick = () => {
-  const p = flight.pos;
-  const far = world.landmarks.map((l, i) => [l, i]).filter(([l]) => Math.hypot(l.x - p.x, l.z - p.z) > 2500);
-  const pick = (far.length ? far : world.landmarks.map((l, i) => [l, i]))[Math.floor(Math.random() * (far.length || world.landmarks.length))];
-  mp.send({ t: 'race', lm: pick[1] });
-  startRace(pick[1], 'You');
-};
-$('mpTag').onclick = () => {
-  tagIt = 'me';
-  tagCool = 3;
-  mp.send({ t: 'tag', it: mp.myId });
-  toast("🏷️ Tag started. You're IT! Fly close to someone to tag them", '#c06bff');
-};
-/** Each frame while flying: has someone won the race, or been tagged? */
-function updateRoomGames(dt) {
-  if (!mp.room) race = tagIt = null;
-  const p = flight.pos;
-  const chip = [];
-  if (race) {
-    const d = Math.hypot(race.target.x - p.x, race.target.z - p.z);
-    chip.push(`🏁 Race to ${race.target.name}: ${fmtDist(d)}`);
-    if (d < 150) {
-      mp.send({ t: 'won' });
-      endRace('You');
+
+/** Each frame: countdown banner, 3-2-1-GO, live places. */
+function updateRoomGames() {
+  if (!mp.room && (rgGame || rgRun)) {
+    rgGame = null;
+    rgCleanup();
+  }
+  const now = mp.serverNow();
+  const g = rgGame;
+  const spec = g && ROOM_GAMES[g.game];
+  // Countdown banner (or "in progress" for those watching).
+  const banner = g && (g.phase === 'countdown' || (g.phase === 'live' && !rgIn()));
+  $('rgBanner').hidden = !banner;
+  if (banner) {
+    const joined = rgIn();
+    if (g.phase === 'countdown') {
+      const secs = Math.max(0, Math.ceil((g.startsAt - now) / 1000));
+      $('rgBannerText').textContent = `${spec?.name || 'Game'} starts in 0:${String(secs).padStart(2, '0')} · ${g.players.length} in${joined ? ' (you too)' : ''}`;
+    } else $('rgBannerText').textContent = `${spec?.name || 'Game'} in progress: you're watching`;
+    $('rgJoin').hidden = g.phase !== 'countdown' || joined;
+    $('rgSkip').hidden = g.phase !== 'countdown' || !joined;
+    $('rgBannerGo').hidden = g.phase !== 'countdown' || !mp.isHost;
+  }
+  // Held on the start line, then 3, 2, 1, GO.
+  if (rgRun && !rgRun.started && g?.goAt) {
+    const left = (g.goAt - now) / 1000;
+    $('rgGo').hidden = left > 3.2;
+    $('rgGo').classList.remove('go');
+    $('rgGo').textContent = String(Math.max(1, Math.ceil(left)));
+    if (left <= 0) {
+      rgGo();
+      rgGoShown = 0.9;
+      $('rgGo').textContent = 'GO!';
+      $('rgGo').classList.add('go');
+      sound.blip('star');
     }
+  } else if (rgGoShown > 0) {
+    rgGoShown -= 1 / 60;
+    if (rgGoShown <= 0) $('rgGo').hidden = true;
   }
-  if (tagIt) {
-    tagCool -= dt;
-    if (tagIt !== 'me' && !mp.players.has(tagIt)) tagIt = null; // they left
-    else if (tagIt === 'me') {
-      chip.push("🏷️ You're IT! Get within 200 ft of someone");
-      const near = tagCool <= 0 && mp.visible(settings.city).find((pl) => pl.pos.distanceTo(p) < 60);
-      if (near) {
-        tagIt = near.id;
-        tagCool = 3;
-        mp.send({ t: 'tag', it: near.id });
-        toast(`🏷️ You tagged ${near.name}!`, '#c06bff');
-        sound.blip('star');
-      }
-    } else {
-      const it = mp.players.get(tagIt);
-      chip.push(`🏷️ ${it.name} is IT (${fmtDist(it.pos.distanceTo(p))} away). Run!`);
+  // Live places.
+  const chip = [];
+  if (g?.phase === 'live' && rgScores) {
+    const fin = g.finished || [];
+    const order = Object.keys(rgScores).map(Number)
+      .sort((a, b) => (fin.includes(a) ? -1000 + fin.indexOf(a) : -rgScores[a].progress) - (fin.includes(b) ? -1000 + fin.indexOf(b) : -rgScores[b].progress));
+    chip.push(order.slice(0, 4).map((id, i) => `${i + 1}. ${id === mp.myId ? 'You' : nameOf(id)}${fin.includes(id) ? ' 🏁' : ''}`).join('  '));
+    if (g.endsAt) {
+      const left = Math.max(0, Math.round((g.endsAt - now) / 1000));
+      if (left < 120) chip.push(`⏱ ${fmtClock(left)}`);
     }
   }
   $('roomGame').hidden = !chip.length;
@@ -1834,7 +1968,7 @@ function updateRoomGames(dt) {
 // With a gamepad, the menu and every pop-up work without touching the screen:
 // the D-pad moves a highlight, A presses, B goes back, L1/R1 change city.
 function navRoot() {
-  for (const id of ['beerEnd', 'phonePanel', 'crashBox']) if (!$(id).hidden) return $(id);
+  for (const id of ['rgResults', 'beerEnd', 'phonePanel', 'crashBox']) if (!$(id).hidden) return $(id);
   if (!running && !$('menu').hidden) return $('menuPanel');
   return null;
 }
@@ -2858,6 +2992,7 @@ function frame() {
   const dt = Math.min(rawDt, 0.05);
   updatePerf(Math.min(rawDt, 0.25));
   if (input.pad() && !codePick) padNav.sync();
+  updateRoomGames(); // countdowns run in the menu too
   input.pollButtons(!!navRoot());
   world.update(timer.getElapsed());
   if (beerRun && !beerRun.active) beerRun.update(dt, {}); // finish the kegs' flight animations
@@ -2875,13 +3010,14 @@ function frame() {
     if (morph) updateMorph(dt);
     updatePotty(dt);
     updateCoach();
-    updateRoomGames(dt);
     if (autoLand) {
       updateAutoLand(dt);
     } else if (hitStop > 0) {
       hitStop -= dt; // the beat after a punch lands
     } else if (potty.sitting > 0) {
       // Busy. Nobody moves until the flush.
+    } else if (rgFrozen()) {
+      // Held on the room game's start line until GO.
     } else if (!flight.crashed) {
       flight.update(dt, ctl);
       if (flight.crashed) {
@@ -2982,6 +3118,7 @@ if (new URLSearchParams(location.search).has('debug')) {
     autoLandApi: { start: (l) => { autoLandTarget = l; startAutoLand(); }, step: (dt) => autoLand && updateAutoLand(dt), active: () => !!autoLand },
     step: (dt, ctl) => flight.update(dt, ctl), beer: () => beerRun, gameObj: () => game,
     bot: () => ({ isBot, walk: bot.walk, rampage, props }),
+    roomGame: () => ({ g: rgGame, run: rgRun, game, scores: rgScores }),
   };
   window.__tilt = input.tilt;
   window.__traffic = traffic;

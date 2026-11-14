@@ -128,7 +128,7 @@ export class PadNav {
   press() {
     const el = this.current;
     if (!el || !visible(el)) return false;
-    if (el.tagName === 'INPUT' && el.type === 'range') return false;
+    if ((el.tagName === 'INPUT' && el.type === 'range') || el.tagName === 'SELECT') return false; // changed with left/right
     if (el.tagName === 'INPUT' && el.type !== 'checkbox') {
       el.focus();
       return true;
@@ -140,6 +140,12 @@ export class PadNav {
   /** Left/right on a slider changes its value. Returns true if handled. */
   nudge(dx) {
     const el = this.current;
+    if (el?.tagName === 'SELECT') {
+      // Drop-down lists: left/right picks the previous or next choice.
+      el.selectedIndex = (el.selectedIndex + dx + el.options.length) % el.options.length;
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+      return true;
+    }
     if (!el || el.tagName !== 'INPUT' || el.type !== 'range') return false;
     const step = Number(el.step) || 1;
     el.value = String(Math.min(Number(el.max), Math.max(Number(el.min), Number(el.value) + dx * step)));
