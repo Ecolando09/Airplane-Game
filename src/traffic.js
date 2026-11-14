@@ -170,6 +170,8 @@ export class Traffic {
   update(dt, focus = null, now = Date.now()) {
     const { _m: m, _q: q, _p: p, _s: sc } = this;
     this._frame = (this._frame || 0) + 1;
+    const nearList = [];
+    this._gFree = true; // one Google height test available this frame for a new car
     for (const d of Object.values(this.detail)) d.n = 0;
     let detailed = 0;
     const hidden = this._hide || (this._hide = new THREE.Matrix4().makeScale(0, 0, 0));
@@ -210,8 +212,14 @@ export class Traffic {
       const nearG = this.google && focus && Math.abs(x - focus.x) < DETAIL_RANGE && Math.abs(z - focus.z) < DETAIL_RANGE;
       let gy;
       if (nearG) {
-        if (car.gy === undefined || (i + this._frame) % 12 === 0) car.gy = this.world.heightAt(x, z) - this.world.groundAt(x, z);
-        gy = this.world.groundAt(x, z) + Math.max(-4, Math.min(car.gy, 6)); // (not up on trees or roofs over the road)
+        // One car per frame re-checks Google's surface (those tests are expensive).
+        const turn = this._gTurn === i;
+        if (turn || (car.gy === undefined && this._gFree)) {
+          car.gy = this.world.heightAt(x, z) - this.world.groundAt(x, z);
+          if (!turn) this._gFree = false;
+        }
+        nearList.push(i);
+        gy = this.world.groundAt(x, z) + Math.max(-4, Math.min(car.gy || 0, 6)); // (not up on trees or roofs over the road)
       } else gy = this.google ? this.world.groundAt(x, z) : this.world.heightAt(x, z);
       p.set(x, gy + 0.2, z);
       car.x = x;
@@ -231,13 +239,7 @@ export class Traffic {
         a[i * 6 + 5] = z - dz * 3.1;
       }
       if (this.hiddenCars) return; // lights only
-      if (this.google && !nearG) {
-        // Google 3D: far cars aren't drawn (only their lights, at night).
-        this.body.setMatrixAt(i, hidden);
-        this.wheels.setMatrixAt(i, hidden);
-        this.cabin.setMatrixAt(i, hidden);
-        return;
-      }
+      if (this.google && !nearG) return; // Google 3D: far cars aren't drawn (only their lights, at night)
       // Near the camera: the detailed model. Farther away: three simple blocks.
       const d = this.detail[car.kind];
       const near = d && focus && detailed < this.detailCap && Math.abs(x - focus.x) < DETAIL_RANGE && Math.abs(z - focus.z) < DETAIL_RANGE;
@@ -253,9 +255,11 @@ export class Traffic {
           this._w.makeTranslation(wx, wr, wz).multiply(this._r.makeRotationX(-car.spin * car.dir));
           d.wheel.setMatrixAt(k * 4 + j, this._w.premultiply(m));
         });
-        this.body.setMatrixAt(i, hidden);
-        this.wheels.setMatrixAt(i, hidden);
-        this.cabin.setMatrixAt(i, hidden);
+        if (this.body.visible) {
+          this.body.setMatrixAt(i, hidden);
+          this.wheels.setMatrixAt(i, hidden);
+          this.cabin.setMatrixAt(i, hidden);
+        }
         return;
       }
       // Slightly chunkier than life so they read from the air.
@@ -265,10 +269,13 @@ export class Traffic {
       this.wheels.setMatrixAt(i, m);
       this.cabin.setMatrixAt(i, m);
     });
+    if (this.google && nearList.length) this._gTurn = nearList[this._frame % nearList.length]; // next frame's turn
     if (this.lights.visible) this.lights.geometry.attributes.position.needsUpdate = true;
-    this.body.instanceMatrix.needsUpdate = true;
-    this.cabin.instanceMatrix.needsUpdate = true;
-    this.wheels.instanceMatrix.needsUpdate = true;
+    if (this.body.visible) {
+      this.body.instanceMatrix.needsUpdate = true;
+      this.cabin.instanceMatrix.needsUpdate = true;
+      this.wheels.instanceMatrix.needsUpdate = true;
+    }
     for (const d of Object.values(this.detail)) {
       d.body.count = d.lamps.count = d.n;
       d.wheel.count = d.n * 4;

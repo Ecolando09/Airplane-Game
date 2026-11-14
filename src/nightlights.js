@@ -62,7 +62,7 @@ export class NightLights {
         for (let s = 45 - carry; s < len; s += 45) {
           const x = x0 + (dx * s) / len;
           const z = z0 + (dz * s) / len;
-          lp.push(x, world.heightAt(x, z) + 7, z);
+          lp.push(x, world.groundAt(x, z) + 7, z);
           const warm = rand() < 0.7;
           lc.push(1, warm ? 0.62 : 0.92, warm ? 0.25 : 0.8);
         }
@@ -90,7 +90,7 @@ export class NightLights {
         let per = 0;
         for (let i = 0; i < ring.length; i++) per += Math.hypot(ring[(i + 1) % ring.length][0] - ring[i][0], ring[(i + 1) % ring.length][1] - ring[i][1]);
         const n = Math.min(60, Math.round((per * c.h) / 900));
-        const base = c.base ?? world.heightAt(ring[0][0], ring[0][1]);
+        const base = c.base ?? world.groundAt(ring[0][0], ring[0][1]);
         for (let k = 0; k < n; k++) {
           if (rand() > 0.55) continue; // only some windows are lit
           // A point along the outline, pushed out a little so it shows on the wall.

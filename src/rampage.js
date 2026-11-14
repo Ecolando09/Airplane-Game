@@ -124,7 +124,7 @@ export class Rampage {
       b.life -= dt;
       b.v.y -= 30 * dt;
       b.p.addScaledVector(b.v, dt);
-      const g = this.world.heightAt(b.p.x, b.p.z) + b.s / 2;
+      const g = this.world.groundAt(b.p.x, b.p.z) + b.s / 2; // (cheap: no Google height tests for bricks)
       if (b.p.y < g) {
         b.p.y = g;
         b.v.y *= -0.35;

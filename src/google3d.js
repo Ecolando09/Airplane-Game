@@ -55,6 +55,10 @@ export class GoogleWorld {
     });
     tiles.addEventListener('load-model', () => (this.loadedAny = true));
 
+    // Height tests against Google's huge photo mesh are expensive: only a few per
+    // frame; beyond that, the last answer for that spot is reused.
+    this.rayBudget = light ? 3 : 6;
+    this.rays = 0;
     this.ray = new THREE.Raycaster();
     this.ray.firstHitOnly = true;
     this.cache = new Map();
@@ -70,6 +74,7 @@ export class GoogleWorld {
 
   update(renderer) {
     this.frame++;
+    this.rays = 0;
     this.camera.updateMatrixWorld();
     this.tiles.setResolutionFromRenderer(this.camera, renderer);
     this.tiles.update();
@@ -81,6 +86,8 @@ export class GoogleWorld {
     const key = Math.round(x / 3) * 100000 + Math.round(z / 3);
     const hit = this.cache.get(key);
     if (hit && this.frame - hit.frame < 8) return hit.y;
+    if (this.rays >= this.rayBudget) return hit ? hit.y : null; // over budget: stale answer, or the grid
+    this.rays++;
     this.ray.set(new THREE.Vector3(x, 6000, z), new THREE.Vector3(0, -1, 0));
     const res = this.ray.intersectObject(this.tiles.group, true);
     const y = res.length ? res[0].point.y : null;

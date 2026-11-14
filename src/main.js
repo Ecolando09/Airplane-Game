@@ -310,7 +310,7 @@ async function buildWorld() {
     world.ghost = true;
   }
   // Night: street lamps everywhere; lit windows for Google 3D (its photo city has no night).
-  const lightBudget = isPsg1() || prefs.low ? 0.3 : IS_TOUCH ? 0.6 : 1;
+  const lightBudget = isPsg1() || prefs.low ? 0.15 : IS_TOUCH ? 0.5 : 1;
   nightLights = new NightLights(scene, world, { windows: !!google, budget: lightBudget });
   applyNight();
   colView = new ColliderView(scene, world);
@@ -4083,7 +4083,7 @@ frame();
 if (new URLSearchParams(location.search).has('debug')) {
   window.__game = {
     get world() { return world; }, get flight() { return flight; }, get plane() { return plane; }, get google() { return google; },
-    get running() { return running; }, get isBot() { return isBot; }, get coach() { return coach; },
+    get running() { return running; }, get perf() { return perf; }, renderer, applySky, get nightLights() { return nightLights; }, get traffic() { return traffic; }, get isBot() { return isBot; }, get coach() { return coach; },
     mp, camera, input, prefs, padNav, logbook, potty, start, goPotty, skipPotty, updatePotty, transform, finishMorph, botSmash, botGrab, applyPrefs,
     autoLandApi: { start: (l) => { autoLandTarget = l; startAutoLand(); }, step: (dt) => autoLand && updateAutoLand(dt), active: () => !!autoLand },
     step: (dt, ctl) => flight.update(dt, ctl), beer: () => beerRun, gameObj: () => game,

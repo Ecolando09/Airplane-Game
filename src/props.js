@@ -329,7 +329,12 @@ export class Props {
 
   /** Re-seat objects near (x, z) on the ground (Google 3D: the real surface loads in late). */
   settle(x, z, r) {
-    for (const it of this.items) {
+    // A few objects per call (in Google 3D each height test is expensive).
+    const n = this.items.length;
+    if (!n) return;
+    for (let k = 0; k < Math.min(n, 40); k++) {
+      this._settleI = ((this._settleI || 0) + 1) % n;
+      const it = this.items[this._settleI];
       if (it.held || Math.abs(it.x - x) > r || Math.abs(it.z - z) > r) continue;
       const y = this.world.heightAt(it.x, it.z);
       if (Math.abs(y - it.y) > 0.3) {
