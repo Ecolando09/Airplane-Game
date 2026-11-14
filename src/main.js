@@ -2197,6 +2197,7 @@ function rgGo() {
         if (r.rings >= r.total) {
           rgRun.done = true;
           mp.send({ t: 'game-score', progress: r.total, done: true });
+          postRoomScore(`rings:${settings.city}`, r.score, `room race ${fmtClock(r.time)}`);
           message(`🏁 Finished in ${fmtClock(r.time)}!<small>Waiting for the others…</small>`, 4);
         }
         document.body.classList.remove('beer');
@@ -2259,6 +2260,17 @@ function rgGo() {
   }
 }
 
+/** Best results from room games go on the weekly leaderboard too (marked as set in a room). */
+function postRoomScore(key, score, note) {
+  if (!BOARD_OK || !(score > 0)) return;
+  try {
+    const ws = new WebSocket(wsUrl(`role=board&game=${encodeURIComponent(key)}`));
+    ws.onopen = () => ws.send(JSON.stringify({ t: 'score', name: mp.name || 'Pilot', score: Math.round(score), note, vehicle: settings.vehicle }));
+    ws.onmessage = (e) => JSON.parse(e.data).t === 'placed' && ws.close();
+    setTimeout(() => ws.close(), 8000);
+  } catch {}
+}
+
 function rgShowResults(m) {
   const fmt = (r) => {
     if (m.game === 'rampage' || m.game === 'landing') return `${(r.score || 0).toLocaleString()} pts`;
@@ -2304,6 +2316,10 @@ mp.onEvent = (m) => {
     onSharedProp(m);
   } else if (m.t === 'act') {
     onRobotAct(m);
+  } else if (m.t === 'formation') {
+    onFormation(m);
+  } else if (m.t === 'carry' || m.t === 'carry-throw') {
+    onCarry(m);
   } else if (m.t === 'car-gone') {
     if (m.city === settings.city && !google) traffic.removeIndex(Number(m.i));
   } else if (['emote', 'honk', 'ping', 'hi5', 'hi5ok', 'hit', 'room-opts'].includes(m.t)) {
@@ -2634,6 +2650,176 @@ $('buddies').addEventListener('click', (e) => {
   const pl = [...mp.players.values()][[...$('buddies').children].indexOf(el)];
   if (pl) goToFriend(pl);
 });
+
+// ------------------------------------------------------------------ formation flying and carrying friends (plan 05 step 8)
+// Fly close behind a friend for 5 seconds: both get coloured smoke trails and
+// the one behind gets a little extra speed (slipstream). A giant robot (4x or
+// bigger) can pick up a friend's plane, copter or a smaller robot and throw it;
+// the thrown player gets control back in the air.
+class SmokeTrail {
+  constructor(color) {
+    this.n = 160;
+    this.pos = new Float32Array(this.n * 3);
+    this.i = 0;
+    this.count = 0;
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(this.pos, 3));
+    this.points = new THREE.Points(geo, new THREE.PointsMaterial({ color, size: 7, transparent: true, opacity: 0.55, depthWrite: false, sizeAttenuation: true }));
+    this.points.frustumCulled = false;
+    scene.add(this.points);
+    this.t = 0;
+  }
+  push(p, dt) {
+    this.t += dt;
+    if (this.t < 0.05) return;
+    this.t = 0;
+    this.pos.set([p.x + (Math.random() - 0.5) * 1.5, p.y + (Math.random() - 0.5) * 1.5, p.z + (Math.random() - 0.5) * 1.5], this.i * 3);
+    this.i = (this.i + 1) % this.n;
+    this.count = Math.min(this.n, this.count + 1);
+    this.points.geometry.setDrawRange(0, this.count);
+    this.points.geometry.attributes.position.needsUpdate = true;
+  }
+  dispose() {
+    scene.remove(this.points);
+    this.points.geometry.dispose();
+    this.points.material.dispose();
+  }
+}
+const formation = { with: null, t: 0, mine: null, theirs: null, partnerTrail: new Map() };
+function updateFormation(dt) {
+  const flying = running && !isBot && !flight.onGround && !flight.crashed && mp.room;
+  let lead = null;
+  if (flying) {
+    const f = flight.forward;
+    for (const pl of friendsHere()) {
+      if (pl.bot) continue;
+      const d = pl.target.pos.clone().sub(flight.pos);
+      const dist = d.length();
+      // In their wake: they're ahead of me, within 70 m, roughly in front.
+      if (dist > 8 && dist < 70 && d.dot(f) / dist > 0.85) lead = pl;
+    }
+  }
+  // 5 seconds (real time) in the same friend's wake.
+  if (!lead || lead !== formation.lead) formation.since = performance.now();
+  formation.t = lead ? (performance.now() - formation.since) / 1000 : 0;
+  formation.lead = lead;
+  const on = !!lead && formation.t > 5;
+  if (on && formation.with !== lead.id) {
+    formation.with = lead.id;
+    mp.send({ t: 'formation', with: lead.id, on: true });
+    message(`💨 Formation with ${lead.name}! Slipstream boost`, 2.5);
+    sound.blip('ring');
+  } else if (!on && formation.with !== null && formation.t === 0) {
+    mp.send({ t: 'formation', with: formation.with, on: false });
+    formation.with = null;
+  }
+  // My trail while in formation (mine or a friend's); trails fade when it ends.
+  const active = formation.with !== null || formation.partnerTrail.size > 0;
+  if (active && flying) {
+    formation.mine ||= new SmokeTrail(0xff5fa2);
+    formation.mine.push(plane.group.position, dt);
+  } else if (formation.mine && !active) {
+    formation.mine.dispose();
+    formation.mine = null;
+  }
+  // Slipstream: a little extra speed for the one behind.
+  if (formation.with !== null && flying) flight.pos.addScaledVector(flight.forward, 3 * dt);
+  // Partners' trails on my screen.
+  for (const [id, trail] of formation.partnerTrail) {
+    if (id === mp.myId) continue; // (marks that someone is in formation with me)
+    const pl = mp.players.get(id);
+    if (!pl) {
+      trail.dispose();
+      formation.partnerTrail.delete(id);
+      continue;
+    }
+    trail.push(pl.pos, dt);
+  }
+}
+function onFormation(m) {
+  const pl = mp.players.get(m.id);
+  if (!pl) return;
+  // Both the follower and the leader get trails, on every screen.
+  const ids = [m.id, m.with].filter((id) => id !== mp.myId);
+  for (const id of ids) {
+    const has = formation.partnerTrail.get(id);
+    if (m.on && !has) formation.partnerTrail.set(id, new SmokeTrail(new THREE.Color(mp.players.get(id)?.color || '#ffffff').getHex()));
+    if (!m.on && has) {
+      has.dispose();
+      formation.partnerTrail.delete(id);
+    }
+  }
+  if (m.with === mp.myId) {
+    if (m.on) message(`💨 ${pl.name} is flying in formation with you!`, 2.5);
+    formation.partnerTrail.set(mp.myId, formation.partnerTrail.get(mp.myId) || { push() {}, dispose() {} });
+    if (!m.on) formation.partnerTrail.delete(mp.myId);
+  }
+}
+
+// Carrying friends: { by } when a friend's giant robot holds me, { who } when I hold a friend.
+const carry = { by: null, who: null, since: 0 };
+function tryCarryFriend() {
+  if (!isBot || bot.walk.size < 4 || rampage.held || rampage.driving || !mp.room) return false;
+  const k = bot.walk.size;
+  const f = flight.forward;
+  const hx = flight.pos.x + f.x * 5 * k;
+  const hz = flight.pos.z + f.z * 5 * k;
+  const pl = friendsHere().find((p) => (!p.bot || (p.size || 1) * 2 <= k) && !p.ride && Math.hypot(p.target.pos.x - hx, p.target.pos.z - hz) < 9 * k);
+  if (!pl) return false;
+  carry.who = pl.id;
+  mp.send({ t: 'carry', to: pl.id });
+  message(`🤖 Got ${pl.name}! GRAB again to throw them (gently)`, 2.5);
+  sound.blip('load');
+  return true;
+}
+function throwFriend() {
+  const k = bot.walk.size;
+  const f = flight.forward;
+  mp.send({ t: 'carry-throw', to: carry.who, v: [+(f.x * 45).toFixed(1), 25, +(f.z * 45).toFixed(1)] });
+  sound.blip('throw');
+  message(`🤾 Threw ${nameOf(carry.who)}!`, 2);
+  carry.who = null;
+}
+function onCarry(m) {
+  if (m.to !== mp.myId) {
+    if (m.t === 'carry-throw' || m.t === 'carry-free') return;
+    return;
+  }
+  const pl = mp.players.get(m.id);
+  if (m.t === 'carry' && pl) {
+    if (rgRun) return; // not during room games
+    if (isBot) rampage.release(flight);
+    carry.by = m.id;
+    carry.since = performance.now();
+    message(`😱 ${pl.name}'s giant robot picked you up!`, 2.5);
+  } else if (m.t === 'carry-throw' && carry.by === m.id) {
+    carry.by = null;
+    const v = new THREE.Vector3(+m.v[0] || 0, +m.v[1] || 0, +m.v[2] || 0);
+    if (isBot) {
+      bot.walk.vel.copy(v);
+      bot.walk.onGround = false;
+    } else {
+      flight.resetAirborne(); // control back in the air
+      flight.pos.y += 20;
+    }
+    message('🌀 Wheee! You have control again', 2);
+  }
+}
+/** While carried: ride in the friend's robot hands (no control). Returns true when carried. */
+function updateCarried() {
+  if (!carry.by) return false;
+  const pl = mp.players.get(carry.by);
+  if (!pl || performance.now() - carry.since > 12000) {
+    carry.by = null; // they left, or long enough: let go
+    if (!isBot) flight.resetAirborne();
+    return false;
+  }
+  const k = pl.size || 1;
+  const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(pl.quat).setY(0).normalize();
+  flight.pos.set(pl.pos.x + fwd.x * 4 * k, pl.pos.y + 13 * k + (isBot ? 0 : plane.gearHeight), pl.pos.z + fwd.z * 4 * k);
+  if (flight.vel) flight.vel.set(0, 0, 0);
+  return true;
+}
 
 // ------------------------------------------------------------------ gamepad menus and PSG1 buttons
 // With a gamepad, the menu and every pop-up work without touching the screen:
@@ -3041,6 +3227,8 @@ function botSmash() {
 }
 function botGrab() {
   if (!running || !isBot) return;
+  if (carry.who) return throwFriend();
+  if (!rampage.held && tryCarryFriend()) return;
   rampage.grabOrThrow(flight);
   updateBotHud();
 }
@@ -3719,6 +3907,7 @@ function frame() {
   if (input.pad() && !codePick) padNav.sync();
   updateRoomGames(); // countdowns run in the menu too
   updateFriends();
+  if (running) updateFormation(dt);
   if (pendingCatchup.length && !building && props) {
     const ready = pendingCatchup.filter((m) => m.city === settings.city);
     pendingCatchup = pendingCatchup.filter((m) => m.city !== settings.city && mp.room);
@@ -3749,8 +3938,8 @@ function frame() {
       hitStop -= dt; // the beat after a punch lands
     } else if (potty.sitting > 0) {
       // Busy. Nobody moves until the flush.
-    } else if (rgFrozen()) {
-      // Held on the room game's start line until GO.
+    } else if (rgFrozen() || updateCarried()) {
+      // Held on the room game's start line until GO, or carried by a friend's giant robot.
     } else if (!flight.crashed) {
       flight.update(dt, ctl);
       if (flight.crashed) {
@@ -3853,6 +4042,7 @@ if (new URLSearchParams(location.search).has('debug')) {
     step: (dt, ctl) => flight.update(dt, ctl), beer: () => beerRun, gameObj: () => game,
     bot: () => ({ isBot, walk: bot.walk, rampage, props }),
     roomGame: () => ({ g: rgGame, run: rgRun, game, scores: rgScores, keg: rgKeg, landed: rgLanded }),
+    friendState: () => ({ formationWith: formation.with, trails: formation.partnerTrail.size, carriedBy: carry.by, carrying: carry.who }),
   };
   window.__tilt = input.tilt;
   window.__traffic = traffic;
