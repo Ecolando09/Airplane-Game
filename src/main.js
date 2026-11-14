@@ -142,6 +142,8 @@ let rampage = null; // robot-mode destruction
 let isBot = false;
 let bot = null; // { model, walk }
 let vehicle = null; // { model, flight } while in robot mode
+let leftBehind = null; // your own plane/copter parked where you left it for another vehicle: { vehicle, x, z, yaw, model }
+let ownStale = false; // the stored vehicle is a parked plane you've since left: rebuild your own
 let morph = null; // shape change in progress: { t, from, to }
 let shake = 0; // camera shake, fading
 let hitStop = 0; // seconds the action freezes after a punch lands
@@ -276,6 +278,7 @@ async function buildWorld() {
     driving: (on) => {
       // Head and tail lights on the car being driven (they grow with it).
       const dr = rampage.driving;
+      if (on && dr) parkOwnVehicle(dr.item.x, dr.item.z, props.radius(dr.item)); // your plane waits beside it
       if (on && dr && !dr.mesh.getObjectByName('vehLights')) {
         const l = vehicleLights(dr.item.kind, props.kinds[dr.item.kind]?.model);
         if (l) dr.mesh.add(l);
@@ -362,6 +365,7 @@ async function buildWorld() {
 
 function buildVehicle() {
   leaveBot();
+  ownStale = false;
   if (bot) disposeObjects([bot.model.group]);
   if (plane) disposeObjects([plane.group]);
   clearDebris();
@@ -1284,6 +1288,11 @@ function start(airborne, { lesson = false, roomGame = false } = {}) {
     takenPlane = null;
     buildVehicle();
   }
+  if (ownStale) {
+    ownStale = false;
+    buildVehicle();
+  }
+  clearLeftBehind(); // a restart gives you your vehicle; nothing left parked
   bot.walk.setSize(1); // and the robot back to normal size
   rampage.power = 1;
   updateBotHud();
@@ -3305,6 +3314,8 @@ function transform() {
       : '🤖 Robot mode!<small>X smash · G grab and throw · Space jump (hold to fly) · Shift run · F change back</small>', 4);
   } else {
     rampage.release(flight);
+    if (ownStale) rebuildOwnVehicle(); // the parked plane you flew was left somewhere: your own is back
+    clearLeftBehind(); // you're your own vehicle again: no copy waiting somewhere
     const p = flight.pos;
     const yaw = flight.yaw;
     const parked = flight.onGround && p.y - world.heightAt(p.x, p.z) < 1.5;
@@ -4018,13 +4029,23 @@ input.on('colliders', () => {
 // The DRIVE prompt: a supersized car (or bus, cart, truck) within reach.
 let driveTargetNow = null;
 function updateDriveButton() {
-  const it = isBot && running && !flight.crashed && potty.sitting <= 0 ? rampage.driveTarget(flight) : null;
+  const ok = isBot && running && !flight.crashed && potty.sitting <= 0;
+  let it = ok ? rampage.driveTarget(flight) : null;
+  // Your own plane or copter, parked where you left it: closer than anything else wins.
+  if (ok && leftBehind && !rampage.driving && !rampage.held) {
+    const d = Math.hypot(leftBehind.x - flight.pos.x, leftBehind.z - flight.pos.z) - 8;
+    const dIt = it ? Math.hypot(it.x - flight.pos.x, it.z - flight.pos.z) - props.radius(it) : Infinity;
+    if (d < 12 * Math.max(1, bot.walk.size) && d < dIt) it = leftBehind;
+  }
   if (it !== driveTargetNow) {
     if (it && !driveTargetNow) sound.blip('ring');
     driveTargetNow = it;
-    if (it) {
+    if (it === leftBehind) {
+      $('driveName').textContent = leftBehind.vehicle === 'heli' ? 'your copter' : 'your plane';
+      $('driveVerb').textContent = leftBehind.vehicle === 'heli' ? '🚁 FLY' : '✈️ FLY';
+    } else if (it) {
       const info = props.info(it.kind);
-      $('driveName').textContent = info.name;
+      $('driveName').textContent = `the ${info.name}`;
       $('driveVerb').textContent = info.fly ? '✈️ FLY' : info.water ? '⛵ SAIL' : '🚗 DRIVE';
     }
   }
@@ -4034,6 +4055,7 @@ function updateDriveButton() {
 function enterVehicle() {
   const it = driveTargetNow;
   if (!it || rampage.driving || !isBot || !running) return false;
+  if (it === leftBehind) return getBackIn();
   if (props.info(it.kind).fly) enterParkedPlane(it);
   else rampage.enterCar(flight, it);
   updateBotHud();
@@ -4100,15 +4122,99 @@ function updateSiren() {
 }
 input.on('drive', enterVehicle);
 let takenPlane = null; // a parked plane this player flew off in (put back on restart)
+
+// ------------------------------------------------------------------ leaving a vehicle behind
+// When the robot gets into another vehicle, the one you came in stays where you
+// left it: your own plane or copter is parked there (walk back and FLY it), and a
+// parked plane you'd been flying becomes a parked plane again. Changing back
+// anywhere (F) gives you your own vehicle and the parked copy goes away.
+/**
+ * Leave the vehicle you came in next to (x, z), clear of something `clear` metres
+ * across (the car or plane you're getting into), on the robot's side of it.
+ */
+function parkOwnVehicle(x, z, clear) {
+  if (!isBot || !vehicle) return;
+  let dx = flight.pos.x - x;
+  let dz = flight.pos.z - z;
+  const d = Math.hypot(dx, dz);
+  if (d < 0.5) {
+    dx = flight.right.x;
+    dz = flight.right.z;
+  } else {
+    dx /= d;
+    dz /= d;
+  }
+  const px = x + dx * (clear + 10);
+  const pz = z + dz * (clear + 10);
+  const yaw = flight.yaw;
+  if (takenPlane) {
+    // The parked plane you'd been flying: parked again, for anyone to take.
+    const it = takenPlane.it;
+    props.drop(it, px, pz, yaw);
+    mpShareProp('prop', it);
+    if (settings.vehicle !== takenPlane.prevVehicle) {
+      settings.vehicle = takenPlane.prevVehicle;
+      saveSettings();
+    }
+    takenPlane = null;
+    ownStale = true;
+    return;
+  }
+  if (leftBehind) return; // your own is already parked somewhere
+  const kind = settings.vehicle === 'heli' ? 'heli' : 'plane';
+  const model = kind === 'heli' ? createGhostSpiderHeli() : createLegoPlane();
+  addNavLights(model, kind);
+  applyPaint(model);
+  const y = world.heightAt(px, pz) + model.gearHeight;
+  model.group.position.set(px, y, pz);
+  model.group.quaternion.setFromAxisAngle(Y_AXIS, yaw);
+  if (kind === 'plane') model.group.quaternion.multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), GROUND_TILT));
+  scene.add(model.group);
+  leftBehind = { vehicle: kind, x: px, z: pz, yaw, model };
+}
+function clearLeftBehind() {
+  if (!leftBehind) return;
+  disposeObjects([leftBehind.model.group]);
+  if (driveTargetNow === leftBehind) driveTargetNow = null;
+  leftBehind = null;
+}
+/** Your own vehicle again, in place of the parked plane you had been flying (you're the robot now). */
+function rebuildOwnVehicle() {
+  ownStale = false;
+  disposeObjects([vehicle.model.group]);
+  isHeli = settings.vehicle === 'heli';
+  const model = isHeli ? createGhostSpiderHeli() : createLegoPlane();
+  model.group.visible = false;
+  scene.add(model.group);
+  addNavLights(model, isHeli ? 'heli' : 'plane');
+  applyPaint(model);
+  vehicle = { model, flight: isHeli ? new HeliFlight(world, model) : new Flight(world, model) };
+  input.heliMode = isHeli;
+  document.body.classList.toggle('heli', isHeli);
+  $('throttleLabel').textContent = isHeli ? 'SPEED' : 'THROTTLE';
+}
+/** Walked back to your parked plane or copter: get in (change back right there, facing its way). */
+function getBackIn() {
+  const lb = leftBehind;
+  rampage.release(flight);
+  flight.place(new THREE.Vector3(lb.x, world.heightAt(lb.x, lb.z), lb.z), lb.yaw, null);
+  flight.onGround = true;
+  transform(); // (clears the parked copy)
+  finishMorph();
+  message(`${lb.vehicle === 'heli' ? '🚁' : '✈️'} Back in your ${lb.vehicle === 'heli' ? 'copter' : 'plane'}!`, 2.5);
+  return true;
+}
 /** Climb into a parked plane: it becomes your plane, in its colour, where it was parked. */
 function enterParkedPlane(it) {
   const at = { x: it.x, z: it.z, yaw: it.yaw };
   rampage.release(flight);
+  parkOwnVehicle(it.x, it.z, props.radius(it)); // the plane (or copter) you came in waits here
   it.held = true;
   props._write(it);
   mpShareProp('pick', it);
   takenPlane = { it, x: at.x, z: at.z, yaw: at.yaw, prevVehicle: settings.vehicle };
-  if (isHeli) {
+  if (isHeli || ownStale) {
+    ownStale = false;
     settings.vehicle = 'plane';
     saveSettings();
     buildVehicle();
@@ -4377,7 +4483,7 @@ if (new URLSearchParams(location.search).has('debug')) {
     autoLandApi: { start: (l) => { autoLandTarget = l; startAutoLand(); }, step: (dt) => autoLand && updateAutoLand(dt), active: () => !!autoLand },
     step: (dt, ctl) => flight.update(dt, ctl), beer: () => beerRun, gameObj: () => game,
     bot: () => ({ isBot, walk: bot.walk, rampage, props }),
-    cam: (m) => (m != null && (camMode = CAMS.indexOf(m)), CAMS[camMode]), dashboard, get grownLights() { return grownLights; }, get emergencyProps() { return emergencyProps; },
+    cam: (m) => (m != null && (camMode = CAMS.indexOf(m)), CAMS[camMode]), dashboard, get grownLights() { return grownLights; }, get emergencyProps() { return emergencyProps; }, get leftBehind() { return leftBehind; },
     roomGame: () => ({ g: rgGame, run: rgRun, game, scores: rgScores, keg: rgKeg, landed: rgLanded }),
     friendState: () => ({ formationWith: formation.with, trails: formation.partnerTrail.size, carriedBy: carry.by, carrying: carry.who }),
   };
