@@ -284,14 +284,15 @@ export class Rampage {
     if (scale === (it.scale || 1)) return this.hooks.message(factor > 1 ? `The ${info.name} can't get any bigger!` : `The ${info.name} can't get any smaller!`);
     this.props.resize(it, scale);
     this.hooks.shared?.('prop', it);
-    for (const h of [this.held, this.driving]) if (h?.item === it) h.mesh.scale.setScalar(scale);
+    if (this.held?.item === it) this.held.mesh.scale.setScalar(scale);
+    if (this.driving?.item === it) this.driving.mesh.scale.setScalar(scale / (bot.size || 1));
     if (this.driving) bot.driving = scale;
-    if (this.driving && scale < 2) this.exitCar(bot);
+    if (this.driving && scale < (bot.size || 1)) this.exitCar(bot); // shrunk smaller than the robot: out you get
     this.hooks.sound(factor > 1 ? 'grow' : 'shrink');
     const y = it.held ? bot.pos.y + 8 : it.y + 2;
     this.burst(it.held ? bot.pos.x : it.x, y, it.held ? bot.pos.z : it.z, 4 * scale, factor > 1 ? 0x4fd8ff : 0xc06bff, 8);
     const size = scale === 1 ? 'normal size' : scale > 1 ? `${scale}× bigger` : `${1 / scale}× smaller`;
-    const tip = info.drive && scale >= 2 && !it.held && !this.driving ? ` Big enough to drive: press ${this._keys().drive} to get in!` : '';
+    const tip = info.drive && scale >= 2 * (bot.size || 1) && !it.held && !this.driving ? ` Big enough to drive: press ${this._keys().drive} to get in!` : '';
     this.hooks.message(`${factor > 1 ? '🔍 Supersized' : '🔬 Shrunk'} the ${info.name}: ${size}.${tip}`);
     return true;
   }
@@ -301,6 +302,8 @@ export class Rampage {
     const dm = this.props.driveMesh(it); // cars: separate wheels that spin and steer
     const mesh = dm ? dm.group : this.props.lift(it);
     bot.plane.group.add(mesh);
+    // The robot's model is drawn at its own size; undo that so the car keeps its real size.
+    mesh.scale.setScalar((it.scale || 1) / (bot.size || 1));
     mesh.position.set(0, 0, 0);
     mesh.rotation.set(0, 0, 0);
     bot.plane.body.visible = false;
@@ -403,7 +406,8 @@ export class Rampage {
     if (this.driving) return this.exitCar(bot);
     if (this.held) return this._throw(bot);
     const ride = this.driveTarget(bot);
-    if (ride && !this.noDrive && (ride.scale || 1) >= 2 && !this.props.info(ride.kind).fly) return this.enterCar(bot, ride);
+    // Big enough to ride in (twice the robot's size or more: a 2x car for a normal robot, a normal car for a 1/2x one).
+    if (ride && !this.noDrive && (ride.scale || 1) >= 2 * (bot.size || 1) && !this.props.info(ride.kind).fly) return this.enterCar(bot, ride);
     const f = bot.forward;
     const cx = bot.pos.x + f.x * 4 * (bot.size || 1);
     const cz = bot.pos.z + f.z * 4 * (bot.size || 1);

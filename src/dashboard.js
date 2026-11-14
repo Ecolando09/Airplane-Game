@@ -131,6 +131,30 @@ const BUILD = {
     <text x="470" y="240" style="fill:#ffd21f;font-size:13px">ENGINE 9</text>
     ${switchBox(690, 196, true)}
     ${steeringWheel(300, 310, '#111', '#c8102e', 170)}`,
+  // The robot's head-up display: an angular gunmetal console with cyan glow, a
+  // radar sweep, speed, heading, the jet's power bar and size/smash readouts.
+  robot: () => `
+    <path d="M-3000 300 L-3000 128 L0 128 Q500 52 1000 128 L4000 128 L4000 300 Z" fill="#20262c"/>
+    <path d="M-3000 128 L0 128 Q500 52 1000 128 L4000 128 L4000 136 L1000 136 Q500 60 0 136 L-3000 136 Z" fill="#1fd1ff" opacity="0.9"/>
+    <path d="M60 300 L95 150 L225 150 L260 300 Z" fill="#14191e" stroke="#1fd1ff" stroke-width="2" opacity="0.95"/>
+    <circle cx="160" cy="215" r="52" fill="#06141a" stroke="#1fd1ff" stroke-width="3"/>
+    <circle cx="160" cy="215" r="34" fill="none" stroke="#1fd1ff" stroke-opacity="0.35" stroke-width="2"/>
+    <circle cx="160" cy="215" r="16" fill="none" stroke="#1fd1ff" stroke-opacity="0.35" stroke-width="2"/>
+    <g id="nRadar"><path d="M160 215 L160 163 A52 52 0 0 1 196 178 Z" fill="#1fd1ff" opacity="0.35"/><line x1="160" y1="215" x2="160" y2="163" stroke="#7df0ff" stroke-width="3"/></g>
+    <circle cx="160" cy="215" r="4" fill="#ff4d6d"/>
+    <text class="small" x="160" y="290" style="fill:#7df0ff">RADAR</text>
+    ${dial(320, 205, 46, 'SPEED', 'nSpeed', { face: '#06141a' })}
+    ${dial(440, 205, 46, 'HEADING', null, { a0: -180, a1: 180, ticks: 13, face: '#06141a' })}
+    <g id="nCompass"><text x="440" y="172" style="fill:#1fd1ff">N</text></g>
+    <rect x="525" y="150" width="120" height="44" rx="6" fill="#06141a" stroke="#1fd1ff" stroke-width="2"/>
+    <text id="tSize" x="585" y="178" style="fill:#7df0ff;font-size:18px">SIZE 1×</text>
+    <rect x="525" y="204" width="120" height="44" rx="6" fill="#06141a" stroke="#1fd1ff" stroke-width="2"/>
+    <text id="tSmash" x="585" y="232" style="fill:#ffb300;font-size:15px">💥 0</text>
+    <text id="tAlt" x="585" y="270" style="fill:#7df0ff;font-size:13px">ALT 0 FT</text>
+    <rect x="668" y="150" width="26" height="110" rx="6" fill="#06141a" stroke="#1fd1ff" stroke-width="2"/>
+    <rect id="nJet" x="672" y="256" width="18" height="0" rx="4" fill="#ff7a1a"/>
+    <text class="small" x="681" y="280" style="fill:#7df0ff">JET</text>
+    <path d="M380 300 L410 262 L470 262 L500 300 Z" fill="#14191e" stroke="#1fd1ff" stroke-width="2"/>`,
   plane: (tint) => `
     <path d="M-3000 300 L-3000 95 L0 95 Q500 30 1000 95 L4000 95 L4000 300 Z" fill="#2c3238"/>
     <path d="M-3000 95 L0 95 Q500 30 1000 95 L4000 95 L4000 110 L1000 110 Q500 46 0 110 L-3000 110 Z" fill="${tint}"/>
@@ -189,7 +213,7 @@ export class Dashboard {
     const top = m ? Math.round((+m[1] + +m[2]) / 2) - 6 : 60;
     this.el.innerHTML = `<svg xmlns="${NS}" viewBox="0 ${top} 1000 ${300 - top}" preserveAspectRatio="xMidYMax meet">${body}</svg>`;
     this.n = {};
-    for (const id of ['nSpeed', 'nRpm', 'nAlt', 'nVs', 'nAtt', 'nCompass', 'nWheel', 'nThrottle', 'tGear', 'nAir', 'nWater', 'iLights', 'iSiren', 'iFlash', 'iFlashA', 'iFlashB', 'tEcg', 'tBpm', 'tPlate']) this.n[id] = this.el.querySelector(`#${id}`);
+    for (const id of ['nSpeed', 'nRpm', 'nAlt', 'nVs', 'nAtt', 'nCompass', 'nWheel', 'nThrottle', 'tGear', 'nAir', 'nWater', 'iLights', 'iSiren', 'iFlash', 'iFlashA', 'iFlashB', 'tEcg', 'tBpm', 'tPlate', 'nRadar', 'tSize', 'tSmash', 'tAlt', 'nJet']) this.n[id] = this.el.querySelector(`#${id}`);
   }
 
   /** How much of the screen's height the dashboard covers, in pixels (0 when hidden). */
@@ -210,7 +234,7 @@ export class Dashboard {
     const rot = (el, deg, cx, cy) => el?.setAttribute('transform', `rotate(${deg.toFixed(1)} ${cx} ${cy})`);
     const sweep = (v, a0 = -135, a1 = 135) => a0 + (a1 - a0) * Math.max(0, Math.min(1, v));
     const t = this.type;
-    const c = { car: { sp: [250, 190], rpm: [400, 190], wheel: [320, 300] }, police: { sp: [250, 190], rpm: [400, 190], wheel: [320, 300] },
+    const c = { robot: { sp: [320, 205], comp: [440, 205] }, car: { sp: [250, 190], rpm: [400, 190], wheel: [320, 300] }, police: { sp: [250, 190], rpm: [400, 190], wheel: [320, 300] },
       ambulance: { sp: [250, 192], rpm: [395, 195], wheel: [320, 300] }, fire: { sp: [225, 190], rpm: [575, 178], wheel: [300, 310] }, boat: { sp: [200, 210], wheel: [430, 330], comp: [635, 205] },
       plane: { sp: [120, 170], rpm: [680, 175], alt: [350, 170], vs: [580, 170], att: [235, 170], comp: [465, 170], wheel: [400, 330] },
       heli: { sp: [220, 205], rpm: [670, 210], alt: [450, 205], att: [335, 205], comp: [565, 205], wheel: [100, 330] } }[t];
@@ -225,9 +249,19 @@ export class Dashboard {
     if (t === 'heli' || t === 'plane') {
       // A yoke or stick also moves with pitch.
       n.nWheel?.setAttribute('transform', `rotate(${wheelTurn.toFixed(1)} ${c.wheel[0]} ${c.wheel[1]}) translate(0 ${(s.stick * 18).toFixed(1)})`);
-    } else rot(n.nWheel, wheelTurn, ...c.wheel);
+    } else if (c.wheel) rot(n.nWheel, wheelTurn, ...c.wheel); // (the robot has no wheel)
     if (n.nThrottle) n.nThrottle.setAttribute('transform', `translate(0 ${((1 - s.throttle) * 50).toFixed(1)})`);
     if (n.tGear) n.tGear.textContent = s.gear;
+    // The robot's display: radar sweep, size, smash count, height above ground, jet power.
+    if (n.nRadar) rot(n.nRadar, (performance.now() / 1000) * 140 % 360, 160, 215);
+    if (n.tSize) n.tSize.textContent = `SIZE ${s.size}×`;
+    if (n.tSmash) n.tSmash.textContent = `💥 ${s.smashed ?? 0}`;
+    if (n.tAlt) n.tAlt.textContent = `ALT ${Math.round(s.agl ?? 0)} FT`;
+    if (n.nJet) {
+      const h = 102 * Math.max(0, Math.min(1, s.jet ?? 0));
+      n.nJet.setAttribute('y', (256 - h).toFixed(1));
+      n.nJet.setAttribute('height', h.toFixed(1));
+    }
     // Emergency vehicles: switch lamps, the light bar's glow and the gauges that just sit there.
     const now = performance.now() / 1000;
     if (n.iLights) n.iLights.setAttribute('fill', s.lights ? '#ff3b3b' : '#3a1010');

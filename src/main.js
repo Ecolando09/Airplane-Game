@@ -548,7 +548,7 @@ function updateDashboard() {
   let type = null;
   if (running && CAMS[camMode] === 'cockpit' && !flight.crashed && !window.__game?.photo) {
     if (dr) type = driveInfo(dr.item)?.dash || 'car';
-    else if (!isBot) type = isHeli ? 'heli' : 'plane';
+    else type = isBot ? 'robot' : isHeli ? 'heli' : 'plane';
   }
   const tint = dr ? '#' + new THREE.Color(props.kinds[dr.item.kind]?.tint ? dr.item.tint : 0xf2c200).getHexString()
     : takenPlane?.it && !isHeli ? '#' + new THREE.Color(takenPlane.it.tint).getHexString() : isHeli ? '#5b6770' : '#c62828';
@@ -560,7 +560,7 @@ function updateDashboard() {
   const fw = flight.forward;
   dashboard.update({
     mph: type === 'boat' || type === 'heli' ? mph * 0.869 : mph, // knots on the water and in the copter
-    maxMph: type === 'car' || type === 'police' || type === 'ambulance' || type === 'fire' ? 140 : type === 'boat' ? 60 : type === 'heli' ? 160 : 200,
+    maxMph: type === 'car' || type === 'police' || type === 'ambulance' || type === 'fire' || type === 'robot' ? 140 : type === 'boat' ? 60 : type === 'heli' ? 160 : 200,
     throttle: dr ? Math.min(1, Math.abs(c.pitch || 0)) : flight.throttle ?? 0.5,
     altFt: (flight.pos.y - (plane.gearHeight || 0) + world.baseElevation) * 3.281,
     vs: (flight.vel?.y || 0) * 196.9,
@@ -571,6 +571,11 @@ function updateDashboard() {
     stick: THREE.MathUtils.clamp(c.pitch || 0, -1, 1),
     gear: mph < 1 ? 'P' : (c.pitch || 0) < -0.1 ? 'R' : 'D',
     lights: !!dr && dr.item.lights !== false, siren: !!dr && !!dr.item.siren,
+    // The robot's display
+    size: isBot ? sizeName(bot.walk.size) : '',
+    smashed: isBot ? (rampage.stats.buildings || 0) + (rampage.stats.trees || 0) + (rampage.stats.cars || 0) : 0,
+    agl: isBot ? Math.max(0, flight.pos.y - world.groundAt(flight.pos.x, flight.pos.z)) * 3.281 : 0,
+    jet: isBot ? (flight.jetting ? 1 : 0) * 0.6 + Math.min(0.4, Math.max(0, flight.vel.y) / 40) : 0,
   });
 }
 const CAMS = ['chase', 'cockpit']; // behind and above, or the driver's seat
@@ -650,7 +655,8 @@ function updateCamera(dt) {
     // Over the robot's shoulder, far enough back to see what it's about to hit.
     // Pull back a little while flying on the jets, to see where you're going.
     botAir += ((isBot && !flight.onGround ? 1 : 0) - botAir) * (1 - Math.exp(-dt * 1.5));
-    const big = (flight.size || 1) ** 0.85; // a grown robot needs the camera farther back
+    // A grown robot needs the camera farther back; in a car, go by the car's size (a shrunk robot in a normal car).
+    const big = Math.max(flight.size || 1, flight.driving ? flight.driving / 2 : 0) ** 0.85;
     // Driving: farther back and higher, looking down on the car's roof, not just its bumper.
     const drv = 1 + 0.2 * (flight.driving || 0);
     const back = 28 * drv * (1 + 0.5 * botAir) * big;

@@ -276,11 +276,18 @@ export class RobotWalk {
     const top = ((input.run ?? input.throttle > 0) || jets ? RUN : WALK) * (this.onWater ? 0.6 : 1) * this.turboNow * big; // T2X, T3X: rocket-powered
     const f = this.forward;
     const r = this.right;
-    const wantX = f.x * c.pitch * top + r.x * c.yaw * 12;
-    const wantZ = f.z * c.pitch * top + r.z * c.yaw * 12;
+    // Side-stepping is sized with the robot too (it used to be full size always,
+    // so a stick resting slightly off centre slid a shrunk robot sideways).
+    const wantX = f.x * c.pitch * top + r.x * c.yaw * 12 * big;
+    const wantZ = f.z * c.pitch * top + r.z * c.yaw * 12 * big;
     const grip = 1 - Math.exp(-dt * (this.onGround ? 7 : jets ? 4 : 1.2));
     this.vel.x += (wantX - this.vel.x) * grip;
     this.vel.z += (wantZ - this.vel.z) * grip;
+    // Nothing pressed, on the ground: settle to a full stop instead of creeping.
+    if (this.onGround && !input.pitch && !input.yaw && Math.abs(c.pitch) < 0.05 && Math.abs(c.yaw) < 0.05 && Math.hypot(this.vel.x, this.vel.z) < 0.6 * big) {
+      c.pitch = c.yaw = 0;
+      this.vel.x = this.vel.z = 0;
+    }
 
     // Jump; holding the button keeps the jets burning for as long as it's held.
     // The climb rate eases toward JET_CLIMB (a tap is a hop, holding climbs, and

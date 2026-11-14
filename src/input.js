@@ -115,7 +115,7 @@ export class Input {
     // Gamepad
     const gp = this.pad();
     if (gp) {
-      const dz = (v) => (Math.abs(v) < 0.12 ? 0 : v);
+      const dz = (v) => (Math.abs(v) < 0.16 ? 0 : v); // sticks that rest a little off centre
       if (this.heliMode && !this.botMode) {
         // Helicopter: left stick steers, right stick up/down is lift. (A robot made
         // from the helicopter walks with the left stick like any robot.)
