@@ -203,7 +203,8 @@ export function wheelGeometry(r, style) {
 
 // ------------------------------------------------------------------ bigger vehicles and boats
 /** A school bus, trucks, boats, a parked plane: [geometries] with wheels included (for props). */
-export function otherModel(kind, style) {
+/** opts.noProp: leave out the propeller blade (a flown parked plane has its own, spinning). */
+export function otherModel(kind, style, opts = {}) {
   const real = style === 'real';
   const P = [];
   const wheelsAt = (list, r) => {
@@ -296,7 +297,8 @@ export function otherModel(kind, style) {
     P.push(colour(fus, WHITE), box(1.25, 0.9, 1.8, GLASS, 0, 2.55, -1.1));
     P.push(box(11.5, 0.22, 1.7, WHITE, 0, 3.05, -1.0), box(4.2, 0.18, 1.1, WHITE, 0, 2.05, 3.7), box(0.18, 1.7, 1.3, WHITE, 0, 2.85, 3.8));
     for (const s of [-1, 1]) P.push(box(0.08, 1.4, 0.08, DARK, s * 1.6, 2.35, -1.0).rotateZ(s * -0.6));
-    P.push(box(0.15, 2.6, 0.22, DARK, 0, 1.9, -3.35), cylY(0.25, 0.4, DARK, 0, 1.9, -3.2));
+    if (!opts.noProp) P.push(box(0.15, 2.6, 0.22, DARK, 0, 1.9, -3.35));
+    P.push(cylY(0.25, 0.4, DARK, 0, 1.9, -3.2));
     P.push(box(0.9, 0.25, 0.04, LEGO.black, 1.2, 1.9, 2.5)); // tail number
     wheelsAt([[-1.1, -1.3], [1.1, -1.3]], 0.42);
     P.push(wheelGeometry(0.22, style).translate(0, 0.22, 3.4));

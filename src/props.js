@@ -335,6 +335,17 @@ export class Props {
     if (!it.held) this._write(it);
   }
 
+  /** The parked plane without its propeller blade (to fly it, with a spinning one added). */
+  planeBodyMesh(tint) {
+    if (!this._planeBody) {
+      this._planeBody = mergeGeometries(otherModel('plane', isLego() ? 'lego' : 'real', { noProp: true }));
+      this._planeBody.computeVertexNormals();
+    }
+    const m = this.mesh('plane', tint);
+    m.geometry = this._planeBody;
+    return m;
+  }
+
   /** A loose mesh of a kind (for carrying, throwing and other players' hands). */
   mesh(kind, tint = LEGO.white) {
     const k = this.kinds[kind];

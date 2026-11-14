@@ -478,6 +478,40 @@ function clearDebris() {
 }
 
 // ------------------------------------------------------------------ camera
+let blurTex = null;
+/** The cockpit's view of a spinning propeller: a faint disc with two soft blade streaks. */
+function propBlur(model) {
+  if (model.propBlur) return model.propBlur;
+  if (!blurTex) {
+    const c = document.createElement('canvas');
+    c.width = c.height = 256;
+    const g = c.getContext('2d');
+    g.translate(128, 128);
+    g.fillStyle = 'rgba(40,44,48,0.18)';
+    g.beginPath();
+    g.arc(0, 0, 127, 0, Math.PI * 2);
+    g.fill();
+    for (const a of [0, Math.PI]) {
+      const grd = g.createRadialGradient(0, 0, 10, 0, 0, 128);
+      grd.addColorStop(0, 'rgba(30,32,36,0.9)');
+      grd.addColorStop(0.85, 'rgba(30,32,36,0.55)');
+      grd.addColorStop(1, 'rgba(30,32,36,0)');
+      g.fillStyle = grd;
+      g.beginPath();
+      g.moveTo(0, 0);
+      g.arc(0, 0, 128, a - 0.32, a + 0.32);
+      g.closePath();
+      g.fill();
+    }
+    blurTex = new THREE.CanvasTexture(c);
+  }
+  const r = model.propDisc?.geometry.parameters.radius || 2;
+  const m = new THREE.Mesh(new THREE.CircleGeometry(r, 40), new THREE.MeshBasicMaterial({ map: blurTex, transparent: true, depthWrite: false, side: THREE.DoubleSide }));
+  m.position.copy(model.propeller.position);
+  model.propeller.parent.add(m);
+  model.propBlur = m;
+  return m;
+}
 /** Size, seat and dashboard of a drivable object (car kinds go by their model). */
 const driveInfo = (it) => vehicleInfo(props.kinds[it.kind]?.model || it.kind);
 const dashboard = new Dashboard();
@@ -574,8 +608,18 @@ function updateCamera(dt) {
     return;
   }
   for (const m of plane.cockpitHidden) m.visible = mode !== 'cockpit';
-  // From the cockpit the propeller is hidden (up close, its blur disc filled the sky).
-  if (!isHeli && !isBot) for (const c of plane.propeller.children) c.visible = mode !== 'cockpit';
+  // From the cockpit the propeller is a see-through blur that turns (solid blades
+  // a metre from your eyes looked like frozen black bars); outside, the real blades.
+  if (!isHeli && !isBot) {
+    const inside = mode === 'cockpit';
+    for (const c of plane.propeller.children) c.visible = !inside;
+    const blur = propBlur(plane);
+    blur.visible = inside;
+    if (inside) {
+      blur.rotation.z = timer.getElapsed() * (3 + flight.throttle * 9);
+      blur.material.opacity = 0.18 + flight.throttle * 0.3;
+    }
+  }
   const dr = isBot && rampage?.driving;
   if (dr) dr.mesh.visible = true;
   if (mode === 'cockpit' && dr) {
@@ -4080,14 +4124,31 @@ function enterParkedPlane(it) {
  */
 function dressAsParked(model, it) {
   for (const c of model.group.children) if (c !== model.floats) c.visible = false;
-  const mesh = props.mesh('plane', it.tint);
+  const mesh = props.planeBodyMesh(it.tint);
+  // Its own propeller, separate so it spins (two blades, a blur disc when fast).
+  const prop = new THREE.Group();
+  prop.position.set(0, 1.9, -3.42);
+  const bladeMat = new THREE.MeshLambertMaterial({ color: 0x2b2f33 });
+  for (const a of [0, Math.PI / 2]) {
+    const blade = new THREE.Mesh(new THREE.BoxGeometry(0.16, 2.6, 0.08), bladeMat);
+    blade.rotation.z = a;
+    blade.rotation.y = 0.25;
+    prop.add(blade);
+  }
+  const disc = new THREE.Mesh(new THREE.CircleGeometry(1.35, 32), new THREE.MeshBasicMaterial({ color: 0x333333, transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide }));
+  prop.add(disc);
+  mesh.add(prop);
+  model.propBlur?.removeFromParent(); // the bush plane's cockpit blur, if it had one
+  model.propBlur = null;
+  model.propeller = prop;
+  model.propDisc = disc;
   mesh.scale.setScalar(it.scale || 1);
   mesh.position.y = -model.gearHeight; // its wheels on the ground
   model.group.add(mesh);
   model.parked = { mesh, kind: it.kind, tint: it.tint, scale: it.scale || 1 };
   model.cockpitHidden = [];
   // First person: in its own cabin, under the high wing.
-  model.cockpitEye = new THREE.Vector3(0, 2.62 * (it.scale || 1) - model.gearHeight, -1.25 * (it.scale || 1));
+  model.cockpitEye = new THREE.Vector3(0, 2.8 * (it.scale || 1) - model.gearHeight, -2.15 * (it.scale || 1)); // up front, eyes over the nose
   model.updateBoosters = () => {}; // (the bush plane's turbo flames would float in the wrong place)
   model.wheels = []; // its own wheels are part of its model
   addNavLights(model, parkedPlaneSpec(it.scale || 1, model.gearHeight)); // lights on its own wingtips
@@ -4242,7 +4303,8 @@ function frame() {
     if (!isHeli && !isBot) {
       const rpm = 8 + flight.throttle * 60;
       plane.propeller.rotation.z += rpm * dt;
-      plane.propDisc.material.opacity = flight.throttle * 0.25;
+      // The blur disc: from the cockpit only a faint haze, so the view ahead stays clear.
+      plane.propDisc.material.opacity = flight.throttle * (CAMS[camMode] === 'cockpit' ? 0.1 : 0.25);
     }
     sound.update(flight.crashed ? 0 : flight.throttle, flight.speed);
     updateCamera(dt);
