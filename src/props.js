@@ -75,6 +75,10 @@ const KINDS = {
   tanker: { drive: true, name: 'fuel truck', r: 4.5, make: detailed('tanker') },
   marble: { name: 'marble block', r: 2.4, make: () => [box(3.4, 2.6, 3.4, 0xf2f1ec, 0, 1.3, 0), box(3.45, 0.15, 3.45, 0xd9d6cc, 0, 1.6, 0)] },
   truck: { drive: true, name: 'ice cream truck', r: 3.6, make: detailed('truck') },
+  // Emergency vehicles: flashing lights and a siren (switched on and off while driving).
+  police: { drive: true, emergency: true, name: 'police car', r: 3.2, make: detailed('police') },
+  ambulance: { drive: true, emergency: true, name: 'ambulance', r: 3.9, make: detailed('ambulance') },
+  firetruck: { drive: true, emergency: true, name: 'fire truck', r: 5.2, make: detailed('firetruck') },
 };
 
 // What turns up on each kind of ground, and how many of each ground type at most.
@@ -88,6 +92,10 @@ const LAND = {
   track: { kinds: ['ball'], max: 10 },
   sand: { kinds: ['umbrella', 'ball'], max: 40 },
 };
+// Emergency vehicles near landmarks whose names fit, placed last so everything else keeps its place.
+const EMERGENCY_NAMED = [
+  [/hospital|medical|clinic|health/i, 'ambulance', 2], [/fire/i, 'firetruck', 2], [/police|sheriff|court|city hall|capitol|county/i, 'police', 2],
+];
 // Landmarks whose names hint at what's lying around them.
 const NAMED = [
   [/brew|beer|distill|pub\b/i, 'keg', 4], [/quarry|marble/i, 'marble', 6],
@@ -210,6 +218,23 @@ export class Props {
     for (let k = 0; k < 260; k++) {
       put((rural ? ['boulder', 'hay', 'log', 'hay'] : ['boulder', 'log', 'boulder', 'dumpster'])[Math.floor(r() * 4)], (r() - 0.5) * w.sizeX * 0.95, (r() - 0.5) * w.sizeZ * 0.95, 0);
     }
+    // Emergency vehicles: a police car, an ambulance and a fire engine by the start of the
+    // runway, an ambulance at the helipad, more near fitting landmarks and around town.
+    const end = rw.length / 2 - 70;
+    const side = rw.width / 2 + 32;
+    ['police', 'ambulance', 'firetruck'].forEach((kind, k) => {
+      const along = -end + k * 16;
+      put(kind, rw.x + rw.fx * along - rw.fz * side, rw.z + rw.fz * along + rw.fx * side, 8);
+    });
+    if (d.helipad) put('ambulance', d.helipad.x, d.helipad.z, 50);
+    for (const l of d.landmarks) {
+      for (const [re, kind, n] of EMERGENCY_NAMED) if (re.test(l.name)) for (let k = 0; k < n; k++) put(kind, l.x, l.z, 70);
+    }
+    const town = ['police', 'police', 'police', 'ambulance', 'firetruck', 'police', 'ambulance', 'firetruck'];
+    town.forEach((kind, k) => {
+      const l = d.landmarks[k % Math.max(1, d.landmarks.length)];
+      if (l) put(kind, l.x, l.z, 120);
+    });
   }
 
   _write(it) {

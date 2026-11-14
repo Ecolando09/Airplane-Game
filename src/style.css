@@ -2443,7 +2443,8 @@ body.psg1 .controls.xbox-guide {
 
 body.pad-play details.help .controls:not(.pad-only):not(.psg1-only),
 body.pad-play #touch,
-body.pad-play #phoneChip {
+/* (on a computer the phone controller stays available even with a game controller in use) */
+body.is-touch.pad-play #phoneChip {
   display: none !important;
 }
 
@@ -2683,4 +2684,39 @@ body.is-touch #hi5Btn kbd {
 
 #rgPanel .rg-box {
   text-align: left;
+}
+
+/* Emergency vehicle switches (police car, ambulance, fire truck), while driving one. */
+#emBtns {
+  position: fixed;
+  right: 16px;
+  top: 64px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+#emBtns button {
+  padding: 8px 12px;
+  font-size: 15px;
+  opacity: 0.75;
+}
+#emBtns button.on {
+  opacity: 1;
+  background: #d81b1b;
+  color: #fff;
+  box-shadow: 0 0 12px rgba(255, 40, 40, 0.8);
+}
+#emBtns #emSirenBtn.on {
+  background: #e68a00;
+  box-shadow: 0 0 12px rgba(255, 170, 0, 0.8);
+}
+#emBtns kbd {
+  margin-left: 6px;
+}
+body.is-touch #emBtns kbd {
+  display: none;
+}
+body.is-touch #emBtns button {
+  padding: 12px 16px;
+  font-size: 17px;
 }

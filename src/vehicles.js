@@ -93,6 +93,27 @@ const OTHER = {
   tanker: { L: 9.6, W: 2.7, eye: [-0.6, 2.8, -3.9], lampY: 1.2, dash: 'car' },
   cart: { L: 3.0, W: 1.7, eye: [-0.4, 1.9, 0.3], lampY: 0.9, dash: 'car' },
   boat: { L: 8.0, W: 2.7, eye: [0, 2.5, 0.9], lampY: 1.6, dash: 'boat' },
+  police: { L: 5.6, W: 2.3, eye: [-0.5, 1.55, -0.1], lampY: 1.0, dash: 'police' },
+  ambulance: { L: 7.0, W: 2.6, eye: [-0.6, 2.05, -2.2], lampY: 1.0, dash: 'ambulance' },
+  firetruck: { L: 10.0, W: 2.8, eye: [-0.65, 2.5, -3.7], lampY: 1.1, dash: 'fire' },
+};
+
+/**
+ * The flashing emergency lights of a kind, at scale 1: [[x, y, z, colour, phase], ...].
+ * phase 0 and 1 flash in turn (wig-wag).
+ */
+const RED = 0xff1e1e;
+const BLUE = 0x2a6bff;
+const WHITE_L = 0xffffff;
+export const EMERGENCY = {
+  police: [[-0.45, 2.24, 0.1, RED, 0], [-0.15, 2.24, 0.1, RED, 1], [0.15, 2.24, 0.1, BLUE, 0], [0.45, 2.24, 0.1, BLUE, 1],
+    [-0.45, 0.92, -2.88, RED, 1], [0.45, 0.92, -2.88, BLUE, 0], [-0.6, 1.25, 2.9, RED, 0], [0.6, 1.25, 2.9, BLUE, 1]],
+  ambulance: [[-0.55, 2.72, -1.95, RED, 0], [0, 2.72, -1.95, WHITE_L, 1], [0.55, 2.72, -1.95, RED, 1],
+    [-1.2, 3.32, -1.5, RED, 1], [1.2, 3.32, -1.5, RED, 0], [-1.2, 3.32, 3.52, RED, 0], [1.2, 3.32, 3.52, RED, 1], [0, 3.32, 3.52, WHITE_L, 0],
+    [-1.0, 1.0, -3.55, RED, 0], [1.0, 1.0, -3.55, RED, 1]],
+  firetruck: [[-0.8, 3.28, -3.5, RED, 0], [-0.25, 3.28, -3.5, WHITE_L, 1], [0.25, 3.28, -3.5, RED, 1], [0.8, 3.28, -3.5, RED, 0],
+    [-1.3, 2.95, 4.95, RED, 1], [1.3, 2.95, 4.95, RED, 0], [-1.42, 1.6, -2.2, RED, 1], [1.42, 1.6, -2.2, RED, 0],
+    [-1.0, 1.05, -5.05, RED, 0], [1.0, 1.05, -5.05, RED, 1]],
 };
 export function vehicleInfo(kind) {
   if (CARS[kind]) {
@@ -228,6 +249,47 @@ export function otherModel(kind, style) {
     P.push(colour(hg, WHITE));
     P.push(box(2.3, 0.15, 5.2, LEGO.tan, 0, 1.35, 0.6), box(2.0, 0.7, 0.08, GLASS, 0, 1.75, -0.6), box(0.8, 0.5, 0.8, LEGO.white, -0.5, 1.6, 0.6), box(0.8, 0.5, 0.8, LEGO.white, 0.5, 1.6, 0.6));
     P.push(box(0.5, 0.9, 0.5, DARK, 0, 1.1, 3.6)); // outboard motor
+  } else if (kind === 'police') {
+    // A black-and-white patrol car: the sedan, black doors and hood, a light bar, a gold star.
+    const m = carModel('sedan', style);
+    P.push(m.body, m.lamps);
+    P.push(box(CARS.sedan.W + 0.05, 0.62, 2.7, LEGO.black, 0, 0.88, 0.2)); // black doors
+    if (!real) P.push(box(CARS.sedan.W - 0.3, 0.12, 1.3, LEGO.black, 0, 1.46, -2.05)); // black hood
+    for (const sx of [-1, 1]) P.push(box(0.06, 0.34, 0.34, LEGO.yellow, sx * (CARS.sedan.W / 2 + 0.04), 0.95, -0.35)); // star badge
+    P.push(box(1.45, 0.1, 0.42, DARK, 0, 2.08, 0.1)); // light bar
+    P.push(box(0.62, 0.2, 0.36, 0xd81b1b, -0.36, 2.22, 0.1), box(0.62, 0.2, 0.36, 0x1d4fd8, 0.36, 2.22, 0.1));
+    P.push(box(1.0, 0.12, 0.06, 0x1d4fd8, 0.0, 0.92, -2.83)); // push bar flashers
+    if (!real) P.push(...studs(1, 3, 0.4, 2.13, 0, 0.1, DARK));
+    for (const [x, z, r] of carWheels('sedan')) P.push(wheelGeometry(r, style).translate(x, r, z));
+  } else if (kind === 'ambulance') {
+    // A box ambulance: a white cab and box body with a red stripe, red crosses and lights.
+    if (real) P.push(profile([[-3.5, 0.55], [-3.5, 1.35], [-2.7, 1.55], [-2.0, 2.55], [-1.55, 2.55], [-1.55, 0.55]], 2.5, WHITE, 0.16));
+    else P.push(box(2.5, 1.0, 2.0, WHITE, 0, 1.05, -2.5), slope(2.4, 0.8, 1.55, 2.55, GLASS, -2.2), box(2.5, 1.0, 0.8, WHITE, 0, 2.05, -1.95));
+    P.push(box(2.6, 2.8, 5.1, WHITE, 0, 1.95, 0.98)); // box body
+    P.push(box(2.55, 0.75, 0.06, GLASS, 0, 2.0, real ? -2.25 : -2.45), box(0.06, 0.6, 0.8, GLASS, -1.27, 2.0, -2.0), box(0.06, 0.6, 0.8, GLASS, 1.27, 2.0, -2.0));
+    P.push(box(2.64, 0.3, 5.12, 0xd81b1b, 0, 1.45, 0.98), box(2.54, 0.3, 2.0, 0xd81b1b, 0, 1.0, -2.5)); // stripe
+    for (const sx of [-1, 1]) P.push(box(0.05, 1.1, 0.34, 0xd81b1b, sx * 1.32, 2.5, 1.0), box(0.05, 0.34, 1.1, 0xd81b1b, sx * 1.32, 2.5, 1.0)); // crosses
+    P.push(box(0.34, 1.0, 0.05, 0xd81b1b, 0, 2.4, 3.55), box(1.0, 0.34, 0.05, 0xd81b1b, 0, 2.4, 3.55));
+    P.push(box(1.5, 0.12, 0.38, DARK, 0, 2.6, -1.95), box(1.3, 0.18, 0.32, 0xd81b1b, 0, 2.72, -1.95));
+    P.push(box(2.7, 0.35, 0.3, DARK, 0, 0.6, -3.6), box(2.7, 0.35, 0.3, DARK, 0, 0.6, 3.6));
+    for (const s of [-1, 1]) P.push(box(0.45, 0.22, 0.08, HEAD, s * 0.9, 1.0, -3.52), box(0.3, 0.6, 0.08, TAIL, s * 1.15, 1.0, 3.55));
+    if (!real) P.push(...studs(3, 6, 0.8, 3.35, 0, 1.0, WHITE));
+    wheelsAt([[-1.2, -2.4], [1.2, -2.4], [-1.2, 2.3], [1.2, 2.3]], 0.55);
+  } else if (kind === 'firetruck') {
+    // A fire engine: red cab and body, chrome lockers, a white stripe and a ladder on top.
+    const red = 0xc8102e;
+    P.push(real ? profile([[-5.0, 0.7], [-5.0, 2.2], [-4.6, 3.1], [-2.3, 3.1], [-2.3, 0.7]], 2.8, red, 0.18) : box(2.8, 2.4, 2.7, red, 0, 1.9, -3.65));
+    P.push(box(2.85, 1.0, 0.06, GLASS, 0, 2.45, real ? -4.75 : -5.02), box(0.06, 0.8, 1.2, GLASS, -1.42, 2.45, -3.7), box(0.06, 0.8, 1.2, GLASS, 1.42, 2.45, -3.7));
+    P.push(box(2.8, 2.0, 7.3, red, 0, 1.75, 1.35)); // body
+    P.push(box(2.86, 0.18, 9.9, WHITE, 0, 1.25, 0.05)); // stripe
+    for (const sx of [-1, 1]) for (let k = 0; k < 4; k++) P.push(box(0.05, 0.75, 1.5, CHROME, sx * 1.43, 1.85, -1.4 + k * 1.75)); // lockers
+    for (const sx of [-0.55, 0.55]) P.push(box(0.12, 0.18, 8.6, 0xd7dbe0, sx, 3.05, 0.9)); // ladder rails
+    for (let k = 0; k < 15; k++) P.push(box(1.1, 0.08, 0.08, 0xd7dbe0, 0, 3.05, -3.3 + k * 0.6));
+    P.push(box(1.7, 0.12, 0.4, DARK, 0, 3.15, -3.5), box(1.55, 0.18, 0.34, 0xff2a2a, 0, 3.28, -3.5));
+    P.push(box(3.0, 0.4, 0.35, CHROME, 0, 0.75, -5.1), box(2.0, 0.6, 0.06, CHROME, 0, 1.4, -5.03)); // bumper, grille
+    for (const s of [-1, 1]) P.push(box(0.45, 0.25, 0.08, HEAD, s * 1.0, 1.05, -5.06), box(0.3, 0.5, 0.08, TAIL, s * 1.2, 1.2, 5.02));
+    if (!real) P.push(...studs(3, 3, 0.8, 3.1, 0, -3.65, red));
+    wheelsAt([[-1.3, -3.6], [1.3, -3.6], [-1.3, 2.4], [1.3, 2.4], [-1.3, 3.9], [1.3, 3.9]], 0.7);
   } else if (kind === 'plane') {
     // A small high-wing plane like the one you fly: fuselage, wing with struts, tail, propeller.
     const fus = new THREE.CylinderGeometry(0.75, 0.45, 7.2, real ? 14 : 8).rotateX(Math.PI / 2).translate(0, 1.9, 0.4);

@@ -20,13 +20,16 @@ export class Input {
     const actions = {
       KeyC: 'cam', KeyR: 'reset', KeyM: 'mute', KeyI: 'invert', KeyB: 'floats', KeyN: 'map',
       KeyP: 'potty', Period: 'bigger', Comma: 'smaller', KeyF: 'transform', KeyG: 'grab', KeyX: 'smash',
-      KeyT: 'turboKey', KeyL: 'autoland', Enter: 'respawn', NumpadEnter: 'respawn', Digit1: 'turbo1', Digit2: 'turbo2', Digit3: 'turbo3', Escape: 'pause', Backquote: 'colliders', BracketRight: 'grow', BracketLeft: 'shrink', KeyV: 'drive', KeyY: 'emotes', KeyH: 'horn', KeyJ: 'hi5', KeyK: 'roomgames',
+      KeyT: 'turboKey', KeyL: 'autoland', Enter: 'respawn', NumpadEnter: 'respawn', Digit1: 'turbo1', Digit2: 'turbo2', Digit3: 'turbo3', Escape: 'pause', Backquote: 'colliders', BracketRight: 'grow', BracketLeft: 'shrink', KeyV: 'drive', KeyY: 'emotes', KeyH: 'horn', KeyJ: 'hi5', KeyK: 'roomgames', KeyO: 'elights', KeyU: 'siren',
     };
     addEventListener('keydown', (e) => {
       if (e.repeat || e.target.closest?.('input, textarea')) return; // typing a name, not flying
       this.keys.add(e.code);
       if (e.code === 'KeyI') this.invertPitch = !this.invertPitch;
       if (actions[e.code]) this.emit(actions[e.code]);
+      // Taps of left/right (for the barrel roll), caught as they happen so a slow frame can't miss one.
+      if (e.code === 'KeyD' || e.code === 'ArrowRight') this.emit('rollTap', 1);
+      if (e.code === 'KeyA' || e.code === 'ArrowLeft') this.emit('rollTap', -1);
       if (e.code.startsWith('Arrow') || e.code === 'Space') e.preventDefault();
     });
     addEventListener('keyup', (e) => this.keys.delete(e.code));

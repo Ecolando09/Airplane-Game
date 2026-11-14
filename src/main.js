@@ -20,7 +20,7 @@ import { PottyTime } from './pottytime.js';
 import { ColliderView } from './colliderview.js';
 import { NightLights } from './nightlights.js';
 import { addNavLights, updateNavLights, parkedPlaneSpec } from './navlights.js';
-import { vehicleLights, addRideLights, setVehicleLightsNight, GrownLights } from './vehlights.js';
+import { vehicleLights, addRideLights, setVehicleLightsNight, GrownLights, emergencyLights, updateEmergencyLights, EmergencyProps } from './vehlights.js';
 import { vehicleInfo } from './vehicles.js';
 import { Dashboard } from './dashboard.js';
 import { PadNav, pad as padGlyph, isPsg1, isPsg1Pad, enablePsg1 } from './psg1.js';
@@ -134,6 +134,7 @@ let nightLights = null; // street lamps (and Google 3D's lit windows) after dark
 let colView = null; // collision-shape outlines (debug view, and flashing whatever blocks the robot)
 let props = null; // loose objects lying around the city
 let grownLights = null; // lights on supersized cars and boats lying around
+let emergencyProps = null; // flashing lights on the police cars, ambulances and fire trucks lying around
 let rampage = null; // robot-mode destruction
 // Robot mode: `plane` and `flight` point at the robot while it's out, and the
 // vehicle waits in `vehicle` until you change back.
@@ -254,6 +255,8 @@ async function buildWorld() {
   props = new Props(scene, world);
   grownLights?.dispose();
   grownLights = new GrownLights(scene, props, prefs.low || isPsg1() ? 6 : 12);
+  emergencyProps?.dispose();
+  emergencyProps = new EmergencyProps(scene, props, prefs.low || isPsg1() ? 4 : 8);
   // A car taken off the road (grabbed, kicked, squashed) vanishes for the whole room.
   traffic.onRemove = (i) => mp.room && mp.send({ t: 'car-gone', city: settings.city, i });
   rampage = new Rampage(scene, world, traffic, props, {
@@ -275,7 +278,11 @@ async function buildWorld() {
       if (on && dr && !dr.mesh.getObjectByName('vehLights')) {
         const l = vehicleLights(dr.item.kind, props.kinds[dr.item.kind]?.model);
         if (l) dr.mesh.add(l);
+        // Police car, ambulance, fire truck: its flashing lights (on unless switched off).
+        dr.em = emergencyLights(dr.item.kind, dr.item.lights !== false);
+        if (dr.em) dr.mesh.add(dr.em);
       }
+      updateEmButtons();
       setBotUi();
       $('driveBtn').hidden = true;
     },
@@ -490,7 +497,7 @@ function updateDashboard() {
   const fw = flight.forward;
   dashboard.update({
     mph: type === 'boat' || type === 'heli' ? mph * 0.869 : mph, // knots on the water and in the copter
-    maxMph: type === 'car' ? 140 : type === 'boat' ? 60 : type === 'heli' ? 160 : 200,
+    maxMph: type === 'car' || type === 'police' || type === 'ambulance' || type === 'fire' ? 140 : type === 'boat' ? 60 : type === 'heli' ? 160 : 200,
     throttle: dr ? Math.min(1, Math.abs(c.pitch || 0)) : flight.throttle ?? 0.5,
     altFt: (flight.pos.y - (plane.gearHeight || 0) + world.baseElevation) * 3.281,
     vs: (flight.vel?.y || 0) * 196.9,
@@ -500,6 +507,7 @@ function updateDashboard() {
     steer: THREE.MathUtils.clamp(c.roll || 0, -1, 1),
     stick: THREE.MathUtils.clamp(c.pitch || 0, -1, 1),
     gear: mph < 1 ? 'P' : (c.pitch || 0) < -0.1 ? 'R' : 'D',
+    lights: !!dr && dr.item.lights !== false, siren: !!dr?.item.siren,
   });
 }
 const CAMS = ['chase', 'cockpit']; // behind and above, or the driver's seat
@@ -2982,8 +2990,9 @@ input.on('navCity', (step) => {
 input.on('l1', () => (isBot ? setTurbo((flight.turbo % 3) + 1) : running && startAutoLand()));
 input.on('dUp', () => (isBot ? running && rampage.resize(flight, 2) && updateBotHud() : toggleMap()));
 input.on('dDown', () => (isBot ? running && rampage.resize(flight, 0.5) && updateBotHud() : goPotty()));
-input.on('dLeft', goPotty);
-input.on('dRight', () => (potty.need ? skipPotty() : coach && nextCoach()));
+// D-pad left/right: potty and "not now"; in a police car, ambulance or fire truck, lights and siren.
+input.on('dLeft', () => (emVehicle() ? toggleEmLights() : goPotty()));
+input.on('dRight', () => (emVehicle() ? toggleSiren() : potty.need ? skipPotty() : coach && nextCoach()));
 // A controller plugged into a phone (like a GameSir) or a computer: once it's
 // used, the on-screen touch buttons go away so more of the screen is visible,
 // and hints name the controller's buttons (Xbox layout). Unplugging it, or
@@ -3947,6 +3956,64 @@ function enterVehicle() {
   return true;
 }
 $('driveBtn').onclick = enterVehicle;
+
+// ------------------------------------------------------------------ emergency vehicles
+// A police car, ambulance or fire truck: flashing lights (on unless switched off,
+// by day too) and a siren, each switched with a button, a key (O, U) or the D-pad.
+/** The emergency vehicle being driven, or null. */
+const emVehicle = () => (isBot && running && rampage?.driving && props.kinds[rampage.driving.item.kind]?.emergency ? rampage.driving : null);
+const emState = () => {
+  const dr = emVehicle();
+  return dr ? (dr.item.lights !== false ? 1 : 0) | (dr.item.siren ? 2 : 0) : 0;
+};
+function toggleEmLights() {
+  const dr = emVehicle();
+  if (!dr) return;
+  dr.item.lights = dr.item.lights === false;
+  if (dr.em) dr.em.userData.on = dr.item.lights;
+  sound.blip('ring', 0.5);
+  message(dr.item.lights ? '🚨 Lights on' : 'Lights off', 1.2);
+  updateEmButtons();
+}
+function toggleSiren() {
+  const dr = emVehicle();
+  if (!dr) return;
+  dr.item.siren = !dr.item.siren;
+  message(dr.item.siren ? '📢 Siren on' : 'Siren off', 1.2);
+  updateEmButtons();
+}
+function updateEmButtons() {
+  const dr = emVehicle();
+  $('emBtns').hidden = !dr;
+  if (!dr) return;
+  $('emLightsBtn').classList.toggle('on', dr.item.lights !== false);
+  $('emSirenBtn').classList.toggle('on', !!dr.item.siren);
+  const pad = isPsg1() || padPlay;
+  $('emLightsBtn').querySelector('kbd').textContent = pad ? '◀' : 'O';
+  $('emSirenBtn').querySelector('kbd').textContent = pad ? '▶' : 'U';
+}
+$('emLightsBtn').onclick = toggleEmLights;
+$('emSirenBtn').onclick = toggleSiren;
+input.on('elights', toggleEmLights);
+input.on('siren', toggleSiren);
+/** Each frame: my siren, or else the loudest friend's siren nearby (fading with distance). */
+function updateSiren() {
+  const dr = emVehicle();
+  if (dr?.item.siren) return sound.siren(dr.item.kind, 1);
+  let best = null;
+  let vol = 0;
+  if (running && mp.room) {
+    for (const p of mp.players.values()) {
+      if (!(p.ride?.em & 2) || p.city !== settings.city || !p.pos) continue;
+      const v = 1 / (1 + p.pos.distanceTo(flight.pos) / 120);
+      if (v > vol && v > 0.08) {
+        vol = v;
+        best = p.ride.kind;
+      }
+    }
+  }
+  sound.siren(best, vol);
+}
 input.on('drive', enterVehicle);
 let takenPlane = null; // a parked plane this player flew off in (put back on restart)
 /** Climb into a parked plane: it becomes your plane, in its colour, where it was parked. */
@@ -4022,6 +4089,35 @@ function snapToGoogleGround() {
   if (g !== null) flight.pos.y = g + plane.gearHeight;
 }
 
+// ------------------------------------------------------------------ barrel roll
+// Tap left (or right) twice quickly, on the keys, a stick or the phone, and the
+// plane does a full roll that way.
+const barrelTap = { dir: 0, at: 0, held: 0 };
+const ROLL_KEYS = ['KeyD', 'ArrowRight', 'KeyA', 'ArrowLeft'];
+/** One tap left (-1) or right (+1): the second in the same direction within 0.4 s rolls. */
+function rollTap(dir) {
+  const now = performance.now();
+  if (dir === barrelTap.dir && now - barrelTap.at < 400) {
+    barrelTap.dir = 0;
+    if (running && !isBot && !isHeli && flight.barrelRoll(dir)) {
+      sound.blip('load', 0.6);
+      message(dir > 0 ? '🌀 Barrel roll! ➡️' : '🌀 Barrel roll! ⬅️', 1.2);
+    }
+  } else {
+    barrelTap.dir = dir;
+    barrelTap.at = now;
+  }
+}
+input.on('rollTap', rollTap); // keys
+/** Sticks, touch and the phone: a push past 0.6 after letting go counts as a tap. */
+function checkBarrelRoll(roll) {
+  if (ROLL_KEYS.some((k) => input.keys.has(k))) return; // keys report their own taps
+  const dir = roll > 0.6 ? 1 : roll < -0.6 ? -1 : 0;
+  if (dir && !barrelTap.held) rollTap(dir);
+  if (Math.abs(roll) < 0.2) barrelTap.held = 0;
+  else if (dir) barrelTap.held = dir;
+}
+
 // ------------------------------------------------------------------ loop
 const timer = new THREE.Timer();
 function frame() {
@@ -4033,6 +4129,9 @@ function frame() {
   if (input.pad() && !codePick) padNav.sync();
   updateNavLights(timer.getElapsed(), NIGHT.value);
   if (!running && dashboard.visible) dashboard.show(null);
+  updateEmergencyLights(timer.getElapsed(), NIGHT.value);
+  if (running && emergencyProps) emergencyProps.update(flight.pos.x, flight.pos.z);
+  updateSiren();
   if (running && grownLights) grownLights.update(flight.pos.x, flight.pos.z, NIGHT.value);
   updateRoomGames(); // countdowns run in the menu too
   updateFriends();
@@ -4052,7 +4151,7 @@ function frame() {
       group: plane.group, city: settings.city, vehicle: settings.vehicle, speed: flight.speed,
       turbo: flight.turbo || 1, floats: !!flight.floats, crashed: flight.crashed, bot: isBot,
       size: isBot ? bot.walk.size : 1, sit: potty.sitting > 0,
-      ride: isBot && rampage.driving ? { kind: rampage.driving.item.kind, tint: rampage.driving.item.tint, scale: rampage.driving.item.scale || 1 }
+      ride: isBot && rampage.driving ? { kind: rampage.driving.item.kind, tint: rampage.driving.item.tint, scale: rampage.driving.item.scale || 1, em: emState() }
         : !isBot && plane?.parked ? { kind: 'plane', tint: plane.parked.tint, scale: plane.parked.scale, lift: +plane.gearHeight.toFixed(2) } : null,
       cash: beerRun?.active ? beerRun.cash : game?.active ? Math.round(game.total ?? game.next * 100) : undefined,
     });
@@ -4071,6 +4170,7 @@ function frame() {
     } else if (rgFrozen() || updateCarried()) {
       // Held on the room game's start line until GO, or carried by a friend's giant robot.
     } else if (!flight.crashed) {
+      if (!isBot && !isHeli) checkBarrelRoll(ctl.roll);
       flight.update(dt, ctl);
       if (flight.crashed) {
         explode();
@@ -4172,7 +4272,7 @@ if (new URLSearchParams(location.search).has('debug')) {
     autoLandApi: { start: (l) => { autoLandTarget = l; startAutoLand(); }, step: (dt) => autoLand && updateAutoLand(dt), active: () => !!autoLand },
     step: (dt, ctl) => flight.update(dt, ctl), beer: () => beerRun, gameObj: () => game,
     bot: () => ({ isBot, walk: bot.walk, rampage, props }),
-    cam: (m) => (m != null && (camMode = CAMS.indexOf(m)), CAMS[camMode]), dashboard, get grownLights() { return grownLights; },
+    cam: (m) => (m != null && (camMode = CAMS.indexOf(m)), CAMS[camMode]), dashboard, get grownLights() { return grownLights; }, get emergencyProps() { return emergencyProps; },
     roomGame: () => ({ g: rgGame, run: rgRun, game, scores: rgScores, keg: rgKeg, landed: rgLanded }),
     friendState: () => ({ formationWith: formation.with, trails: formation.partnerTrail.size, carriedBy: carry.by, carrying: carry.who }),
   };

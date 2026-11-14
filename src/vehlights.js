@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { glowTexture } from './nightlights.js';
-import { vehicleInfo } from './vehicles.js';
+import { vehicleInfo, EMERGENCY } from './vehicles.js';
 import { addNavLights, parkedPlaneSpec } from './navlights.js';
 
 // Lights on the cars, trucks and boats the robot supersizes and drives (and on
@@ -66,6 +66,11 @@ export function addRideLights(model, kind, propsKinds) {
   if (kind === 'plane') return addNavLights(model, parkedPlaneSpec(1, 0));
   const l = vehicleLights(kind, propsKinds?.[kind]?.model);
   if (l) model.group.add(l);
+  const em = emergencyLights(kind, false); // a friend's police car or fire engine: on when they switch it on
+  if (em) {
+    model.group.add(em);
+    model.emLights = em;
+  }
   return l;
 }
 
@@ -116,6 +121,110 @@ export class GrownLights {
       if (!g) {
         g = vehicleLights(it.kind, this.props.kinds[it.kind].model);
         if (!g) continue;
+        this.scene.add(g);
+        this.sets.set(it, g);
+      }
+      g.position.set(it.x, it.y, it.z);
+      g.rotation.set(0, it.yaw, 0);
+      g.scale.setScalar(it.scale || 1);
+    }
+  }
+
+  dispose() {
+    for (const g of this.sets.values()) g.removeFromParent();
+    this.sets.clear();
+  }
+}
+
+// ---------------------------------------------------------------- emergency lights
+// Police cars, ambulances and fire engines: flashing red/blue/white lights that
+// show by day too (unlike head and tail lights). They take turns in two phases
+// (wig-wag) with a quick double flash, like the real thing.
+
+const emMats = {};
+function emMat(color) {
+  emMats[color] ||= new THREE.SpriteMaterial({ map: glowTexture(), color, transparent: true, depthWrite: false, fog: true });
+  return emMats[color];
+}
+const emLive = new Set();
+
+/** Flashing lights for an emergency kind (scale 1, nose toward -Z), or null. on: flashing. */
+export function emergencyLights(kind, on = true) {
+  const spec = EMERGENCY[kind];
+  if (!spec) return null;
+  const g = new THREE.Group();
+  g.name = 'emLights';
+  g.userData.on = on;
+  g.userData.phase = Math.random();
+  for (const [x, y, z, color, phase] of spec) {
+    const sp = new THREE.Sprite(emMat(color));
+    sp.position.set(x, y, z);
+    sp.scale.setScalar(1.5);
+    sp.renderOrder = 5;
+    sp.userData.phase = phase;
+    g.add(sp);
+  }
+  emLive.add(g);
+  return g;
+}
+
+/** Each frame: t = seconds, night 0..1 (the glows are bigger after dark). */
+export function updateEmergencyLights(t, night) {
+  const size = 1.5 + 1.6 * Math.min(1, night);
+  for (const g of emLive) {
+    if (!g.parent) {
+      emLive.delete(g);
+      continue;
+    }
+    if (!g.userData.on) {
+      g.visible = false;
+      continue;
+    }
+    g.visible = true;
+    const p = (t * 1.6 + g.userData.phase) % 1; // one cycle: 0.62 s
+    const half = p < 0.5 ? 0 : 1;
+    const q = (p % 0.5) / 0.5;
+    const lit = q < 0.28 || (q > 0.4 && q < 0.68); // double flash
+    for (const sp of g.children) {
+      sp.visible = lit && sp.userData.phase === half;
+      sp.scale.setScalar(size);
+    }
+  }
+}
+
+/** Flashing lights on the emergency vehicles lying around (nearest few, any size). */
+export class EmergencyProps {
+  constructor(scene, props, max = 8) {
+    this.scene = scene;
+    this.props = props;
+    this.max = max;
+    this.sets = new Map();
+    this.t = 0;
+  }
+
+  update(x, z) {
+    const now = performance.now();
+    if (now < this.t) return;
+    this.t = now + 400;
+    const want = [];
+    for (const it of this.props.items) {
+      if (it.held || it.lights === false || !this.props.kinds[it.kind].emergency) continue;
+      const d = Math.hypot(it.x - x, it.z - z);
+      if (d < 1200) want.push([d, it]);
+    }
+    want.sort((a, b) => a[0] - b[0]);
+    want.length = Math.min(want.length, this.max);
+    const keep = new Set(want.map((w) => w[1]));
+    for (const [it, g] of this.sets) {
+      if (!keep.has(it)) {
+        g.removeFromParent();
+        this.sets.delete(it);
+      }
+    }
+    for (const it of keep) {
+      let g = this.sets.get(it);
+      if (!g) {
+        g = emergencyLights(it.kind);
         this.scene.add(g);
         this.sets.set(it, g);
       }

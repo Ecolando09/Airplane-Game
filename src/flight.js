@@ -7,6 +7,7 @@ const STALL = 22; // m/s; below this the wings stop flying
 const LIFT_RAMP = 10; // m/s above stall until the wings fully fly
 const ROTATE = 27; // m/s; can lift off above this
 const MAX_BANK = THREE.MathUtils.degToRad(60);
+const BARREL_RATE = (Math.PI * 2) / 1.1; // a barrel roll takes 1.1 s
 const MAX_PITCH = THREE.MathUtils.degToRad(35);
 const G = 9.81;
 
@@ -28,6 +29,7 @@ export class Flight {
     this.crashReason = '';
     this.verticalSpeed = 0;
     this.ctrl = { pitch: 0, roll: 0, yaw: 0 };
+    this.barrel = null;
     this._tmpQ = new THREE.Quaternion();
     this._fwd = new THREE.Vector3();
     this._right = new THREE.Vector3();
@@ -49,6 +51,7 @@ export class Flight {
     this.crashed = false;
     this.crashReason = '';
     this.ctrl = { pitch: 0, roll: 0, yaw: 0 };
+    this.barrel = null;
     this.floats = false;
     this.turboNow = this.turbo || 1;
     this.turbo ||= 1;
@@ -83,6 +86,15 @@ export class Flight {
   get heading() {
     const f = this.forward;
     return (THREE.MathUtils.radToDeg(Math.atan2(f.x, -f.z)) + 360) % 360;
+  }
+
+  /** Start a barrel roll (dir +1 right, -1 left) if flying fast enough. Returns true if it started. */
+  barrelRoll(dir) {
+    if (this.crashed || this.onGround || this.barrel || this.speed < STALL + 8) return false;
+    const agl = this.pos.y - this.plane.gearHeight - this.world.heightAt(this.pos.x, this.pos.z);
+    if (agl < 25) return false; // not this close to the ground
+    this.barrel = { dir, left: Math.PI * 2 };
+    return true;
   }
 
   update(dt, input) {
@@ -123,6 +135,17 @@ export class Flight {
       yawRate = -(c.yaw + c.roll) * 0.6 * Math.min(1, this.speed / 8); // nose-wheel steering
       if (this.speed < ROTATE * 0.85) pitchRate = Math.min(pitchRate, 0);
     }
+    // A barrel roll: one full turn around the nose at a steady rate, nose held
+    // where it was, then back to the bank it started from.
+    const br = this.barrel;
+    if (br) {
+      const step = Math.min(br.left, BARREL_RATE * dt);
+      br.left -= step;
+      rollRate = -br.dir * (step / dt);
+      pitchRate = 0;
+      yawRate = 0;
+      if (br.left <= 1e-4 || this.onGround) this.barrel = null;
+    }
 
     this._tmpQ.setFromAxisAngle(X, pitchRate * dt);
     this.quat.multiply(this._tmpQ);
@@ -130,7 +153,7 @@ export class Flight {
     this.quat.multiply(this._tmpQ);
     this._tmpQ.setFromAxisAngle(Y, yawRate * dt);
     this.quat.multiply(this._tmpQ);
-    if (!this.onGround) {
+    if (!this.onGround && !br) {
       // Banked turn: the lift vector pulls the nose around.
       const turn = -Math.tan(THREE.MathUtils.clamp(bank, -1.3, 1.3)) * G / Math.max(this.speed, 20);
       this._tmpQ.setFromAxisAngle(Y, -turn * dt);

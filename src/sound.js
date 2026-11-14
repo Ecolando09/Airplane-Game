@@ -130,6 +130,42 @@ export class EngineSound {
     this.muted = !this.muted;
   }
 
+  /**
+   * Each frame: the siren of the emergency vehicle being driven (or a friend's
+   * nearby). kind: 'police' (fast wail), 'ambulance' (yelp), 'firetruck' (slow,
+   * low wail with a horn tone), or null for silence. vol 0..1.
+   */
+  siren(kind, vol = 1) {
+    if (!this.ctx) return;
+    const ctx = this.ctx;
+    if (!this.sirenOsc) {
+      this.sirenOsc = ctx.createOscillator();
+      this.sirenOsc.type = 'sawtooth';
+      this.sirenOsc2 = ctx.createOscillator();
+      this.sirenOsc2.type = 'square';
+      const f = ctx.createBiquadFilter();
+      f.type = 'lowpass';
+      f.frequency.value = 2600;
+      this.sirenGain = ctx.createGain();
+      this.sirenGain.gain.value = 0;
+      this.sirenOsc.connect(f);
+      this.sirenOsc2.connect(f);
+      f.connect(this.sirenGain).connect(ctx.destination);
+      this.sirenOsc.start();
+      this.sirenOsc2.start();
+    }
+    const t = ctx.currentTime;
+    let hz = 0;
+    if (kind === 'police') hz = 750 + 600 * (0.5 - 0.5 * Math.cos((t * Math.PI * 2) / 2.6)); // wail
+    else if (kind === 'ambulance') hz = (t * 3) % 1 < 0.5 ? 960 : 770; // hi-lo
+    else if (kind === 'firetruck') hz = 420 + 520 * (0.5 - 0.5 * Math.cos((t * Math.PI * 2) / 4.5)); // slow mechanical wail
+    if (hz) {
+      this.sirenOsc.frequency.setTargetAtTime(hz, t, 0.02);
+      this.sirenOsc2.frequency.setTargetAtTime(kind === 'firetruck' ? 147 : hz * 1.005, t, 0.02);
+    }
+    this.sirenGain.gain.setTargetAtTime(this.muted || !kind ? 0 : 0.055 * Math.min(1, vol), t, 0.05);
+  }
+
   /** Short game sounds: 'load' (rising), 'cash' (cha-ching), 'miss' (falling), 'break' (crunch). */
   blip(kind, vol = 1) {
     if (!this.ctx || this.muted || vol <= 0.01) return;
