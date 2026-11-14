@@ -300,7 +300,7 @@ async function buildWorld() {
       light: isPsg1() || prefs.low, // coarser tiles: smoother on the PSG1 and Low graphics
     });
     for (const m of world.meshes) m.visible = false;
-    traffic.setVisible(false);
+    traffic.setGoogle(true); // nearby cars drawn on Google's real streets
     // Fly over the real surface where it has loaded, the elevation grid elsewhere.
     const gridHeight = world.heightAt.bind(world);
     world.heightAt = (x, z) => google.heightAt(x, z) ?? gridHeight(x, z);
@@ -3963,8 +3963,7 @@ function frame() {
   world.update(timer.getElapsed());
   if (beerRun && !beerRun.active) beerRun.update(dt, {}); // finish the kegs' flight animations
   if (google) google.update(renderer);
-  // (In Google 3D the cars aren't drawn, but their lights drive the roads at night.)
-  if (!google || NIGHT.value > 0.15) traffic.update(dt, camera.position, mp.room && mp.status === 'on' ? mp.serverNow() : Date.now());
+  traffic.update(dt, camera.position, mp.room && mp.status === 'on' ? mp.serverNow() : Date.now());
   if (plane && mp.room) {
     mp.update(dt, {
       group: plane.group, city: settings.city, vehicle: settings.vehicle, speed: flight.speed,

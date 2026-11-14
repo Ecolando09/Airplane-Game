@@ -152,6 +152,13 @@ export class Traffic {
     for (const d of Object.values(this.detail)) for (const m of [d.body, d.lamps, d.wheel]) m.visible = on;
   }
 
+  /** Google 3D: draw only the detailed cars near the camera, on Google's surface. */
+  setGoogle(on) {
+    this.google = on;
+    this.hiddenCars = false;
+    for (const m of [this.body, this.cabin, this.wheels]) m.visible = !on; // no far blocks
+  }
+
   /** 0 = day .. 1 = night: car lights fade in after dark. */
   setNight(v) {
     this.night = v;
@@ -162,6 +169,7 @@ export class Traffic {
   /** @param now shared clock in ms (the room's server time), so every player's cars line up */
   update(dt, focus = null, now = Date.now()) {
     const { _m: m, _q: q, _p: p, _s: sc } = this;
+    this._frame = (this._frame || 0) + 1;
     for (const d of Object.values(this.detail)) d.n = 0;
     let detailed = 0;
     const hidden = this._hide || (this._hide = new THREE.Matrix4().makeScale(0, 0, 0));
@@ -197,7 +205,15 @@ export class Traffic {
       const lane = r.cfg.width * 0.25;
       const x = x0 + (x1 - x0) * t - dz * lane;
       const z = z0 + (z1 - z0) * t + dx * lane;
-      p.set(x, this.world.heightAt(x, z) + 0.2, z);
+      // Google 3D: only nearby cars are drawn, sitting on Google's real surface
+      // (checked for a few cars each frame); everything else uses the cheap grid.
+      const nearG = this.google && focus && Math.abs(x - focus.x) < DETAIL_RANGE && Math.abs(z - focus.z) < DETAIL_RANGE;
+      let gy;
+      if (nearG) {
+        if (car.gy === undefined || (i + this._frame) % 12 === 0) car.gy = this.world.heightAt(x, z) - this.world.groundAt(x, z);
+        gy = this.world.groundAt(x, z) + Math.max(-4, Math.min(car.gy, 6)); // (not up on trees or roofs over the road)
+      } else gy = this.google ? this.world.groundAt(x, z) : this.world.heightAt(x, z);
+      p.set(x, gy + 0.2, z);
       car.x = x;
       car.z = z;
       car.y = p.y;
@@ -214,7 +230,14 @@ export class Traffic {
         a[i * 6 + 4] = y;
         a[i * 6 + 5] = z - dz * 3.1;
       }
-      if (this.hiddenCars) return; // Google 3D: lights only
+      if (this.hiddenCars) return; // lights only
+      if (this.google && !nearG) {
+        // Google 3D: far cars aren't drawn (only their lights, at night).
+        this.body.setMatrixAt(i, hidden);
+        this.wheels.setMatrixAt(i, hidden);
+        this.cabin.setMatrixAt(i, hidden);
+        return;
+      }
       // Near the camera: the detailed model. Farther away: three simple blocks.
       const d = this.detail[car.kind];
       const near = d && focus && detailed < this.detailCap && Math.abs(x - focus.x) < DETAIL_RANGE && Math.abs(z - focus.z) < DETAIL_RANGE;
