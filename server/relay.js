@@ -300,7 +300,7 @@ function joinFlight(ws, code, wanted) {
   if (!room) {
     flights.set(code, (room = new Map()));
     roomSettings.set(code, wanted);
-    meta.set(code, { order: [], host: null, game: null, trophies: {} });
+    meta.set(code, { order: [], host: null, game: null, trophies: {}, props: new Map(), smashed: new Set() });
   }
   const rmeta = meta.get(code);
   if (room.size >= 8) {
@@ -316,6 +316,14 @@ function joinFlight(ws, code, wanted) {
   };
   // Everyone in a room flies the same city and look (vehicles are each player's own).
   ws.send(JSON.stringify({ t: 'welcome', id, players: room.size, settings: roomSettings.get(code), host: rmeta.host, now: Date.now(), trophies: rmeta.trophies }));
+  // Catch up on the shared world, in pieces.
+  const city = roomSettings.get(code)?.city;
+  const ps = [...rmeta.props.values()];
+  const sm = [...rmeta.smashed];
+  const chunks = Math.max(Math.ceil(ps.length / 150), Math.ceil(sm.length / 600));
+  for (let k = 0; k < chunks; k++) {
+    ws.send(JSON.stringify({ t: 'catchup', city, props: ps.slice(k * 150, k * 150 + 150), smashed: sm.slice(k * 600, k * 600 + 600) }));
+  }
   if (rmeta.game?.phase === 'countdown') {
     rmeta.game.players.push(id); // joined during the countdown: you're in
     sendGame(code);
@@ -334,6 +342,16 @@ function joinFlight(ws, code, wanted) {
       const g = rmeta.game;
       if (g && m.name) g.names[id] = String(m.name).slice(0, 16);
       return onGameMessage(code, id, m);
+    }
+    // Remember the shared world for players who join later: where moved or
+    // resized objects ended up, and which buildings are down (capped).
+    if (m.t === 'prop' || m.t === 'pick') {
+      const pid = String(m.pid || '').slice(0, 24);
+      if (pid && (rmeta.props.size < 600 || rmeta.props.has(pid))) {
+        rmeta.props.set(pid, { pid, kind: String(m.kind || '').slice(0, 16), tint: +m.tint || 0, x: +m.x || 0, z: +m.z || 0, yaw: +m.yaw || 0, scale: +m.scale || 1, held: m.t === 'pick' ? 1 : m.held ? 1 : 0 });
+      }
+    } else if (m.t === 'smash' && Array.isArray(m.ids)) {
+      for (const sid of m.ids.slice(0, 60)) if (rmeta.smashed.size < 6000 && Number.isInteger(sid)) rmeta.smashed.add(sid);
     }
     if (m.t === 'state') {
       const prev = info.get(ws);

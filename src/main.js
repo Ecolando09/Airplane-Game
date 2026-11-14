@@ -142,7 +142,16 @@ if (__PSG1__) input.isTouch = false; // real buttons: no on-screen controls, gam
 const sound = new EngineSound();
 const mp = new Multiplayer({
   scene,
-  makeVehicle: (v) => (v.startsWith('bot-') ? createRobot(v.slice(4)) : v === 'heli' ? createGhostSpiderHeli() : createLegoPlane()),
+  makeVehicle: (v) => {
+    if (v.startsWith('ride:')) {
+      // A friend driving a car, boat or truck they found.
+      const [, kind, tint] = v.split(':');
+      const group = new THREE.Group();
+      if (props.info(kind)) group.add(props.mesh(kind, Number(tint)));
+      return { group };
+    }
+    return v.startsWith('bot-') ? createRobot(v.slice(4)) : v === 'heli' ? createGhostSpiderHeli() : createLegoPlane();
+  },
   onChange: () => updateMpUi(),
   onJoin: (p) => toast(`👋 ${p.name} joined${p.city !== settings.city ? ` (in ${CITIES[p.city] || 'another city'})` : ''}`, p.color),
   onLeave: (p) => toast(`${p.name} left the room`, '#868e96'),
@@ -228,7 +237,7 @@ async function buildWorld() {
   data = cityData;
   const before = new Set(scene.children);
   world = new World(scene, data, { satImage });
-  traffic = new Traffic(scene, world, prefs.low ? 350 : IS_TOUCH || __PSG1__ ? 900 : 2500);
+  traffic = new Traffic(scene, world, prefs.low ? 350 : IS_TOUCH || isPsg1() ? 900 : 2500, { city: settings.city, detail: prefs.low || isPsg1() ? 40 : IS_TOUCH ? 80 : 150 });
   props = new Props(scene, world);
   rampage = new Rampage(scene, world, traffic, props, {
     message: (t) => message(t, 2.5),
@@ -239,6 +248,8 @@ async function buildWorld() {
         : input.isTouch ? { drive: '🚗 DRIVE', horn: 'HORN', exit: 'EXIT (jump)' }
           : { drive: '<kbd>G</kbd>', horn: '<kbd>X</kbd>', exit: '<kbd>Space</kbd>' }),
     canBreak: () => !google,
+    // Objects picked up, thrown, dropped, resized or driven: the room sees it too.
+    shared: (type, it, extra) => mpShareProp(type, it, extra),
     driving: () => {
       setBotUi();
       $('driveBtn').hidden = true;
@@ -277,7 +288,7 @@ async function buildWorld() {
       lat: data.origin[1], lon: data.origin[0], height: world.baseElevation + (data.geoid || 0),
     });
     for (const m of world.meshes) m.visible = false;
-    for (const m of [traffic.body, traffic.cabin, traffic.wheels]) m.visible = false;
+    traffic.setVisible(false);
     // Fly over the real surface where it has loaded, the elevation grid elsewhere.
     const gridHeight = world.heightAt.bind(world);
     world.heightAt = (x, z) => google.heightAt(x, z) ?? gridHeight(x, z);
@@ -326,7 +337,10 @@ function buildVehicle() {
   applyPaint(plane);
   applyPaint(model);
   bot = { model, walk: new RobotWalk(world, model) };
-  bot.walk.onSlam = (speed) => rampage.slam(bot.walk, speed) && updateBotHud();
+  bot.walk.onSlam = (speed) => {
+    mpAct('stomp');
+    if (rampage.slam(bot.walk, speed)) updateBotHud();
+  };
   // Walking (or driving) into a building knocks it down.
   bot.walk.onRam = (c) => rampage.wreck(c, { x: bot.walk.vel.x || 1, z: bot.walk.vel.z });
   model.onStep = () => {
@@ -1064,6 +1078,11 @@ function start(airborne, { lesson = false, roomGame = false } = {}) {
   leaveBot();
   potty.sitting = 0;
   rampage.reset(); // a fresh start puts the city back together
+  if (takenPlane) {
+    props.drop(takenPlane.it, takenPlane.x, takenPlane.z, takenPlane.yaw);
+    mpShareProp('prop', takenPlane.it);
+    takenPlane = null;
+  }
   bot.walk.setSize(1); // and the robot back to normal size
   rampage.power = 1;
   updateBotHud();
@@ -1737,6 +1756,90 @@ const nameOf = (id) => (id === mp.myId ? mp.name || 'You' : mp.players.get(id)?.
 const rgIn = () => !!rgGame && rgGame.players?.includes(mp.myId);
 const rgFrozen = () => !!rgRun && !rgRun.started;
 
+// ------------------------------------------------------------------ shared world (plan 05 part 1)
+// Loose objects have the same id for everyone in a room (props.js), so picking
+// one up, throwing it, supersizing it or driving it shows on every screen. Robot
+// punches, stomps and shape changes play for everyone too. The relay remembers
+// moved objects and smashed buildings for players who join later.
+const propInfo = (it) => ({ pid: String(it.id), kind: it.kind, tint: it.tint, x: Math.round(it.x * 10) / 10, z: Math.round(it.z * 10) / 10, yaw: +it.yaw.toFixed(2), scale: it.scale || 1 });
+function mpShareProp(type, it, extra) {
+  if (!mp.room || mp.status !== 'on') return;
+  const m = { t: type, city: settings.city, ...propInfo(it) };
+  if (type === 'prop') m.held = it.held ? 1 : 0;
+  if (type === 'throw') {
+    m.p = [extra.p.x, extra.p.y, extra.p.z].map((n) => Math.round(n * 10) / 10);
+    m.v = [extra.v.x, extra.v.y, extra.v.z].map((n) => Math.round(n * 10) / 10);
+  }
+  mp.send(m);
+}
+/** The object a message is about (made here if it's new, like a car taken off the road). */
+function propFor(m) {
+  let it = props.byId.get(String(m.pid));
+  if (!it && typeof m.kind === 'string' && props.info(m.kind)) it = props.add(m.kind, +m.x, +m.z, +m.yaw || 0, +m.tint || 0, String(m.pid));
+  if (it && Number.isFinite(+m.scale) && +m.scale !== (it.scale || 1)) props.resize(it, Math.min(4, Math.max(0.25, +m.scale)));
+  return it;
+}
+function onSharedProp(m) {
+  if (m.city !== settings.city) return;
+  const it = propFor(m);
+  if (!it) return;
+  const who = mp.players.get(m.id);
+  if (m.t === 'pick') {
+    // Whoever touched it last has it: if it was in my hands or I was driving it, let go.
+    if (rampage.held?.item === it || rampage.driving?.item === it) rampage.release(flight);
+    for (const o of [...rampage.flying]) if (o.item === it) {
+      scene.remove(o.mesh);
+      rampage.flying.splice(rampage.flying.indexOf(o), 1);
+    }
+    it.held = true;
+    props._write(it);
+    if (who) {
+      who.carry?.removeFromParent();
+      who.carry = props.mesh(it.kind, it.tint);
+      who.carry.scale.setScalar(it.scale || 1);
+      who.carryId = String(it.id);
+    }
+  } else if (m.t === 'throw') {
+    if (who?.carryId === String(it.id)) {
+      who.carry.removeFromParent();
+      who.carry = who.carryId = null;
+    }
+    if (Array.isArray(m.p) && Array.isArray(m.v)) rampage.remoteThrow(it, { x: +m.p[0], y: +m.p[1], z: +m.p[2] }, { x: +m.v[0], y: +m.v[1], z: +m.v[2] });
+  } else if (m.t === 'prop') {
+    if (who?.carryId === String(it.id)) {
+      who.carry.removeFromParent();
+      who.carry = who.carryId = null;
+    }
+    for (const o of [...rampage.flying]) if (o.item === it) {
+      scene.remove(o.mesh);
+      rampage.flying.splice(rampage.flying.indexOf(o), 1);
+    }
+    if (m.held) {
+      it.held = true;
+      props._write(it);
+    } else props.drop(it, +m.x, +m.z, +m.yaw || 0);
+  }
+}
+mp.onCarryLost = (p) => {
+  // They left while holding something: put it down where they were.
+  const it = p.carryId && props.byId.get(p.carryId);
+  if (it) props.drop(it, p.pos.x, p.pos.z, 0);
+};
+/** A friend's robot action, played on this screen. */
+function onRobotAct(m) {
+  const p = mp.players.get(m.id);
+  if (!p?.model || p.city !== settings.city) return;
+  if (m.a === 'punch') p.model.punch?.();
+  else if (m.a === 'stomp') rampage.explode(p.pos.x, p.pos.y + 2, p.pos.z, 10 * (p.size || 1));
+  else if (m.a === 'morph') rampage.burst(p.pos.x, p.pos.y + 6, p.pos.z, 10, 0x4fd8ff, 14);
+}
+const mpAct = (a) => mp.room && mp.send({ t: 'act', a });
+let pendingCatchup = [];
+function applyCatchup(m) {
+  for (const pm of m.props || []) onSharedProp({ ...pm, t: 'prop', city: m.city, id: 0 });
+  if (m.smashed?.length) mp.onEvent({ t: 'smash', city: m.city, ids: m.smashed });
+}
+
 // Smashing: tell the room which buildings and trees went down (batched).
 let smashQueue = [];
 mpSendSmash = (c) => mp.room && smashQueue.push(c.id);
@@ -1898,6 +2001,15 @@ mp.onEvent = (m) => {
       world.destroy(c);
       if (c.t !== 'tree' && Math.hypot(c.x - flight.pos.x, c.z - flight.pos.z) < 3000) rampage.explode(c.x, c.base + Math.min(c.h, 30) / 2, c.z, 14);
     }
+  } else if (m.t === 'pick' || m.t === 'throw' || m.t === 'prop') {
+    onSharedProp(m);
+  } else if (m.t === 'act') {
+    onRobotAct(m);
+  } else if (m.t === 'catchup') {
+    // Joined late: everything already moved, resized or smashed in this room.
+    // (It can arrive before the city has loaded: then it waits.)
+    if (building || !props || m.city !== settings.city) pendingCatchup.push(m);
+    else applyCatchup(m);
   } else if (m.t === 'game') {
     onRoomGame(m);
   } else if (m.t === 'game-scores') {
@@ -2043,7 +2155,7 @@ input.on('dRight', () => (potty.need ? skipPotty() : coach && nextCoach()));
 // and hints name the controller's buttons (Xbox layout). Unplugging it, or
 // touching the screen's controls area, brings the touch buttons back.
 let padPlay = false;
-const PAD_HINTS = { autoLandBtn: 'LB', driveBtn: 'B', crashRespawn: 'START', crashRetry: '', crashMenu: '' };
+const PAD_HINTS = { autoLandBtn: 'LB', driveBtn: 'X', crashRespawn: 'START', crashRetry: '', crashMenu: '' };
 function setPadPlay(on) {
   if (__PSG1__ || padPlay === on) return;
   padPlay = on;
@@ -2071,7 +2183,7 @@ function startBrowserPsg1() {
   enablePsg1();
   usePsg1Prefs();
   import('./psg1.css');
-  Object.assign(PAD_HINTS, { autoLandBtn: 'L1', driveBtn: 'A' });
+  Object.assign(PAD_HINTS, { autoLandBtn: 'L1', driveBtn: 'Y' });
   document.querySelector('details.help .controls')?.insertAdjacentHTML('beforebegin', PSG1_CONTROLS);
   camera.fov = 72;
   camera.updateProjectionMatrix();
@@ -2091,7 +2203,7 @@ if (!__PSG1__) {
   <div>Copter: <b>left stick</b> ◀▶ turn, ▲▼ speed · <b>right stick</b> ▲▼ up / down</div>
   <div><kbd class="pad pad-B">B</kbd> floats · <kbd class="pad">RB</kbd> turbo · <kbd class="pad">LB</kbd> auto-land · <kbd class="pad pad-Y">Y</kbd> camera</div>
   <div><kbd class="pad pad-X">X</kbd> robot mode: left stick walks (all the way to run), <kbd class="pad pad-A">A</kbd> jump (hold to fly), <kbd class="pad">RB</kbd> smash,
-    <kbd class="pad pad-B">B</kbd> grab, throw or drive, <kbd class="pad">LB</kbd> turbo, <kbd class="pad">▲</kbd><kbd class="pad">▼</kbd> supersizer,
+    <kbd class="pad pad-B">B</kbd> grab and throw, <kbd class="pad pad-X">X</kbd> drive (next to a car, boat or plane), <kbd class="pad">LB</kbd> turbo, <kbd class="pad">▲</kbd><kbd class="pad">▼</kbd> supersizer,
     click the <b>right stick</b> to grow the robot, the <b>left stick</b> to shrink it</div>
   <div><kbd class="pad">◀</kbd> potty · <kbd class="pad">▶</kbd> not now · <kbd class="pad">VIEW</kbd> big map · <kbd class="pad">MENU</kbd> pause</div>
   <div>Menus: D-pad moves · <kbd class="pad pad-A">A</kbd> choose · <kbd class="pad pad-B">B</kbd> back · <kbd class="pad">LB</kbd><kbd class="pad">RB</kbd> city · <kbd class="pad">MENU</kbd> play</div>
@@ -2105,7 +2217,7 @@ function applyPsg1Hints() {
     if (k) k.outerHTML = html;
   };
   kbd('autoLandBtn', pad('L1'));
-  kbd('driveBtn', pad('A'));
+  kbd('driveBtn', pad('Y'));
   kbd('crashRespawn', pad('START'));
   if (!$('pottyBtn').querySelector('kbd')) $('pottyBtn').insertAdjacentHTML('beforeend', pad('◀'));
   if (!$('pottySkip').querySelector('kbd')) $('pottySkip').insertAdjacentHTML('beforeend', ` ${pad('▶')}`);
@@ -2131,7 +2243,7 @@ const PSG1_CONTROLS = `
             <div>Copter: <b>left stick</b> ◀▶ turn, ▲▼ speed · <b>right stick</b> ▲▼ up / down</div>
             <div><kbd class="pad">A</kbd> floats · <kbd class="pad">R1</kbd> turbo · <kbd class="pad">L1</kbd> auto-land · <kbd class="pad">X</kbd> camera</div>
             <div><kbd class="pad">Y</kbd> robot mode: walk with the left stick (all the way to run), <kbd class="pad">B</kbd> jump (hold to fly),
-              <kbd class="pad">R1</kbd> smash, <kbd class="pad">A</kbd> grab, throw or drive, <kbd class="pad">L1</kbd> turbo, <kbd class="pad">▲</kbd><kbd class="pad">▼</kbd> supersizer,
+              <kbd class="pad">R1</kbd> smash, <kbd class="pad">A</kbd> grab and throw, <kbd class="pad">Y</kbd> drive (next to a car, boat or plane), <kbd class="pad">L1</kbd> turbo, <kbd class="pad">▲</kbd><kbd class="pad">▼</kbd> supersizer,
               click the <b>right stick</b> to grow the robot, the <b>left stick</b> to shrink it</div>
             <div><kbd class="pad">◀</kbd> potty · <kbd class="pad">▶</kbd> not now · <kbd class="pad">SELECT</kbd> big map · <kbd class="pad">START</kbd> menu</div>
             <div>Menus: <kbd class="pad">✚</kbd> move · <kbd class="pad">A</kbd> choose · <kbd class="pad">B</kbd> back · <kbd class="pad">L1</kbd><kbd class="pad">R1</kbd> city · <kbd class="pad">START</kbd> play</div>
@@ -2295,6 +2407,7 @@ function transform() {
   camInit = false;
   trail = [];
   sound.blip('transform');
+  mpAct('morph');
   setBotUi();
 }
 
@@ -2357,6 +2470,7 @@ function updateBotHud() {
 }
 function botSmash() {
   if (!running || !isBot) return;
+  if (!rampage.driving && !rampage.held) mpAct('punch');
   rampage.smash(flight);
   setTimeout(updateBotHud, 300);
 }
@@ -2365,7 +2479,9 @@ function botGrab() {
   rampage.grabOrThrow(flight);
   updateBotHud();
 }
-input.on('transform', transform);
+// Next to a car, boat or parked plane (the DRIVE prompt is showing), the robot
+// button gets in it; anywhere else it changes shape.
+input.on('transform', () => (isBot && driveTargetNow && !rampage.driving ? enterVehicle() : transform()));
 // The T key and the robot's own TURBO button cycle turbo in either shape
 // (the vehicle's TURBO button doubles as SMASH for the robot).
 input.on('turboKey', () => setTurbo((flight.turbo % 3) + 1));
@@ -2953,16 +3069,60 @@ function updateDriveButton() {
   if (it !== driveTargetNow) {
     if (it && !driveTargetNow) sound.blip('ring');
     driveTargetNow = it;
-    if (it) $('driveName').textContent = props.info(it.kind).name;
+    if (it) {
+      const info = props.info(it.kind);
+      $('driveName').textContent = info.name;
+      $('driveVerb').textContent = info.fly ? '✈️ FLY' : info.water ? '⛵ SAIL' : '🚗 DRIVE';
+    }
   }
   $('driveBtn').hidden = !it;
 }
-$('driveBtn').onclick = () => {
-  if (driveTargetNow && !rampage.driving) {
-    rampage.enterCar(flight, driveTargetNow);
-    updateBotHud();
-  }
-};
+/** Get in the car, bus, boat or parked plane next to the robot. */
+function enterVehicle() {
+  const it = driveTargetNow;
+  if (!it || rampage.driving || !isBot || !running) return false;
+  if (props.info(it.kind).fly) enterParkedPlane(it);
+  else rampage.enterCar(flight, it);
+  updateBotHud();
+  return true;
+}
+$('driveBtn').onclick = enterVehicle;
+input.on('drive', enterVehicle);
+let takenPlane = null; // a parked plane this player flew off in (put back on restart)
+/** Climb into a parked plane: it becomes your plane, in its colour, where it was parked. */
+function enterParkedPlane(it) {
+  const at = { x: it.x, z: it.z, yaw: it.yaw };
+  rampage.release(flight);
+  it.held = true;
+  props._write(it);
+  mpShareProp('pick', it);
+  takenPlane = { it, x: at.x, z: at.z, yaw: at.yaw };
+  if (isHeli) {
+    settings.vehicle = 'plane';
+    saveSettings();
+    buildVehicle();
+  } else leaveBot();
+  flight.reset();
+  flight.pos.set(at.x, world.heightAt(at.x, at.z) + plane.gearHeight, at.z);
+  flight.quat.setFromAxisAngle(Y_AXIS, at.yaw);
+  tilt = GROUND_TILT;
+  paintModel(plane, it.tint);
+  input.syncThrottle(flight.throttle);
+  camInit = false;
+  plane.group.visible = true;
+  setBotUi();
+  sound.blip('transform');
+  message('✈️ You took the parked plane!<small>Full throttle to take off</small>', 3);
+}
+/** Give a model's accent parts a colour (a parked plane you took keeps its paint). */
+function paintModel(model, hex) {
+  const from = new THREE.Color(ACCENT.plane);
+  model.group.traverse((o) => {
+    for (const m of o.material ? (Array.isArray(o.material) ? o.material : [o.material]) : []) {
+      if (m.color && Math.abs(m.color.r - from.r) + Math.abs(m.color.g - from.g) + Math.abs(m.color.b - from.b) < 0.02) m.color.setHex(hex);
+    }
+  });
+}
 
 function updateAutoLandButton() {
   const l = !isBot && !autoLand && !flight.crashed && !flight.onGround ? nearestLandmark() : null;
@@ -2993,15 +3153,22 @@ function frame() {
   updatePerf(Math.min(rawDt, 0.25));
   if (input.pad() && !codePick) padNav.sync();
   updateRoomGames(); // countdowns run in the menu too
+  if (pendingCatchup.length && !building && props) {
+    const ready = pendingCatchup.filter((m) => m.city === settings.city);
+    pendingCatchup = pendingCatchup.filter((m) => m.city !== settings.city && mp.room);
+    ready.forEach(applyCatchup);
+  }
   input.pollButtons(!!navRoot());
   world.update(timer.getElapsed());
   if (beerRun && !beerRun.active) beerRun.update(dt, {}); // finish the kegs' flight animations
   if (google) google.update(renderer);
-  else traffic.update(dt);
+  else traffic.update(dt, camera.position);
   if (plane && mp.room) {
     mp.update(dt, {
       group: plane.group, city: settings.city, vehicle: settings.vehicle, speed: flight.speed,
       turbo: flight.turbo || 1, floats: !!flight.floats, crashed: flight.crashed, bot: isBot,
+      size: isBot ? bot.walk.size : 1, sit: potty.sitting > 0,
+      ride: isBot && rampage.driving ? { kind: rampage.driving.item.kind, tint: rampage.driving.item.tint, scale: rampage.driving.item.scale || 1 } : null,
       cash: beerRun?.active ? beerRun.cash : game?.active ? Math.round(game.total ?? game.next * 100) : undefined,
     });
   }

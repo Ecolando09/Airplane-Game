@@ -111,6 +111,9 @@ export class Multiplayer {
       speed: +m.speed || 0, turbo: +m.turbo || 1, floats: !!m.floats, crashed: !!m.crashed, seen: performance.now(),
       cash: Number.isFinite(m.cash) ? m.cash : null, // Beer Run money, while they're on a shift
       bot: !!m.bot, // walking around as a robot
+      size: Math.min(8, Math.max(1, +m.size || 1)), // grown robot
+      ride: m.ride && typeof m.ride.kind === 'string' ? { kind: m.ride.kind.slice(0, 16), tint: +m.ride.tint || 0, scale: Math.min(4, Math.max(0.25, +m.ride.scale || 1)) } : null,
+      sit: !!m.sit, // on the toilet
     });
     if (p.isNew) {
       p.isNew = false;
@@ -126,6 +129,8 @@ export class Multiplayer {
     const p = this.players.get(id);
     if (!p) return;
     if (p.model) this.scene.remove(p.model.group);
+    p.carry?.removeFromParent();
+    this.onCarryLost?.(p);
     p.label?.remove();
     this.players.delete(id);
     if (this.room) this.onLeave?.(p);
@@ -171,6 +176,9 @@ export class Multiplayer {
         qx: +g.quaternion.x.toFixed(4), qy: +g.quaternion.y.toFixed(4), qz: +g.quaternion.z.toFixed(4), qw: +g.quaternion.w.toFixed(4),
         speed: +me.speed.toFixed(1), turbo: me.turbo, floats: me.floats, crashed: me.crashed,
         ...(me.bot ? { bot: true } : {}),
+        ...(me.size > 1 ? { size: me.size } : {}),
+        ...(me.ride ? { ride: me.ride } : {}),
+        ...(me.sit ? { sit: true } : {}),
         ...(Number.isFinite(me.cash) ? { cash: Math.round(me.cash) } : {}),
       }));
     }
@@ -178,7 +186,8 @@ export class Multiplayer {
     const k = 1 - Math.exp(-dt * 8);
     for (const p of this.players.values()) {
       const show = p.city === me.city && performance.now() - p.seen < 5000 && !p.crashed;
-      const shape = p.bot ? `bot-${p.vehicle}` : p.vehicle;
+      // Driving something (a car, a boat): show that instead of the robot.
+      const shape = p.ride ? `ride:${p.ride.kind}:${p.ride.tint}` : p.bot ? `bot-${p.vehicle}` : p.vehicle;
       if (show && (!p.model || p.model.vehicle !== shape)) {
         if (p.model) this.scene.remove(p.model.group);
         p.model = this.makeVehicle(shape);
@@ -193,7 +202,13 @@ export class Multiplayer {
       p.quat.slerp(p.target.quat, k);
       p.model.group.position.copy(p.pos);
       p.model.group.quaternion.copy(p.quat);
-      if (p.bot) p.model.animate({ speed: p.speed, onGround: true, vy: 0 }, dt);
+      p.model.group.scale.setScalar(p.ride ? p.ride.scale : p.bot ? p.size : 1);
+      // Whatever they carry sits in their robot's hands.
+      if (p.carry && p.model.hands && p.carry.parent !== p.model.hands) {
+        p.model.hands.add(p.carry);
+        p.carry.position.set(0, 0, 0);
+      }
+      if (p.bot && !p.ride) p.model.animate({ speed: p.speed, onGround: true, vy: 0, sitting: p.sit }, dt);
       if (p.model.propeller) {
         if (p.vehicle === 'heli') p.model.propeller.rotation.y += 30 * dt;
         else p.model.propeller.rotation.z += (10 + p.speed) * dt;

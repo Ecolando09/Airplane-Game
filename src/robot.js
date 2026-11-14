@@ -425,9 +425,12 @@ export class RobotWalk {
     for (let i = 0; i < steps; i++) {
       const nx = this.pos.x + (f.x * along * dt) / steps;
       const nz = this.pos.z + (f.z * along * dt) / steps;
-      const hit = w.blockedAt(nx, nz, this.pos.y, rad, 4 * this.driving);
-      if (hit && !this.onRam?.(hit)) {
-        along *= -0.3; // a landmark: bounce off
+      // Boats stay on the water: on land they grind to a crawl.
+      if (this.boat && !w.isWater(nx, nz)) along = THREE.MathUtils.clamp(along, -2, 2);
+      const hit = this.boat ? null : w.blockedAt(nx, nz, this.pos.y, rad, 4 * this.driving);
+      // A normal-size car can't knock buildings down (a supersized one can).
+      if (hit && (this.driving < 2 || !this.onRam?.(hit))) {
+        along *= -0.3; // bounce off
         break;
       }
       if (hit) along *= 0.9;
@@ -442,7 +445,7 @@ export class RobotWalk {
     this.vel.set(f.x * along, 0, f.z * along);
     this.pos.y = w.groundAt(this.pos.x, this.pos.z);
     this.onGround = true;
-    this.onWater = false;
+    this.onWater = !!this.boat && w.isWater(this.pos.x, this.pos.z);
     this.speed = Math.abs(along);
     this.verticalSpeed = 0;
   }

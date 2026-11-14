@@ -1,6 +1,16 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { LEGO, legoMaterial } from './lego.js';
+import { LEGO, legoMaterial, isLego } from './lego.js';
+import { carModel, carWheels, wheelGeometry, otherModel } from './vehicles.js';
+
+/** A detailed car (plan 05 part 1g) in the city's style: body, lamps and wheels as one geometry list. */
+const carParts = (kind) => (style) => {
+  const m = carModel(kind, style);
+  const parts = [m.body, m.lamps];
+  for (const [x, z, r] of carWheels(kind)) parts.push(wheelGeometry(r, style).translate(x, r, z));
+  return parts;
+};
+const detailed = (kind) => (style) => otherModel(kind, style);
 
 // Loose objects lying around the city that the robot can pick up and throw:
 // cars in parking lots, shipping containers in industrial yards, picnic tables
@@ -35,11 +45,14 @@ const wheels = (xs, zs, r = 0.5) => xs.flatMap((x) => zs.map((z) => cyl(r, 0.4, 
 // name: what the game calls it; r: rough radius in meters (for grabbing and
 // hitting things); tint: comes in several colors.
 const KINDS = {
-  car: { drive: true, name: 'car', r: 3.2, tint: true, make: () => [
-    box(3.1, 1.4, 6.8, WHITE, 0, 1.2, 0), box(2.7, 1.2, 3.4, 0x2a3d4d, 0, 2.5, 0.4), ...wheels([-1.5, 1.5], [-2.2, 2.2], 0.6)] },
-  bus: { drive: true, name: 'school bus', r: 5.5, make: () => [
-    box(3.4, 3.2, 11, LEGO.yellow, 0, 2.4, 0), box(3.5, 0.9, 9, 0x2a3d4d, 0, 3.1, 0.6), box(3.4, 1.6, 1.6, LEGO.yellow, 0, 1.6, -6.2),
-    box(3.5, 0.3, 11, LEGO.black, 0, 1.5, 0), ...wheels([-1.6, 1.6], [-4, 3.6], 0.8)] },
+  car: { drive: true, name: 'car', r: 3.2, tint: true, model: 'sedan', make: carParts('sedan') },
+  suv: { drive: true, name: 'SUV', r: 3.3, tint: true, model: 'suv', make: carParts('suv') },
+  pickup: { drive: true, name: 'pickup truck', r: 3.3, tint: true, model: 'pickup', make: carParts('pickup') },
+  van: { drive: true, name: 'van', r: 3.3, tint: true, model: 'van', make: carParts('van') },
+  sports: { drive: true, name: 'sports car', r: 3.1, tint: true, model: 'sports', make: carParts('sports') },
+  taxi: { drive: true, name: 'taxi', r: 3.2, tint: true, model: 'taxi', make: carParts('taxi') },
+  kei: { drive: true, name: 'kei van', r: 2.6, tint: true, model: 'kei', make: carParts('kei') },
+  bus: { drive: true, name: 'school bus', r: 5.5, make: detailed('bus') },
   container: { name: 'shipping container', r: 5, tint: true, make: () => [
     box(3.2, 3.4, 9.5, WHITE, 0, 1.7, 0), box(3.3, 0.3, 9.6, LEGO.darkGray, 0, 3.3, 0), box(2.6, 2.8, 0.2, LEGO.lightGray, 0, 1.7, 4.8)] },
   dumpster: { name: 'dumpster', r: 2.6, make: () => [
@@ -50,35 +63,24 @@ const KINDS = {
   boulder: { name: 'boulder', r: 2.6, make: () => [part(new THREE.DodecahedronGeometry(2.6, 0), 0x8d8f8a, 0, 1.9, 0)] },
   log: { name: 'log', r: 3, make: () => [cyl(0.9, 7, LEGO.reddishBrown, 0, 0.9, 0, 'x'), cyl(0.7, 0.2, LEGO.tan, 3.55, 0.9, 0, 'x'), cyl(0.7, 0.2, LEGO.tan, -3.55, 0.9, 0, 'x')] },
   hay: { name: 'hay bale', r: 2, make: () => [cyl(1.8, 2.6, 0xd8b84a, 0, 1.8, 0, 'x'), cyl(1.85, 0.2, 0xb8962a, 0, 1.8, 0, 'x')] },
-  cart: { drive: true, name: 'golf cart', r: 2, make: () => [
-    box(1.8, 0.7, 3.2, LEGO.white, 0, 0.9, 0), box(1.8, 0.15, 2.6, LEGO.green, 0, 2.6, 0.1), box(0.12, 1.6, 0.12, LEGO.black, -0.8, 1.8, -1), box(0.12, 1.6, 0.12, LEGO.black, 0.8, 1.8, -1),
-    box(0.12, 1.6, 0.12, LEGO.black, -0.8, 1.8, 1.2), box(0.12, 1.6, 0.12, LEGO.black, 0.8, 1.8, 1.2), ...wheels([-0.9, 0.9], [-1.1, 1.1], 0.4)] },
+  cart: { drive: true, name: 'golf cart', r: 2, make: detailed('cart') },
   ball: { name: 'giant soccer ball', r: 2.2, bouncy: true, make: () => [
     part(new THREE.IcosahedronGeometry(2.2, 1), LEGO.white, 0, 2.2, 0), part(new THREE.IcosahedronGeometry(2.24, 0), LEGO.black, 0, 2.2, 0).scale(1, 1, 1)] },
   umbrella: { name: 'beach umbrella', r: 2.4, tint: true, make: () => [
     cyl(0.12, 4, LEGO.lightGray, 0, 2, 0), part(new THREE.ConeGeometry(2.6, 1.2, 8), WHITE, 0, 4.3, 0)] },
-  boat: { name: 'boat', r: 3.6, tint: true, floats: true, make: () => [
-    box(2.6, 1.1, 7, WHITE, 0, 0.6, 0), box(2.2, 0.3, 6.4, LEGO.tan, 0, 1.2, 0), box(1.8, 1.3, 2, LEGO.white, 0, 1.9, 0.8),
-    part(new THREE.ConeGeometry(1.3, 2.2, 4), WHITE, 0, 0.6, -4.4).rotateX(0)] },
+  boat: { drive: true, water: true, name: 'boat', r: 3.6, tint: true, floats: true, make: detailed('boat') },
   keg: { name: 'beer keg', r: 1.6, make: () => [
     cyl(1.3, 2.6, 0xc0c6cc, 0, 1.3, 0), cyl(1.36, 0.25, 0x8d949b, 0, 0.5, 0), cyl(1.36, 0.25, 0x8d949b, 0, 2.1, 0)] },
-  plane: { name: 'parked plane', r: 5, tint: true, make: () => [
-    box(1.6, 1.6, 8, LEGO.white, 0, 2, 0), box(11, 0.3, 2, WHITE, 0, 2.9, -1), box(4, 0.25, 1.2, WHITE, 0, 2.2, 3.6),
-    box(0.25, 1.8, 1.4, WHITE, 0, 3.2, 3.6), box(0.2, 2.6, 0.3, LEGO.black, 0, 2, -4.2), ...wheels([-1.2, 1.2], [-1.2], 0.5)] },
-  tanker: { drive: true, name: 'fuel truck', r: 4.5, make: () => [
-    box(2.8, 2.4, 2.4, LEGO.red, 0, 1.9, -3.4), cyl(1.5, 6, LEGO.lightGray, 0, 2.3, 0.8, 'z'), box(2.8, 0.5, 9, LEGO.darkGray, 0, 0.9, 0),
-    ...wheels([-1.4, 1.4], [-3.2, 1, 3.2], 0.7)] },
+  plane: { drive: true, fly: true, name: 'parked plane', r: 5, tint: true, make: detailed('plane') },
+  tanker: { drive: true, name: 'fuel truck', r: 4.5, make: detailed('tanker') },
   marble: { name: 'marble block', r: 2.4, make: () => [box(3.4, 2.6, 3.4, 0xf2f1ec, 0, 1.3, 0), box(3.45, 0.15, 3.45, 0xd9d6cc, 0, 1.6, 0)] },
-  truck: { drive: true, name: 'ice cream truck', r: 3.6, make: () => [
-    box(3, 3.2, 6.4, LEGO.white, 0, 2.2, 0.4), box(3, 2, 1.8, LEGO.medAzure, 0, 1.6, -3.6), box(3.1, 0.5, 6.4, 0xff8fc7, 0, 3.9, 0.4),
-    part(new THREE.ConeGeometry(0.8, 1.8, 8), LEGO.tan, 0, 4.9, 0.4).rotateX(0), part(new THREE.SphereGeometry(0.9, 8, 6), 0xff8fc7, 0, 6.1, 0.4),
-    ...wheels([-1.5, 1.5], [-2.6, 2.4], 0.6)] },
+  truck: { drive: true, name: 'ice cream truck', r: 3.6, make: detailed('truck') },
 };
 
 // What turns up on each kind of ground, and how many of each ground type at most.
 const LAND = {
-  paved: { kinds: ['car', 'car', 'container', 'dumpster', 'car'], max: 260 },
-  campus: { kinds: ['bus', 'car', 'table'], max: 70 },
+  paved: { kinds: ['car', 'suv', 'container', 'dumpster', 'pickup', 'car', 'van', 'sports'], max: 260 },
+  campus: { kinds: ['bus', 'car', 'table', 'suv'], max: 70 },
   park: { kinds: ['table', 'table', 'truck'], max: 150 },
   forest: { kinds: ['boulder', 'log', 'log'], max: 110 },
   golf: { kinds: ['cart'], max: 40 },
@@ -105,7 +107,8 @@ export class Props {
   constructor(scene, world) {
     this.scene = scene;
     this.world = world;
-    this.items = []; // { kind, x, y, z, yaw, tint, idx, held }
+    this.items = []; // { id, kind, x, y, z, yaw, tint, idx, held, scale }
+    this.byId = new Map(); // shared ids: the same object has the same id for every player in a room
     this.kinds = {};
     this._m = new THREE.Matrix4();
     this._q = new THREE.Quaternion();
@@ -115,10 +118,11 @@ export class Props {
     const mat = legoMaterial({ vertexColors: true });
     const counts = {};
     for (const it of this.items) counts[it.kind] = (counts[it.kind] || 0) + 1;
+    const style = isLego() ? 'lego' : 'real';
     for (const [key, def] of Object.entries(KINDS)) {
-      const geo = mergeGeometries(def.make());
+      const geo = mergeGeometries(def.make(style));
       geo.computeVertexNormals();
-      const cap = (counts[key] || 0) + (key === 'car' ? 150 : 8);
+      const cap = (counts[key] || 0) + (def.model ? 60 : 8); // room for cars taken off the road
       const im = new THREE.InstancedMesh(geo, mat, cap);
       im.count = 0;
       im.castShadow = true;
@@ -128,7 +132,11 @@ export class Props {
     }
     const placed = this.items;
     this.items = [];
+    this.localN = 0;
+    this.localTag = Math.random().toString(36).slice(2, 6); // keeps ids from different players apart
+    this.placing = true;
     for (const it of placed) this.add(it.kind, it.x, it.z, it.yaw, it.tint);
+    this.placing = false;
   }
 
   /** Decide where everything lies, the same way every time for a given city. */
@@ -213,10 +221,14 @@ export class Props {
   }
 
   /** Lay an object on the ground. Returns it, or null when that kind is full. */
-  add(kind, x, z, yaw = 0, tint = LEGO.white) {
+  add(kind, x, z, yaw = 0, tint = LEGO.white, id = null) {
     const k = this.kinds[kind];
-    if (k.im.count >= k.cap) return null;
-    const it = { kind, x, z, y: this.world.heightAt(x, z), yaw, tint, idx: k.im.count++, held: false, scale: 1 };
+    if (!k || k.im.count >= k.cap) return null;
+    // Objects the map places get numbers in placement order (the same everywhere);
+    // ones added later (a car taken off the road) get an id from whoever added them.
+    id ??= this.placing ? this.items.length : `${this.localTag}${++this.localN}`;
+    const it = { id, kind, x, z, y: this.world.heightAt(x, z), yaw, tint, idx: k.im.count++, held: false, scale: 1 };
+    this.byId.set(String(id), it);
     k.im.setColorAt(it.idx, new THREE.Color(k.tint ? tint : 0xffffff));
     k.im.instanceColor.needsUpdate = true;
     this.items.push(it);
@@ -256,6 +268,40 @@ export class Props {
     const m = this.mesh(it.kind, it.tint);
     m.scale.setScalar(it.scale || 1);
     return m;
+  }
+
+  /**
+   * A car to drive: body plus four separate wheels (they spin, and the front
+   * ones steer). Returns { group, wheels: [{ mesh, front }] }, or null for
+   * kinds without separate wheels. Takes the object off the ground.
+   */
+  driveMesh(it) {
+    const def = this.kinds[it.kind];
+    if (!def.model) return null;
+    it.held = true;
+    this._write(it);
+    const style = isLego() ? 'lego' : 'real';
+    const m = carModel(def.model, style);
+    const mat = def.mat.clone();
+    mat.onBeforeCompile = def.mat.onBeforeCompile;
+    if (def.tint) mat.color.set(it.tint);
+    const group = new THREE.Group();
+    const body = new THREE.Mesh(mergeGeometries([m.body, m.lamps]), mat);
+    body.castShadow = true;
+    group.add(body);
+    const wheelMat = def.mat.clone();
+    wheelMat.onBeforeCompile = def.mat.onBeforeCompile;
+    const wheels = carWheels(def.model).map(([x, z, r]) => {
+      const pivot = new THREE.Group(); // steering turns the pivot, rolling turns the wheel
+      pivot.position.set(x, r, z);
+      const mesh = new THREE.Mesh(wheelGeometry(r, style), wheelMat);
+      mesh.castShadow = true;
+      pivot.add(mesh);
+      group.add(pivot);
+      return { pivot, mesh, front: z < 0, r };
+    });
+    group.scale.setScalar(it.scale || 1);
+    return { group, body, wheels };
   }
 
   /** Supersize or shrink an object lying on the ground. */

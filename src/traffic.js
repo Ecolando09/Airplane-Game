@@ -1,5 +1,8 @@
 import * as THREE from 'three';
-import { LEGO, legoMaterial } from './lego.js';
+import { LEGO, legoMaterial, isLego } from './lego.js';
+import { CAR_KINDS, carModel, carWheels, wheelGeometry, trafficKinds } from './vehicles.js';
+
+const DETAIL_RANGE = 320; // meters: nearer cars are drawn in detail (wheels, glass, lamps)
 
 // Lego cars driving on the real streets. Each car follows one street from the
 // map data in its right-hand lane, turns around at the end and drives back.
@@ -17,8 +20,11 @@ const COLORS = [LEGO.red, LEGO.blue, LEGO.yellow, LEGO.white, LEGO.black, LEGO.g
   LEGO.lightGray, LEGO.medAzure, LEGO.red, LEGO.blue, LEGO.white];
 
 export class Traffic {
-  constructor(scene, world, count) {
+  /** @param opts.detail how many nearby cars may be drawn in detail at once; opts.city picks local car kinds */
+  constructor(scene, world, count, { detail = 150, city = '' } = {}) {
     this.world = world;
+    this.scene = scene;
+    this.detailCap = detail;
     // Precompute each usable street's segment lengths.
     const roads = [];
     let total = 0;
@@ -62,6 +68,12 @@ export class Traffic {
         truck: rand() < 0.12,
       };
     });
+    const kinds = trafficKinds(city);
+    for (const car of this.cars) {
+      car.kind = car.truck ? 'van' : kinds[Math.floor(rand() * kinds.length)];
+      car.propKind = car.kind === 'sedan' ? 'car' : car.kind; // what it becomes when a robot grabs it
+      car.spin = 0;
+    }
 
     // Instanced meshes: body (per-car color), cabin with windows, and a stud on the roof.
     const n = this.cars.length;
@@ -74,6 +86,7 @@ export class Traffic {
     const c = new THREE.Color();
     this.cars.forEach((car, i) => {
       car.color = car.truck ? LEGO.lightGray : COLORS[Math.floor(rand() * COLORS.length)];
+      if (car.kind === 'taxi') car.color = LEGO.yellow;
       this.body.setColorAt(i, c.setHex(car.color));
     });
     for (const m of [this.body, this.cabin, this.wheels]) {
@@ -87,11 +100,48 @@ export class Traffic {
     this._p = new THREE.Vector3();
     this._s = new THREE.Vector3();
     this._up = new THREE.Vector3(0, 1, 0);
+    this._c = new THREE.Color();
+    this._w = new THREE.Matrix4();
+    this._r = new THREE.Matrix4();
+
+    // Detailed cars near the camera: per kind, a body, glowing lamps and four spinning wheels.
+    const style = isLego() ? 'lego' : 'real';
+    const bodyMat = legoMaterial({ vertexColors: true });
+    const lampMat = new THREE.MeshBasicMaterial({ vertexColors: true });
+    const wheelMat = legoMaterial({ vertexColors: true });
+    this.detail = {};
+    for (const kind of new Set(this.cars.map((c) => c.kind))) {
+      if (!CAR_KINDS.includes(kind)) continue;
+      const m = carModel(kind, style);
+      const wheels = carWheels(kind);
+      const cap = this.detailCap;
+      const body = new THREE.InstancedMesh(m.body, bodyMat, cap);
+      const lamps = new THREE.InstancedMesh(m.lamps, lampMat, cap);
+      const wheel = new THREE.InstancedMesh(wheelGeometry(wheels[0][2], style), wheelMat, cap * 4);
+      for (const im of [body, lamps, wheel]) {
+        im.count = 0;
+        im.frustumCulled = false;
+        im.castShadow = im !== lamps;
+        im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+        scene.add(im);
+      }
+      body.setColorAt(0, new THREE.Color()); // allocate per-car paint
+      this.detail[kind] = { body, lamps, wheel, wheels };
+    }
     this.update(0);
   }
 
-  update(dt) {
+  /** Show or hide all traffic (the Google 3D look has none). */
+  setVisible(on) {
+    for (const m of [this.body, this.cabin, this.wheels]) m.visible = on;
+    for (const d of Object.values(this.detail)) for (const m of [d.body, d.lamps, d.wheel]) m.visible = on;
+  }
+
+  update(dt, focus = null) {
     const { _m: m, _q: q, _p: p, _s: sc } = this;
+    for (const d of Object.values(this.detail)) d.n = 0;
+    let detailed = 0;
+    const hidden = this._hide || (this._hide = new THREE.Matrix4().makeScale(0, 0, 0));
     this.cars.forEach((car, i) => {
       if (car.gone) return;
       const r = car.road;
@@ -130,6 +180,27 @@ export class Traffic {
       car.y = p.y;
       car.yaw = Math.atan2(-dx, -dz);
       q.setFromAxisAngle(this._up, Math.atan2(-dx, -dz));
+      car.spin += (car.speed * dt) / 0.5;
+      // Near the camera: the detailed model. Farther away: three simple blocks.
+      const d = this.detail[car.kind];
+      const near = d && focus && detailed < this.detailCap && Math.abs(x - focus.x) < DETAIL_RANGE && Math.abs(z - focus.z) < DETAIL_RANGE;
+      if (near) {
+        detailed++;
+        sc.set(1.12, 1.12, 1.12);
+        m.compose(p, q, sc);
+        const k = d.n++;
+        d.body.setMatrixAt(k, m);
+        d.body.setColorAt(k, this._c.setHex(car.color));
+        d.lamps.setMatrixAt(k, m);
+        d.wheels.forEach(([wx, wz, wr], j) => {
+          this._w.makeTranslation(wx, wr, wz).multiply(this._r.makeRotationX(-car.spin * car.dir));
+          d.wheel.setMatrixAt(k * 4 + j, this._w.premultiply(m));
+        });
+        this.body.setMatrixAt(i, hidden);
+        this.wheels.setMatrixAt(i, hidden);
+        this.cabin.setMatrixAt(i, hidden);
+        return;
+      }
       // Slightly chunkier than life so they read from the air.
       sc.set(1.3, car.truck ? 1.75 : 1.3, car.truck ? 2.2 : 1.3);
       m.compose(p, q, sc);
@@ -140,6 +211,12 @@ export class Traffic {
     this.body.instanceMatrix.needsUpdate = true;
     this.cabin.instanceMatrix.needsUpdate = true;
     this.wheels.instanceMatrix.needsUpdate = true;
+    for (const d of Object.values(this.detail)) {
+      d.body.count = d.lamps.count = d.n;
+      d.wheel.count = d.n * 4;
+      d.body.instanceMatrix.needsUpdate = d.lamps.instanceMatrix.needsUpdate = d.wheel.instanceMatrix.needsUpdate = true;
+      if (d.body.instanceColor) d.body.instanceColor.needsUpdate = true;
+    }
   }
 
   /** Cars within `r` of (x, z) that are still driving. */

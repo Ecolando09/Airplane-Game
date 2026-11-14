@@ -202,7 +202,7 @@ export class Rampage {
       this.stats.cars++;
       this.score(15, 'car');
       this.explode(car.x, car.y + 2, car.z, 7);
-      const it = this.props.add('car', car.x, car.z, car.yaw, car.color);
+      const it = this.props.add(car.propKind || 'car', car.x, car.z, car.yaw, car.color);
       if (it) this._launch(it, new THREE.Vector3(car.x - from.x, 0, car.z - from.z).setLength(22).setY(18));
       n++;
     }
@@ -232,7 +232,7 @@ export class Rampage {
     const car = this.traffic.near(cx, cz, 16)[0];
     if (car && (!it || Math.hypot(car.x - cx, car.z - cz) < Math.hypot(it.x - cx, it.z - cz))) {
       this.traffic.remove(car);
-      it = this.props.add('car', car.x, car.z, car.yaw, car.color) || it;
+      it = this.props.add(car.propKind || 'car', car.x, car.z, car.yaw, car.color) || it;
     }
     return it;
   }
@@ -245,6 +245,7 @@ export class Rampage {
     const info = this.props.info(it.kind);
     if (scale === (it.scale || 1)) return this.hooks.message(factor > 1 ? `The ${info.name} can't get any bigger!` : `The ${info.name} can't get any smaller!`);
     this.props.resize(it, scale);
+    this.hooks.shared?.('prop', it);
     for (const h of [this.held, this.driving]) if (h?.item === it) h.mesh.scale.setScalar(scale);
     if (this.driving) bot.driving = scale;
     if (this.driving && scale < 2) this.exitCar(bot);
@@ -259,20 +260,25 @@ export class Rampage {
 
   // ---------------------------------------------------------------- driving
   enterCar(bot, it) {
-    const mesh = this.props.lift(it);
+    const dm = this.props.driveMesh(it); // cars: separate wheels that spin and steer
+    const mesh = dm ? dm.group : this.props.lift(it);
     bot.plane.group.add(mesh);
     mesh.position.set(0, 0, 0);
     mesh.rotation.set(0, 0, 0);
     bot.plane.body.visible = false;
-    this.driving = { item: it, mesh };
-    bot.driving = it.scale;
+    this.driving = { item: it, mesh, wheels: dm?.wheels, body: dm?.body, lean: 0, dip: 0, lastSpeed: 0 };
+    bot.driving = it.scale || 1;
+    bot.boat = !!this.props.info(it.kind).water; // boats only go on water
     bot.yaw = it.yaw;
     bot.pos.set(it.x, it.y, it.z);
     bot.vel.set(0, 0, 0);
     bot.onExit = () => this.exitCar(bot);
+    this.hooks.shared?.('pick', it);
     this.hooks.sound('load');
     const k = this._keys();
-    this.hooks.message(`🚗 Driving the ${this.props.info(it.kind).name}! Nothing can stop you. ${k.horn} for a boost, ${k.exit} to get out`);
+    const info = this.props.info(it.kind);
+    const big = (it.scale || 1) >= 2;
+    this.hooks.message(`${info.water ? '⛵' : '🚗'} Driving the ${info.name}!${info.water ? ' Water only.' : big ? ' Nothing can stop you.' : ''} ${k.horn} for a boost, ${k.exit} to get out`);
     this.hooks.driving?.(true);
   }
 
@@ -284,6 +290,7 @@ export class Rampage {
     bot.driving = 0;
     bot.plane.body.visible = true;
     this.props.drop(item, bot.pos.x, bot.pos.z, bot.yaw);
+    this.hooks.shared?.('prop', item);
     const r = bot.right;
     bot.pos.x += r.x * (this.props.radius(item) + 4);
     bot.pos.z += r.z * (this.props.radius(item) + 4);
@@ -306,7 +313,7 @@ export class Rampage {
     let best = null;
     let bestD = 12;
     for (const it of this.props.items) {
-      if (it.held || (it.scale || 1) < 2 || !this.props.info(it.kind).drive) continue;
+      if (it.held || !this.props.info(it.kind).drive) continue;
       if (Math.abs(it.y - bot.pos.y) > ROBOT_HEIGHT * (bot.size || 1)) continue;
       const d = Math.hypot(it.x - bot.pos.x, it.z - bot.pos.z) - this.props.radius(it);
       if (d < bestD) {
@@ -358,7 +365,7 @@ export class Rampage {
     if (this.driving) return this.exitCar(bot);
     if (this.held) return this._throw(bot);
     const ride = this.driveTarget(bot);
-    if (ride) return this.enterCar(bot, ride);
+    if (ride && (ride.scale || 1) >= 2 && !this.props.info(ride.kind).fly) return this.enterCar(bot, ride);
     const f = bot.forward;
     const cx = bot.pos.x + f.x * 4 * (bot.size || 1);
     const cz = bot.pos.z + f.z * 4 * (bot.size || 1);
@@ -366,14 +373,16 @@ export class Rampage {
     const car = this.traffic.near(cx, cz, GRAB + 2)[0];
     if (car && (!it || Math.hypot(car.x - cx, car.z - cz) < Math.hypot(it.x - cx, it.z - cz))) {
       this.traffic.remove(car);
-      it = this.props.add('car', car.x, car.z, car.yaw, car.color) || it;
+      const added = this.props.add(car.propKind || 'car', car.x, car.z, car.yaw, car.color);
+      if (added) this.hooks.shared?.('prop', added);
+      it = added || it;
     }
     if (!it || Math.abs(it.y - bot.pos.y) > ROBOT_HEIGHT * (bot.size || 1)) {
       const h = this.nearestHint(bot);
       this.hooks.message(h ? `Nothing in reach. Nearest: ${h.name}, ${h.dist} m ${h.side} (yellow arrow)` : 'Nothing to grab here');
       return false;
     }
-    if (this.props.info(it.kind).drive && it.scale >= 2) return this.enterCar(bot, it);
+    if (this.props.info(it.kind).drive && it.scale >= 2 && !this.props.info(it.kind).fly) return this.enterCar(bot, it);
     if (it.scale > 2 * (bot.size || 1)) {
       this.hooks.message(`That ${this.props.info(it.kind).name} is too big to lift now. Shrink it first!`);
       return false;
@@ -382,6 +391,7 @@ export class Rampage {
     bot.plane.hands.add(mesh);
     mesh.position.set(0, 0, 0);
     this.held = { item: it, mesh };
+    this.hooks.shared?.('pick', it);
     this.hooks.sound('load');
     const name = this.props.info(it.kind).name;
     this.hooks.message(`Picked up ${/^[aeiou]/.test(name) ? 'an' : 'a'} ${name}!`);
@@ -397,6 +407,7 @@ export class Rampage {
     mesh.quaternion.copy(bot.quat);
     const v = new THREE.Vector3(f.x * 52 + bot.vel.x, 20 + Math.max(0, bot.vel.y), f.z * 52 + bot.vel.z);
     this.flying.push({ item, mesh, v, spin: 4, thrown: true, from: bot.pos.clone(), hits: 0 });
+    this.hooks.shared?.('throw', item, { p: mesh.position, v });
     this.hooks.threw?.();
     this.stats.thrown++;
     this.hooks.sound('throw');
@@ -412,6 +423,7 @@ export class Rampage {
     mesh.removeFromParent();
     const f = bot.forward;
     this.props.drop(item, bot.pos.x + f.x * 7, bot.pos.z + f.z * 7, bot.yaw);
+    this.hooks.shared?.('prop', item);
   }
 
   _launch(it, v) {
@@ -422,6 +434,29 @@ export class Rampage {
     if ((it.scale || 1) > 1) v.multiplyScalar(1 / Math.sqrt(it.scale)); // big things don't fly as far
     this.scene.add(mesh);
     this.flying.push({ item: it, mesh, v, spin: 3 + Math.random() * 3, from: new THREE.Vector3(it.x, it.y, it.z), hits: 0 });
+    this.hooks.shared?.('throw', it, { p: mesh.position, v });
+  }
+
+  /**
+   * Another player in the room threw or kicked something: fly it along the same
+   * path here (just for show: their game does the smashing and tells us).
+   */
+  remoteThrow(it, p, v) {
+    if (this.held?.item === it) {
+      this.held.mesh.removeFromParent();
+      this.held = null;
+    }
+    for (const o of this.flying.filter((f) => f.item === it)) {
+      this.scene.remove(o.mesh);
+      this.flying.splice(this.flying.indexOf(o), 1);
+    }
+    it.held = true;
+    this.props._write(it);
+    const mesh = this.props.mesh(it.kind, it.tint);
+    mesh.scale.setScalar(it.scale || 1);
+    mesh.position.set(p.x, p.y, p.z);
+    this.scene.add(mesh);
+    this.flying.push({ item: it, mesh, v: new THREE.Vector3(v.x, v.y, v.z), spin: 4, remote: true, from: new THREE.Vector3(p.x, p.y, p.z), hits: 0 });
   }
 
   // ---------------------------------------------------------------- per frame
@@ -449,6 +484,22 @@ export class Rampage {
       const x = p.bot.pos.x + f.x * 7 * k;
       const z = p.bot.pos.z + f.z * 7 * k;
       this.blast(x, p.bot.pos.y + 8 * k, z, REACH * k, p.bot.pos);
+    }
+    // The car being driven: wheels roll and steer, the body leans into turns and dips when braking.
+    const dr = this.driving;
+    if (dr?.wheels && bot) {
+      const along = bot.vel.x * bot.forward.x + bot.vel.z * bot.forward.z;
+      const steer = -(bot.ctrl?.roll || 0) * 0.5;
+      for (const w of dr.wheels) {
+        w.mesh.rotation.x -= (along * dt) / w.r;
+        if (w.front) w.pivot.rotation.y = steer;
+      }
+      const accel = (Math.abs(along) - dr.lastSpeed) / Math.max(dt, 1e-3);
+      dr.lastSpeed = Math.abs(along);
+      dr.lean += ((bot.ctrl?.roll || 0) * Math.min(1, Math.abs(along) / 20) * 0.09 - dr.lean) * (1 - Math.exp(-dt * 5));
+      dr.dip += (THREE.MathUtils.clamp(-accel * 0.004, -0.05, 0.05) - dr.dip) * (1 - Math.exp(-dt * 6));
+      dr.body.rotation.z = dr.lean;
+      dr.body.rotation.x = dr.dip;
     }
     if (bot) {
       // Walking through trees knocks them over; walking into things kicks them.
@@ -492,7 +543,7 @@ export class Rampage {
           this.stats.cars++;
           this.score(15, 'car');
           this.explode(car.x, car.y + 2, car.z, 6);
-          const it = this.props.add('car', car.x, car.z, car.yaw, car.color);
+          const it = this.props.add(car.propKind || 'car', car.x, car.z, car.yaw, car.color);
           if (it) this._launch(it, new THREE.Vector3(bot.vel.x, 0, bot.vel.z).multiplyScalar(1.5).setY(14));
         }
       }
@@ -508,7 +559,7 @@ export class Rampage {
         o.mesh.position.addScaledVector(o.v, dt / steps);
         const p = o.mesh.position;
         // Thrown things smash what they hit and lose most of their speed.
-        if (o.thrown && w.hitsObstacle({ x: p.x, y: p.y + info.r, z: p.z }, info.r)) {
+        if (o.thrown && !o.remote && w.hitsObstacle({ x: p.x, y: p.y + info.r, z: p.z }, info.r)) {
           this.explode(p.x, p.y + info.r, p.z, info.r * 2.2 + 4);
           const n = this.blast(p.x, p.y + info.r, p.z, info.r + 3, o.from);
           o.hits += n;
@@ -542,6 +593,7 @@ export class Rampage {
         this.scene.remove(o.mesh);
         this.flying.splice(this.flying.indexOf(o), 1);
         this.props.drop(o.item, o.mesh.position.x, o.mesh.position.z, o.mesh.rotation.y);
+        if (!o.remote) this.hooks.shared?.('prop', o.item);
       }
     }
   }

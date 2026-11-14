@@ -123,7 +123,7 @@ try {
     auto: document.querySelector('#autoLandBtn kbd')?.textContent,
     drive: document.querySelector('#driveBtn kbd')?.textContent,
   }));
-  check('pop-up buttons show PSG1 button names', hints.auto === 'L1' && hints.drive === 'A', `${hints.auto}, ${hints.drive}`);
+  check('pop-up buttons show PSG1 button names', hints.auto === 'L1' && hints.drive === 'Y', `${hints.auto}, ${hints.drive}`);
 
   // L1 / R1 in the menu change city.
   await press(9);

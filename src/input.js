@@ -20,7 +20,7 @@ export class Input {
     const actions = {
       KeyC: 'cam', KeyR: 'reset', KeyM: 'mute', KeyI: 'invert', KeyB: 'floats', KeyN: 'map',
       KeyP: 'potty', Period: 'bigger', Comma: 'smaller', KeyF: 'transform', KeyG: 'grab', KeyX: 'smash',
-      KeyT: 'turboKey', KeyL: 'autoland', Enter: 'respawn', NumpadEnter: 'respawn', Digit1: 'turbo1', Digit2: 'turbo2', Digit3: 'turbo3', Escape: 'pause', Backquote: 'colliders', BracketRight: 'grow', BracketLeft: 'shrink',
+      KeyT: 'turboKey', KeyL: 'autoland', Enter: 'respawn', NumpadEnter: 'respawn', Digit1: 'turbo1', Digit2: 'turbo2', Digit3: 'turbo3', Escape: 'pause', Backquote: 'colliders', BracketRight: 'grow', BracketLeft: 'shrink', KeyV: 'drive',
     };
     addEventListener('keydown', (e) => {
       if (e.repeat || e.target.closest?.('input, textarea')) return; // typing a name, not flying
