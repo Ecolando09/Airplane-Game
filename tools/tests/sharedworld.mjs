@@ -15,6 +15,7 @@ const { browser, page: a } = await launch({ width: 800, height: 520 });
 const b = await browser.newPage({ viewport: { width: 800, height: 520 } });
 b.on('pageerror', (e) => console.log('PAGE ERROR (b):', e.message));
 const ROOM = 'WXQZ';
+for (const [p, n] of [[a, 'Alice'], [b, 'Bob']]) await p.addInitScript((n) => localStorage.setItem('legosky.name', n), n);
 const robot = (p) => p.evaluate(() => { const g = window.__game; g.start(false); g.transform(); g.finishMorph(); });
 try {
   await openGame(a, `city=carbondale&vehicle=plane&look=lego&room=${ROOM}`);
@@ -119,6 +120,7 @@ try {
   // A third player joins late and gets the same world.
   await b.close(); // (this test machine is slow: two games at a time)
   const c = await browser.newPage({ viewport: { width: 800, height: 520 } });
+  await c.addInitScript(() => localStorage.setItem('legosky.name', 'Cara'));
   await openGame(c, `city=carbondale&vehicle=plane&look=lego&room=${ROOM}`);
   await c.waitForFunction((pid) => window.__game.bot().props.byId.get(pid)?.scale === 2, pid, { timeout: 30000, polling: 300 });
   const late = await c.evaluate(({ boulder, plane }) => {

@@ -131,8 +131,8 @@ export class EngineSound {
   }
 
   /** Short game sounds: 'load' (rising), 'cash' (cha-ching), 'miss' (falling), 'break' (crunch). */
-  blip(kind) {
-    if (!this.ctx || this.muted) return;
+  blip(kind, vol = 1) {
+    if (!this.ctx || this.muted || vol <= 0.01) return;
     const notes = {
       load: [[523, 0], [659, 0.08], [784, 0.16]],
       cash: [[988, 0], [1319, 0.07], [1568, 0.14], [2093, 0.21]],
@@ -147,6 +147,8 @@ export class EngineSound {
       flush: [[520, 0], [440, 0.1], [360, 0.2], [290, 0.3], [230, 0.4], [180, 0.5], [140, 0.6]],
       transform: [[196, 0], [294, 0.07], [392, 0.14], [587, 0.21], [784, 0.28]],
       horn: [[415, 0], [523, 0], [415, 0.2], [523, 0.2]],
+      hi5: [[1047, 0], [1319, 0.05], [1568, 0.1], [2093, 0.16]],
+      emote: [[660, 0], [880, 0.07]],
     }[kind] || [];
     const t0 = this.ctx.currentTime;
     for (const [f, at] of notes) {
@@ -155,7 +157,7 @@ export class EngineSound {
       o.type = kind === 'horn' ? 'square' : kind === 'break' || kind === 'transform' || kind === 'flush' ? 'sawtooth' : 'triangle';
       o.frequency.value = f;
       g.gain.setValueAtTime(0.0001, t0 + at);
-      g.gain.exponentialRampToValueAtTime(0.12, t0 + at + 0.01);
+      g.gain.exponentialRampToValueAtTime(Math.max(0.0002, 0.12 * Math.min(1, vol)), t0 + at + 0.01);
       g.gain.exponentialRampToValueAtTime(0.0001, t0 + at + 0.18);
       o.connect(g).connect(this.ctx.destination);
       o.start(t0 + at);

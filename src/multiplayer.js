@@ -71,6 +71,7 @@ export class Multiplayer {
         this.status = 'on';
         this.host = m.host; // the room's host (starts room games)
         this.trophies = m.trophies || {};
+        if (m.opts) this.onEvent?.({ t: 'room-opts', opts: m.opts });
         if (m.now) this.clockOffset = m.now - Date.now();
         if (m.settings?.city) {
           this.settings = m.settings;

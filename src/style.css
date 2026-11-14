@@ -2606,3 +2606,81 @@ kbd.pad-Y { background: #e8b923; color: #23272b; }
     font-size: 12.5px;
   }
 }
+
+/* ---------- emotes and friend actions */
+.emote-card {
+  background: #fff;
+  color: var(--ink);
+  border-radius: 18px;
+  padding: 14px;
+  width: min(460px, 94vw);
+  max-height: 92vh;
+  overflow: auto;
+}
+
+.emote-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.emote-grid button {
+  font: 700 15px system-ui, sans-serif;
+  padding: 10px 6px;
+  border-radius: 12px;
+  border: 2px solid #e1e4e8;
+  background: #f6f8fa;
+  cursor: pointer;
+}
+
+.emote-acts {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid #e1e4e8;
+}
+
+#hi5Btn {
+  position: fixed;
+  left: 50%;
+  bottom: 130px;
+  transform: translateX(-50%);
+}
+
+#hi5Btn kbd {
+  margin-left: 8px;
+}
+
+body.is-touch #hi5Btn kbd {
+  display: none;
+}
+
+.label.player .emo {
+  font-size: 1.6em;
+  margin-right: 4px;
+}
+
+#buddies .buddy {
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+#nameAskInput {
+  width: 100%;
+  box-sizing: border-box;
+  font: 600 18px system-ui, sans-serif;
+  padding: 10px 12px;
+  margin: 6px 0 12px;
+  border-radius: 10px;
+  border: 2px solid #c9ced6;
+}
+
+.rg-players {
+  text-align: left;
+  margin: 8px 0;
+  padding-left: 18px;
+  font-size: 14px;
+}
+
+#rgPanel .rg-box {
+  text-align: left;
+}

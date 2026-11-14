@@ -30,6 +30,21 @@
         <button class="small-btn" id="rgBannerGo" hidden>Start now</button>
       </div>
       <div id="rgGo" hidden></div>
+      <button id="hi5Btn" class="big go" hidden>🙌 High-five <span id="hi5Name"></span><kbd>J</kbd></button>
+      <div id="emoteWheel" class="overlay" hidden>
+        <div class="emote-card">
+          <div class="emote-grid" id="emoteGrid"></div>
+          <div class="emote-grid emote-acts">
+            <button data-do="horn">📯 Horn</button>
+            <button data-do="goto">🧲 Go to friend</button>
+            <button data-do="ping">📍 Ping here</button>
+            <button data-do="hi5">🙌 High-five</button>
+            <button data-do="games">🎮 Room games</button>
+            <button data-do="map">🗺️ Big map</button>
+            <button data-do="close">✕ Close</button>
+          </div>
+        </div>
+      </div>
       <div class="panel" id="over"></div>
       <canvas id="minimap" width="480" height="480" title="Tap to enlarge (N)"></canvas>
       <div id="message"></div>
@@ -63,6 +78,8 @@
         </div>
       </div>
       <div id="topRight">
+        <button id="rgChip" class="chip" aria-label="Room games" hidden>🎮</button>
+        <button id="emoteChip" class="chip" aria-label="Emotes and friend actions" hidden>😀</button>
         <button id="phoneChip" class="chip" aria-label="Phone controller">📱</button>
         <button id="fsChip" class="chip" aria-label="Full screen" title="Full screen" hidden>⛶</button>
         <button id="helpBtn" class="chip" aria-label="Menu (Esc)" title="Menu (Esc)">☰ Menu</button>
@@ -189,20 +206,7 @@
               <button class="small-btn" id="mpCopy">Copy invite link</button>
               <button class="small-btn ghost" id="mpLeave">Leave</button>
             </div>
-            <div class="rg-box" id="rgBox">
-              <p class="rg-host" id="rgHost"></p>
-              <div id="rgPick" hidden>
-                <label>Game <select id="rgGame"></select></label>
-                <label id="rgVehicleRow">Vehicle <select id="rgVehicle"><option value="plane">Bush Plane</option><option value="heli">Copter</option></select></label>
-                <label id="rgLapsRow" hidden>Laps <select id="rgLaps"><option>2</option><option selected>3</option><option>4</option><option>5</option></select></label>
-                <p class="look-note" id="rgAbout"></p>
-                <button class="small-btn" id="rgStart">Start (30 s countdown)</button>
-              </div>
-              <div class="mp-row" id="rgHostLive" hidden>
-                <button class="small-btn" id="rgGoNow">Start now</button>
-                <button class="small-btn ghost" id="rgCancel">Cancel game</button>
-              </div>
-            </div>
+            <p class="look-note" id="rgMenuNote">Room games start from inside the game: once everyone is in, the host presses 🎮.</p>
             <p class="look-note">Everyone in the room sees what the robots smash.</p>
             <ul id="mpList"></ul>
           </div>
@@ -289,6 +293,43 @@
       <div id="previewTag" aria-live="polite">
         <span class="dot"></span><span id="previewText">Preview</span>
         <span id="previewBusy" hidden>· building…</span>
+      </div>
+    </div>
+
+    <div id="rgPanel" class="overlay" hidden>
+      <div class="rg-card">
+        <h2>🎮 Room games</h2>
+          <div class="rg-box" id="rgBox">
+            <p class="rg-host" id="rgHost"></p>
+            <label class="check" id="rgShoveRow" hidden><input type="checkbox" id="rgShove" checked /> Robots can shove each other</label>
+            <div id="rgPick" hidden>
+              <label>Game <select id="rgGame"></select></label>
+              <label id="rgVehicleRow">Vehicle <select id="rgVehicle"><option value="plane">Bush Plane</option><option value="heli">Copter</option></select></label>
+              <label id="rgLapsRow" hidden>Laps <select id="rgLaps"><option>2</option><option selected>3</option><option>4</option><option>5</option></select></label>
+              <p class="look-note" id="rgAbout"></p>
+              <button class="small-btn" id="rgStart">Start (30 s countdown)</button>
+            </div>
+            <div class="mp-row" id="rgHostLive" hidden>
+              <button class="small-btn" id="rgGoNow">Start now</button>
+              <button class="small-btn ghost" id="rgCancel">Cancel game</button>
+            </div>
+          </div>
+        <ul id="rgPanelList" class="rg-players"></ul>
+        <div class="crash-actions">
+          <button class="big alt" id="rgPanelClose">Close</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="nameAsk" class="overlay" hidden>
+      <div class="rg-card">
+        <h2>What's your name?</h2>
+        <p>Friends in the room will see it over your plane and on the results.</p>
+        <input id="nameAskInput" maxlength="16" placeholder="Your name" autocomplete="nickname" aria-label="Your name" />
+        <div class="crash-actions">
+          <button class="big go" id="nameAskOk">Join</button>
+          <button class="big alt" id="nameAskSkip">Keep "Pilot"</button>
+        </div>
       </div>
     </div>
 

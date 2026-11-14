@@ -300,7 +300,7 @@ function joinFlight(ws, code, wanted) {
   if (!room) {
     flights.set(code, (room = new Map()));
     roomSettings.set(code, wanted);
-    meta.set(code, { order: [], host: null, game: null, trophies: {}, props: new Map(), smashed: new Set() });
+    meta.set(code, { order: [], host: null, game: null, trophies: {}, props: new Map(), smashed: new Set(), opts: { shove: true } });
   }
   const rmeta = meta.get(code);
   if (room.size >= 8) {
@@ -315,7 +315,7 @@ function joinFlight(ws, code, wanted) {
     for (const [oid, sock] of room) if (oid !== id && sock.readyState === 1) fn(sock);
   };
   // Everyone in a room flies the same city and look (vehicles are each player's own).
-  ws.send(JSON.stringify({ t: 'welcome', id, players: room.size, settings: roomSettings.get(code), host: rmeta.host, now: Date.now(), trophies: rmeta.trophies }));
+  ws.send(JSON.stringify({ t: 'welcome', id, players: room.size, settings: roomSettings.get(code), host: rmeta.host, now: Date.now(), trophies: rmeta.trophies, opts: rmeta.opts }));
   // Catch up on the shared world, in pieces.
   const city = roomSettings.get(code)?.city;
   const ps = [...rmeta.props.values()];
@@ -342,6 +342,15 @@ function joinFlight(ws, code, wanted) {
       const g = rmeta.game;
       if (g && m.name) g.names[id] = String(m.name).slice(0, 16);
       return onGameMessage(code, id, m);
+    }
+    // Room options (robot shoving on or off): host only, remembered for late joiners.
+    if (m.t === 'room-opts') {
+      if (rmeta.host !== id || typeof m.opts !== 'object' || !m.opts) return;
+      rmeta.opts = { ...rmeta.opts, shove: m.opts.shove !== false };
+      m.opts = rmeta.opts;
+      const out = JSON.stringify(m);
+      for (const sock of room.values()) if (sock.readyState === 1) sock.send(out); // the host gets it back too
+      return;
     }
     // Remember the shared world for players who join later: where moved or
     // resized objects ended up, and which buildings are down (capped).

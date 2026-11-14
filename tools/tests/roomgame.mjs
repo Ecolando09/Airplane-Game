@@ -24,6 +24,12 @@ try {
   await b.waitForFunction(() => window.__game.mp.status === 'on');
   await a.evaluate(() => { document.getElementById('mpName').value = 'Alice'; window.__game.mp.name = 'Alice'; });
   await b.evaluate(() => { document.getElementById('mpName').value = 'Bob'; window.__game.mp.name = 'Bob'; });
+  // Room games are started from inside the game, not the main menu.
+  check('the main menu has no game picker any more', await a.evaluate(() => !document.querySelector('#menuPanel #rgPick')));
+  await a.evaluate(() => window.__game.start(false));
+  await a.waitForFunction(() => !document.getElementById('rgChip').hidden, null, { timeout: 30000, polling: 300 });
+  await a.evaluate(() => document.getElementById('rgChip').click());
+  check('in the game, the host opens 🎮 Room games and sees the picker', await a.evaluate(() => !document.getElementById('rgPanel').hidden && !document.getElementById('rgPick').hidden));
   check('first player is the host', await a.evaluate(() => window.__game.mp.isHost) && !(await b.evaluate(() => window.__game.mp.isHost)));
 
   // Host starts Sky Race in planes.
@@ -76,6 +82,15 @@ try {
   check('results card shown, with rematch for the host only', await a.evaluate(() => !document.getElementById('rgResults').hidden && !document.getElementById('rgAgain').hidden)
     && await b.evaluate(() => !document.getElementById('rgResults').hidden && document.getElementById('rgAgain').hidden));
   check('room trophy goes to the winner', await b.evaluate(() => Object.values(window.__game.mp.trophies || {}).includes(1)));
+  // Joining with no name: asked for one first.
+  await b.close(); // (slow test machine: two games at a time)
+  const c = await browser.newPage({ viewport: { width: 900, height: 600 } });
+  await openGame(c, `city=carbondale&vehicle=plane&look=lego&room=${ROOM}`);
+  const asked = await c.evaluate(() => !document.getElementById('nameAsk').hidden && window.__game.mp.status === 'off');
+  check('a player with no name is asked for one before joining', asked);
+  await c.evaluate(() => { document.getElementById('nameAskInput').value = 'Cara'; document.getElementById('nameAskOk').click(); });
+  await c.waitForFunction(() => window.__game.mp.status === 'on', null, { timeout: 30000, polling: 300 });
+  check('... and joins with that name', await c.evaluate(() => window.__game.mp.name === 'Cara'));
 } finally {
   await browser.close();
   stop();

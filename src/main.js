@@ -683,8 +683,8 @@ function drawMinimap() {
 
   // Pins (address, Denny's) and the runway; arrows at the edge when off the map.
   // (During a Beer Run shift only the delivery target is marked.)
-  const pins = play() ? [] : [...world.locators.map((l) => ({ x: l.x, z: l.z, color: '#' + l.color.toString(16).padStart(6, '0'), name: l.name })),
-    { x: rw.x, z: rw.z, color: '#1b2a34', name: 'Airport' }];
+  const pins = [...(play() ? [] : [...world.locators.map((l) => ({ x: l.x, z: l.z, color: '#' + l.color.toString(16).padStart(6, '0'), name: l.name })),
+    { x: rw.x, z: rw.z, color: '#1b2a34', name: 'Airport' }]), ...pings.map((pg) => ({ x: pg.x, z: pg.z, color: pg.color, name: `📍 ${pg.name}` }))];
   mctx.font = '700 14px system-ui, sans-serif';
   for (const pin of pins) {
     let [x, y] = toMap(pin.x, pin.z);
@@ -990,6 +990,11 @@ function updateLabels() {
   } else {
     pottyLabel.style.display = 'none';
   }
+  for (const pg of pings) {
+    const d = Math.hypot(pg.x - p.x, pg.z - p.z);
+    pg.label.textContent = `📍 ${pg.name} · ${fmtDist(d)}`;
+    items.push({ el: pg.label, x: pg.x, y: pg.y + 60, z: pg.z, d, pin: true });
+  }
   for (const pl of mp.visible(settings.city)) {
     if (!pl.label) {
       pl.label = document.createElement('div');
@@ -997,9 +1002,15 @@ function updateLabels() {
       $('labels').appendChild(pl.label);
     }
     pl.label.style.setProperty('--pin', pl.color);
-    pl.label.textContent = pl.name;
+    // Name, with their latest emote for a few seconds.
+    const emo = pl.emote && performance.now() < pl.emote.until ? pl.emote.text : '';
+    if (pl.label.dataset.k !== pl.name + emo) {
+      pl.label.dataset.k = pl.name + emo;
+      pl.label.replaceChildren(...(emo ? [Object.assign(document.createElement('span'), { className: 'emo', textContent: emo })] : []), pl.name);
+    }
     const d = Math.hypot(pl.pos.x - p.x, pl.pos.z - p.z);
-    items.push({ el: pl.label, x: pl.pos.x, y: pl.pos.y + 4.5, z: pl.pos.z, d, pin: true, player: true });
+    const above = pl.bot && !pl.ride ? 13 * (pl.size || 1) + 4 : 4.5; // over a grown robot's head, not inside it
+    items.push({ el: pl.label, x: pl.pos.x, y: pl.pos.y + above, z: pl.pos.z, d, pin: true, player: true });
   }
   for (const el of document.querySelectorAll('.label.player')) {
     if (![...mp.players.values()].some((pl) => pl.label === el && pl.city === settings.city)) el.style.display = 'none';
@@ -1264,8 +1275,21 @@ try {
   mpName = localStorage.getItem('legosky.name') || '';
 } catch {}
 $('mpName').value = mpName;
-function joinRoom(code) {
-  const name = $('mpName').value.trim() || 'Pilot';
+/** Joining with no name (or the default "Pilot"): ask for one first. */
+function joinRoom(code, { asked = false } = {}) {
+  const typed = $('mpName').value.trim();
+  let askedBefore = false;
+  try {
+    askedBefore = !!localStorage.getItem('legosky.nameAsked');
+  } catch {}
+  if (!asked && (!typed || (/^pilot$/i.test(typed) && !askedBefore))) {
+    $('nameAskInput').value = '';
+    $('nameAsk').hidden = false;
+    $('nameAsk').dataset.code = code;
+    setTimeout(() => !input.pad() && $('nameAskInput').focus(), 50);
+    return;
+  }
+  const name = typed || 'Pilot';
   try {
     localStorage.setItem('legosky.name', name);
   } catch {}
@@ -1339,6 +1363,19 @@ function updateMpUi() {
   updateRoomGamesUi();
 }
 $('mpCreate').onclick = () => joinRoom(randomRoomCode());
+function finishNameAsk(keep) {
+  const v = $('nameAskInput').value.trim().slice(0, 16);
+  if (!keep && v) $('mpName').value = v;
+  if (keep) $('mpName').value = 'Pilot';
+  try {
+    localStorage.setItem('legosky.nameAsked', '1'); // asked once: "Pilot" is their choice
+  } catch {}
+  $('nameAsk').hidden = true;
+  joinRoom($('nameAsk').dataset.code, { asked: true });
+}
+$('nameAskOk').onclick = () => finishNameAsk(false);
+$('nameAskSkip').onclick = () => finishNameAsk(true);
+$('nameAskInput').addEventListener('keydown', (e) => e.key === 'Enter' && finishNameAsk(false));
 $('mpJoin').onclick = () => {
   const code = $('mpCode').value.trim().toUpperCase();
   if (/^[A-Z]{4}$/.test(code)) joinRoom(code);
@@ -1857,7 +1894,7 @@ function rgSyncPicker() {
 }
 $('rgGame').onchange = rgSyncPicker;
 rgSyncPicker();
-$('rgStart').onclick = () => mp.send({ t: 'game-start', game: $('rgGame').value, name: mp.name,
+$('rgStart').onclick = () => openRoomGames(false) || mp.send({ t: 'game-start', game: $('rgGame').value, name: mp.name,
   options: { vehicle: ROOM_GAMES[$('rgGame').value]?.vehicle ? $('rgVehicle').value : 'bot', laps: Number($('rgLaps').value) } });
 $('rgGoNow').onclick = $('rgBannerGo').onclick = () => mp.send({ t: 'game-go-now' });
 $('rgCancel').onclick = () => mp.send({ t: rgGame?.phase === 'live' ? 'game-end' : 'game-cancel' });
@@ -1872,16 +1909,33 @@ $('rgDone').onclick = () => {
   if (mp.isHost) mp.send({ t: 'game-close' });
 };
 
-/** Room games box in the menu: who the host is, and the host's game picker. */
+// The room games panel lives inside the game (🎮 chip, or the emote wheel), so
+// everyone gathers first and the host starts the game from the world.
+function openRoomGames(on = $('rgPanel').hidden) {
+  if (on && !(mp.room && running)) return;
+  $('rgPanel').hidden = !on;
+  if (on) updateMpUi();
+}
+$('rgChip').onclick = () => openRoomGames();
+$('rgPanelClose').onclick = () => openRoomGames(false);
+input.on('roomgames', () => openRoomGames());
+
+/** Room games panel: who the host is, the host's game picker, who's in the room. */
 function updateRoomGamesUi() {
   const phase = rgGame?.phase;
   const hostName = mp.host ? nameOf(mp.host) : '';
   $('rgHost').textContent = !mp.host ? '' : mp.isHost ? '👑 You are the host: pick a game for everyone'
     : `👑 ${hostName} is the host and picks the games`;
   $('rgPick').hidden = !mp.isHost || phase === 'countdown' || phase === 'live';
+  $('rgShoveRow').hidden = !mp.isHost;
   $('rgHostLive').hidden = !mp.isHost || !(phase === 'countdown' || phase === 'live');
   $('rgGoNow').hidden = phase !== 'countdown';
   $('rgCancel').textContent = phase === 'live' ? 'End game now' : 'Cancel game';
+  $('rgChip').hidden = !(mp.room && running && mp.status === 'on');
+  $('rgChip').classList.toggle('on', mp.isHost && !phase);
+  $('rgPanelList').replaceChildren(...[mp.myId, ...mp.players.keys()].map((id) => Object.assign(document.createElement('li'), {
+    textContent: `${id === mp.host ? '👑 ' : ''}${id === mp.myId ? `${mp.name} (you)` : nameOf(id)}${mp.trophies?.[id] ? ` · ${mp.trophies[id]} 🏆` : ''}`,
+  })));
 }
 
 function rgCleanup() {
@@ -2005,6 +2059,8 @@ mp.onEvent = (m) => {
     onSharedProp(m);
   } else if (m.t === 'act') {
     onRobotAct(m);
+  } else if (['emote', 'honk', 'ping', 'hi5', 'hi5ok', 'hit', 'room-opts'].includes(m.t)) {
+    onFriendEvent(m);
   } else if (m.t === 'catchup') {
     // Joined late: everything already moved, resized or smashed in this room.
     // (It can arrive before the city has loaded: then it waits.)
@@ -2076,11 +2132,223 @@ function updateRoomGames() {
   $('roomGame').textContent = chip.join('  ·  ');
 }
 
+// ------------------------------------------------------------------ friends up close (plan 05 part 2)
+// Emotes and quick phrases (shown over you on friends' screens), a horn they
+// hear (louder when close), teleport to a friend, high-fives, robots shoving
+// each other (the host can switch it off) and ping markers.
+const EMOTES = ['👋', '👍', '😂', '😮', '❤️', '🔥'];
+const PHRASES = ['Race you!', 'Follow me', 'Nice!', 'Oops', 'Again!', 'Wait for me'];
+let roomOpts = { shove: true };
+let pings = []; // { x, y, z, name, color, until, label }
+let hi5 = { mine: 0, theirs: new Map() };
+for (const [i, t] of [...EMOTES, ...PHRASES].entries()) {
+  const b = document.createElement('button');
+  b.textContent = t;
+  b.onclick = () => sendEmote(t);
+  if (i === EMOTES.length) b.style.gridColumn = '1';
+  $('emoteGrid').appendChild(b);
+}
+function openEmotes(on = $('emoteWheel').hidden) {
+  if (on && !(mp.room && running)) return;
+  $('emoteWheel').hidden = !on;
+}
+$('emoteChip').onclick = () => openEmotes();
+input.on('emotes', () => openEmotes());
+input.on('select', () => (mp.room && running ? openEmotes() : toggleMap()));
+for (const b of document.querySelectorAll('.emote-acts button')) {
+  b.onclick = () => {
+    openEmotes(false);
+    ({ horn: honk, goto: () => goToFriend(), ping: sendPing, hi5: highFive, games: () => openRoomGames(true), map: toggleMap, close: () => {} })[b.dataset.do]();
+  };
+}
+function sendEmote(t) {
+  openEmotes(false);
+  mp.send({ t: 'emote', e: t });
+  sound.blip('emote');
+  message(`You: ${t}`, 1.5);
+}
+function honk() {
+  if (!running) return;
+  sound.blip('horn');
+  if (isBot && rampage.driving) rampage.honk(flight);
+  mp.send({ t: 'honk' });
+}
+input.on('horn', honk);
+function sendPing() {
+  const p = flight.pos;
+  addPing({ x: p.x, y: world.heightAt(p.x, p.z), z: p.z, name: 'You', color: '#c91a09' });
+  mp.send({ t: 'ping', x: Math.round(p.x), z: Math.round(p.z) });
+}
+function addPing(pg) {
+  pings = pings.filter((x) => x.name !== pg.name || (x.label.remove(), false));
+  pg.until = performance.now() + 30000;
+  pg.label = Object.assign(document.createElement('div'), { className: 'label pin' });
+  pg.label.style.setProperty('--pin', pg.color);
+  $('labels').appendChild(pg.label);
+  pings.push(pg);
+}
+/** Teleport next to a friend (beside them, never inside them or a building). */
+function goToFriend(pl = null) {
+  if (!running) return;
+  pl ||= [...mp.visible(settings.city)].sort((a, b) => a.pos.distanceTo(flight.pos) - b.pos.distanceTo(flight.pos))[0];
+  if (!pl) return message(mp.players.size ? 'Your friends are in another city' : 'Nobody else is in the room yet', 2.5);
+  if (pl.city !== settings.city) return message(`${pl.name} is in ${CITIES[pl.city] || 'another city'}`, 2.5);
+  if (rgRun) return message('Not during a room game!', 2);
+  const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(pl.quat).setY(0).normalize();
+  const right = new THREE.Vector3(-fwd.z, 0, fwd.x);
+  const ground = world.heightAt(pl.pos.x, pl.pos.z);
+  const air = pl.pos.y - ground > 25 && !pl.bot;
+  let spot = null;
+  for (const [a, b] of [[1, -1], [-1, -1], [1, 0], [-1, 0], [0, -1.5], [2, -2]]) {
+    const gap = air ? 40 : 18 + 13 * (pl.size || 1) * 0.6;
+    const x = pl.pos.x + right.x * a * gap + fwd.x * b * gap;
+    const z = pl.pos.z + right.z * a * gap + fwd.z * b * gap;
+    const y = air ? pl.pos.y : world.heightAt(x, z);
+    if (!world.hitsObstacle({ x, y: y + 5, z }, 8)) {
+      spot = { x, y, z };
+      break;
+    }
+  }
+  if (!spot) return message(`No room next to ${pl.name} right now`, 2);
+  const yaw = Math.atan2(-fwd.x, -fwd.z);
+  if (isBot) {
+    rampage.release(flight);
+    flight.place(new THREE.Vector3(spot.x, spot.y, spot.z), yaw, null);
+  } else if (air) {
+    flight.resetAirborne();
+    flight.pos.set(spot.x, spot.y, spot.z);
+    if (isHeli) {
+      flight.yaw = yaw;
+      flight._updateQuat();
+    } else flight.quat.setFromAxisAngle(Y_AXIS, yaw);
+  } else {
+    flight.reset();
+    flight.pos.set(spot.x, spot.y + plane.gearHeight, spot.z);
+    if (isHeli) {
+      flight.yaw = yaw;
+      flight._updateQuat();
+    } else flight.quat.setFromAxisAngle(Y_AXIS, yaw);
+  }
+  camInit = false;
+  trail = [];
+  sound.blip('transform');
+  message(`🧲 Next to ${pl.name}!`, 2);
+}
+/** High-five: both press within 6 seconds while close. */
+// Friends in this city heard from recently (a little more forgiving than drawing them).
+const friendsHere = () => [...mp.players.values()].filter((pl) => pl.city === settings.city && performance.now() - pl.seen < 15000);
+const nearFriend = () => {
+  const p = flight.pos;
+  return friendsHere().find((pl) => {
+    const d = pl.target.pos.distanceTo(p); // their latest reported spot, not the smoothed one
+    const range = !flight.onGround ? 80 : (isBot ? 25 : 50) + 13 * Math.max(pl.size || 1, isBot ? bot.walk.size : 1);
+    return d < range;
+  });
+};
+function highFive() {
+  // Answering a friend who just asked works for 10 seconds, wherever they are now.
+  const asked = [...hi5.theirs].filter(([, t]) => performance.now() - t < 10000).map(([id]) => mp.players.get(id)).find(Boolean);
+  if (asked) return celebrateHi5(asked, true);
+  const pl = nearFriend();
+  if (!pl) return message('Get close to a friend first!', 2);
+  hi5.mine = performance.now();
+  mp.send({ t: 'hi5', to: pl.id });
+  if (performance.now() - (hi5.theirs.get(pl.id) || -1e9) < 6000) celebrateHi5(pl, true);
+  else message(`🙌 Waiting for ${pl.name} to high-five back…`, 2.5);
+}
+function celebrateHi5(pl, tell) {
+  hi5.mine = 0;
+  hi5.theirs.delete(pl.id);
+  if (tell) mp.send({ t: 'hi5ok', to: pl.id });
+  const p = flight.pos;
+  rampage.burst((p.x + pl.pos.x) / 2, (p.y + pl.pos.y) / 2 + 8, (p.z + pl.pos.z) / 2, 10, 0xffd21f, 24);
+  sound.blip('hi5');
+  message(`🙌 High five with ${pl.name}!`, 2.5);
+}
+input.on('hi5', highFive);
+$('hi5Btn').onclick = highFive;
+/** Robots shoving: my punch landed near a friend's robot. */
+function shoveCheck() {
+  if (!mp.room || !roomOpts.shove || !isBot) return;
+  const k = bot.walk.size;
+  const f = flight.forward;
+  const fx = flight.pos.x + f.x * 7 * k;
+  const fz = flight.pos.z + f.z * 7 * k;
+  for (const pl of friendsHere()) {
+    if (!pl.bot || pl.ride) continue;
+    const q = pl.target.pos; // latest reported position
+    if (Math.hypot(q.x - fx, q.z - fz) < 10 * k + 3 * (pl.size || 1) && Math.abs(q.y - flight.pos.y) < 13 * k) {
+      mp.send({ t: 'hit', to: pl.id, dx: +f.x.toFixed(3), dz: +f.z.toFixed(3), k });
+      rampage.burst(pl.pos.x, pl.pos.y + 8, pl.pos.z, 6, 0xffffff, 10);
+    }
+  }
+}
+function onFriendEvent(m) {
+  const pl = mp.players.get(m.id);
+  if (m.t === 'emote' && pl) {
+    pl.emote = { text: String(m.e).slice(0, 16), until: performance.now() + 3500 };
+    sound.blip('emote', pl.city === settings.city ? 0.6 : 0.3);
+    if (pl.city !== settings.city || pl.pos.distanceTo(flight.pos) > 2000) toast(`${pl.name}: ${pl.emote.text}`, pl.color);
+  } else if (m.t === 'honk' && pl && pl.city === settings.city) {
+    sound.blip('horn', 1 / (1 + pl.pos.distanceTo(flight.pos) / 150)); // louder when closer
+  } else if (m.t === 'ping' && pl && pl.city === settings.city) {
+    addPing({ x: +m.x, y: world.heightAt(+m.x, +m.z), z: +m.z, name: pl.name, color: pl.color });
+    toast(`📍 ${pl.name} pinged a spot: look for the marker`, pl.color);
+    sound.blip('ring');
+  } else if (m.t === 'hi5' && pl && m.to === mp.myId) {
+    hi5.theirs.set(pl.id, performance.now());
+    if (performance.now() - hi5.mine < 6000) celebrateHi5(pl, true);
+    else message(`🙌 ${pl.name} wants a high-five!<small>Press 🙌 (J) back</small>`, 3);
+  } else if (m.t === 'hi5ok' && pl && m.to === mp.myId) {
+    celebrateHi5(pl, false);
+  } else if (m.t === 'hit' && pl && m.to === mp.myId && roomOpts.shove && isBot && !rampage.driving && potty.sitting <= 0 && !rgFrozen()) {
+    // Shoved by a friend's robot: knocked back a few steps, no damage. Bigger robots shove harder;
+    // bigger targets move less.
+    const w = bot.walk;
+    const push = 26 * Math.sqrt(+m.k || 1) / Math.sqrt(w.size);
+    w.vel.x += (+m.dx || 0) * push;
+    w.vel.z += (+m.dz || 0) * push;
+    w.vel.y = Math.max(w.vel.y, 9);
+    w.onGround = false;
+    shake = Math.min(1.4, shake + 0.6);
+    sound.noiseHit('boom', 0.4);
+    message(`💥 ${pl.name} shoved you!`, 1.5);
+  } else if (m.t === 'room-opts') {
+    roomOpts = { ...roomOpts, ...m.opts };
+    $('rgShove').checked = roomOpts.shove !== false;
+  }
+}
+$('rgShove').onchange = () => mp.isHost && mp.send({ t: 'room-opts', opts: { shove: $('rgShove').checked } });
+/** Each frame: the emote chip, the high-five prompt, old pings. */
+function updateFriends() {
+  $('emoteChip').hidden = !(mp.room && running);
+  $('rgChip').hidden = !(mp.room && running && mp.status === 'on');
+  if (!running || !mp.room) $('rgPanel').hidden = true;
+  const asked = [...hi5.theirs].filter(([, t]) => performance.now() - t < 10000).map(([id]) => mp.players.get(id)).find(Boolean);
+  const pl = mp.room && running && !rgRun ? asked || nearFriend() : null;
+  $('hi5Btn').hidden = !pl || !!play();
+  if (pl) $('hi5Name').textContent = pl.name;
+  const now = performance.now();
+  for (const pg of pings.filter((x) => x.until < now)) pg.label.remove();
+  pings = pings.filter((x) => x.until >= now);
+  if (!mp.room && pings.length) {
+    for (const pg of pings) pg.label.remove();
+    pings = [];
+  }
+}
+// The friend chips at the top of the screen: tap one to go to that friend.
+$('buddies').addEventListener('click', (e) => {
+  const el = e.target.closest('.buddy');
+  if (!el) return;
+  const pl = [...mp.players.values()][[...$('buddies').children].indexOf(el)];
+  if (pl) goToFriend(pl);
+});
+
 // ------------------------------------------------------------------ gamepad menus and PSG1 buttons
 // With a gamepad, the menu and every pop-up work without touching the screen:
 // the D-pad moves a highlight, A presses, B goes back, L1/R1 change city.
 function navRoot() {
-  for (const id of ['rgResults', 'beerEnd', 'phonePanel', 'crashBox']) if (!$(id).hidden) return $(id);
+  for (const id of ['nameAsk', 'rgPanel', 'emoteWheel', 'rgResults', 'beerEnd', 'phonePanel', 'crashBox']) if (!$(id).hidden) return $(id);
   if (!running && !$('menu').hidden) return $('menuPanel');
   return null;
 }
@@ -2126,6 +2394,8 @@ input.on('navPress', () => {
 });
 input.on('navBack', () => {
   if (codePick) return endCodePick(false);
+  if (!$('emoteWheel').hidden) return openEmotes(false);
+  if (!$('rgPanel').hidden) return openRoomGames(false);
   const el = padNav.current;
   const d = el?.closest('details[open]');
   if (d) {
@@ -2470,7 +2740,10 @@ function updateBotHud() {
 }
 function botSmash() {
   if (!running || !isBot) return;
-  if (!rampage.driving && !rampage.held) mpAct('punch');
+  if (!rampage.driving && !rampage.held) {
+    mpAct('punch');
+    setTimeout(shoveCheck, 160); // when the fist lands
+  }
   rampage.smash(flight);
   setTimeout(updateBotHud, 300);
 }
@@ -3153,6 +3426,7 @@ function frame() {
   updatePerf(Math.min(rawDt, 0.25));
   if (input.pad() && !codePick) padNav.sync();
   updateRoomGames(); // countdowns run in the menu too
+  updateFriends();
   if (pendingCatchup.length && !building && props) {
     const ready = pendingCatchup.filter((m) => m.city === settings.city);
     pendingCatchup = pendingCatchup.filter((m) => m.city !== settings.city && mp.room);
