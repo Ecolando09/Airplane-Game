@@ -551,7 +551,9 @@ let botAir = 0; // eases to 1 while the robot is airborne (camera pulls back)
 function updateCamera(dt) {
   const mode = CAMS[camMode];
   const p = plane.group.position;
-  const up = flight.up.clone();
+  // During a barrel roll the chase camera keeps the tilt it had when the roll
+  // began: the plane spins, the view stays put. (From the seat, the world spins.)
+  const up = !isBot && !isHeli && flight.barrel ? flight.barrel.up0.clone() : flight.up.clone();
   const flatF = flight.forward.clone().setY(0).normalize();
   // The chase camera follows a smoothed nose direction, so a quick pitch change
   // glides instead of jerking the view. The copter's lean is just for show: its
@@ -595,6 +597,7 @@ function updateCamera(dt) {
     plane.group.updateMatrixWorld();
     camera.position.copy(plane.cockpitEye).applyMatrix4(plane.group.matrixWorld);
     camera.quaternion.copy(plane.group.quaternion);
+    // (A barrel roll spins the whole view all the way round from the seat; the chase view stays level.)
     camera.up.copy(up);
     camInit = false;
     return;

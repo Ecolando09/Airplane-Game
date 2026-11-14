@@ -62,6 +62,30 @@ try {
   check('a single tap does not', single);
   const st = await page.evaluate(() => { const f = window.__game.flight; return { speed: f.speed, ground: f.onGround, crashed: f.crashed, y: f.pos.y, h: window.__game.world.heightAt(f.pos.x, f.pos.z), running: window.__game.running, msg: document.getElementById('message').textContent }; });
   check('tapping D twice quickly does a barrel roll', started, JSON.stringify(st));
+  // During a roll the chase view stays put (only the plane spins); from the seat the world spins round.
+  for (const cam of ['chase', 'cockpit']) {
+    const v = await page.evaluate(async (cam) => {
+      const g = window.__game;
+      const f = g.flight;
+      g.cam(cam);
+      f.barrel = null;
+      await new Promise((r) => setTimeout(r, 1500));
+      f.barrelRoll(-1);
+      let camMinUp = 1;
+      let planeMinUp = 1;
+      const t0 = performance.now();
+      while (f.barrel && performance.now() - t0 < 60000) {
+        await new Promise((r) => requestAnimationFrame(r));
+        const up = new g.camera.up.constructor(0, 1, 0).applyQuaternion(g.camera.quaternion);
+        camMinUp = Math.min(camMinUp, up.y);
+        planeMinUp = Math.min(planeMinUp, f.up.y);
+      }
+      g.cam('chase');
+      return { camMinUp, planeMinUp };
+    }, cam);
+    if (cam === 'chase') check('chase view: the plane rolls upside down but the view stays level', v.planeMinUp < -0.5 && v.camMinUp > 0.85, JSON.stringify(v));
+    else check('first person: the whole view rolls round with the plane', v.planeMinUp < -0.5 && v.camMinUp < -0.5, JSON.stringify(v));
+  }
   // First person in the plane: the instrument panel shows, the view sits above it, no errors.
   const cp = await page.evaluate(async () => {
     const g = window.__game;

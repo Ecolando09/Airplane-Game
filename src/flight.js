@@ -93,7 +93,7 @@ export class Flight {
     if (this.crashed || this.onGround || this.barrel || this.speed < STALL + 8) return false;
     const agl = this.pos.y - this.plane.gearHeight - this.world.heightAt(this.pos.x, this.pos.z);
     if (agl < 25) return false; // not this close to the ground
-    this.barrel = { dir, left: Math.PI * 2 };
+    this.barrel = { dir, left: Math.PI * 2, up0: this.up.clone() }; // up0: the camera keeps this tilt meanwhile
     return true;
   }
 
