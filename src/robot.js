@@ -9,6 +9,7 @@ import { createBoosters } from './boosters.js';
 const PALETTES = {
   plane: { main: LEGO.white, accent: LEGO.yellow, dark: LEGO.black, trim: LEGO.red, glass: LEGO.transBlue },
   heli: { main: LEGO.white, accent: 0xf0368f, dark: 0x6a2fc9, trim: 0x8ee3ef, glass: LEGO.transBlue },
+  jet: { main: LEGO.red, accent: LEGO.white, dark: LEGO.darkGray, trim: LEGO.lightGray, glass: LEGO.blue },
 };
 export const ROBOT_HEIGHT = 13;
 

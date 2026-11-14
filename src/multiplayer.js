@@ -108,7 +108,7 @@ export class Multiplayer {
     }
     const changed = p.name !== m.name || p.city !== m.city;
     Object.assign(p, {
-      name: String(m.name || 'Pilot').slice(0, 16), city: m.city, vehicle: m.vehicle === 'heli' ? 'heli' : 'plane',
+      name: String(m.name || 'Pilot').slice(0, 16), city: m.city, vehicle: m.vehicle === 'heli' || m.vehicle === 'jet' ? m.vehicle : 'plane',
       speed: +m.speed || 0, turbo: +m.turbo || 1, floats: !!m.floats, crashed: !!m.crashed, seen: performance.now(),
       cash: Number.isFinite(m.cash) ? m.cash : null, // Beer Run money, while they're on a shift
       bot: !!m.bot, // walking around as a robot

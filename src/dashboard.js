@@ -155,6 +155,32 @@ const BUILD = {
     <rect id="nJet" x="672" y="256" width="18" height="0" rx="4" fill="#ff7a1a"/>
     <text class="small" x="681" y="280" style="fill:#7df0ff">JET</text>
     <path d="M380 300 L410 262 L470 262 L500 300 Z" fill="#14191e" stroke="#1fd1ff" stroke-width="2"/>`,
+  // The passenger jet: an airliner's glass cockpit. A flight display (attitude,
+  // speed, altitude), a navigation display (heading), two engine gauges, the
+  // thrust levers and a side-stick.
+  jet: () => `
+    <path d="M-3000 300 L-3000 112 L0 112 Q500 40 1000 112 L4000 112 L4000 300 Z" fill="#2a2f35"/>
+    <path d="M-3000 112 L0 112 Q500 40 1000 112 L4000 112 L4000 122 L1000 122 Q500 50 0 122 L-3000 122 Z" fill="#c91a09"/>
+    <rect x="112" y="128" width="200" height="140" rx="8" fill="#0b0f13" stroke="#4a525a" stroke-width="4"/>
+    ${horizon(212, 196, 46, '')}
+    <rect x="120" y="180" width="44" height="30" rx="4" fill="#000" stroke="#e8e8e8" stroke-width="2"/>
+    <text id="tSpd" x="142" y="201" style="fill:#fff;font-size:14px">0</text>
+    <rect x="260" y="180" width="46" height="30" rx="4" fill="#000" stroke="#e8e8e8" stroke-width="2"/>
+    <text id="tAltJ" x="283" y="201" style="fill:#fff;font-size:13px">0</text>
+    <text class="small" x="142" y="226" style="fill:#7df0a0">KT</text>
+    <text class="small" x="283" y="226" style="fill:#7df0a0">FT</text>
+    <rect x="326" y="128" width="170" height="140" rx="8" fill="#0b0f13" stroke="#4a525a" stroke-width="4"/>
+    ${dial(411, 205, 52, 'HDG', null, { a0: -180, a1: 180, ticks: 13, face: '#0b0f13' })}
+    <g id="nCompass"><text x="411" y="168" style="fill:#7df0a0">N</text></g>
+    <path d="M411 150 L404 162 L418 162 Z" fill="#ffb300"/>
+    ${dial(540, 180, 32, 'N1 L', 'nRpm', { ticks: 6, face: '#0b0f13' })}
+    ${dial(620, 180, 32, 'N1 R', 'nRpm2', { ticks: 6, face: '#0b0f13' })}
+    <rect x="548" y="238" width="60" height="50" rx="6" fill="#1b1f23"/>
+    <g id="nThrottle"><rect x="556" y="232" width="14" height="22" rx="4" fill="#d7dbe0"/><rect x="586" y="232" width="14" height="22" rx="4" fill="#d7dbe0"/></g>
+    <g id="nWheel" transform="rotate(0 60 330)">
+      <rect x="50" y="210" width="20" height="120" rx="8" fill="#1b1f23"/>
+      <rect x="40" y="190" width="40" height="44" rx="14" fill="#1b1f23"/><circle cx="60" cy="200" r="6" fill="#c91a09"/>
+    </g>`,
   plane: (tint) => `
     <path d="M-3000 300 L-3000 95 L0 95 Q500 30 1000 95 L4000 95 L4000 300 Z" fill="#2c3238"/>
     <path d="M-3000 95 L0 95 Q500 30 1000 95 L4000 95 L4000 110 L1000 110 Q500 46 0 110 L-3000 110 Z" fill="${tint}"/>
@@ -213,7 +239,7 @@ export class Dashboard {
     const top = m ? Math.round((+m[1] + +m[2]) / 2) - 6 : 60;
     this.el.innerHTML = `<svg xmlns="${NS}" viewBox="0 ${top} 1000 ${300 - top}" preserveAspectRatio="xMidYMax meet">${body}</svg>`;
     this.n = {};
-    for (const id of ['nSpeed', 'nRpm', 'nAlt', 'nVs', 'nAtt', 'nCompass', 'nWheel', 'nThrottle', 'tGear', 'nAir', 'nWater', 'iLights', 'iSiren', 'iFlash', 'iFlashA', 'iFlashB', 'tEcg', 'tBpm', 'tPlate', 'nRadar', 'tSize', 'tSmash', 'tAlt', 'nJet']) this.n[id] = this.el.querySelector(`#${id}`);
+    for (const id of ['nSpeed', 'nRpm', 'nAlt', 'nVs', 'nAtt', 'nCompass', 'nWheel', 'nThrottle', 'tGear', 'nAir', 'nWater', 'iLights', 'iSiren', 'iFlash', 'iFlashA', 'iFlashB', 'tEcg', 'tBpm', 'tPlate', 'nRadar', 'tSize', 'tSmash', 'tAlt', 'nJet', 'nRpm2', 'tSpd', 'tAltJ']) this.n[id] = this.el.querySelector(`#${id}`);
   }
 
   /** How much of the screen's height the dashboard covers, in pixels (0 when hidden). */
@@ -234,24 +260,28 @@ export class Dashboard {
     const rot = (el, deg, cx, cy) => el?.setAttribute('transform', `rotate(${deg.toFixed(1)} ${cx} ${cy})`);
     const sweep = (v, a0 = -135, a1 = 135) => a0 + (a1 - a0) * Math.max(0, Math.min(1, v));
     const t = this.type;
-    const c = { robot: { sp: [320, 205], comp: [440, 205] }, car: { sp: [250, 190], rpm: [400, 190], wheel: [320, 300] }, police: { sp: [250, 190], rpm: [400, 190], wheel: [320, 300] },
+    const c = { robot: { sp: [320, 205], comp: [440, 205] }, jet: { att: [212, 196], comp: [411, 205], rpm: [540, 180], wheel: [60, 330] }, car: { sp: [250, 190], rpm: [400, 190], wheel: [320, 300] }, police: { sp: [250, 190], rpm: [400, 190], wheel: [320, 300] },
       ambulance: { sp: [250, 192], rpm: [395, 195], wheel: [320, 300] }, fire: { sp: [225, 190], rpm: [575, 178], wheel: [300, 310] }, boat: { sp: [200, 210], wheel: [430, 330], comp: [635, 205] },
       plane: { sp: [120, 170], rpm: [680, 175], alt: [350, 170], vs: [580, 170], att: [235, 170], comp: [465, 170], wheel: [400, 330] },
       heli: { sp: [220, 205], rpm: [670, 210], alt: [450, 205], att: [335, 205], comp: [565, 205], wheel: [100, 330] } }[t];
-    rot(n.nSpeed, sweep(s.mph / (s.maxMph || 160)), ...c.sp);
+    if (c.sp) rot(n.nSpeed, sweep(s.mph / (s.maxMph || 160)), ...c.sp); // (the jet shows speed as a number)
     const road = t === 'car' || t === 'police' || t === 'fire';
     if (c.rpm && t !== 'ambulance') rot(n.nRpm, sweep(road ? 0.15 + 0.75 * (((s.mph % 30) / 30) * 0.6 + s.throttle * 0.4) : s.throttle), ...c.rpm);
     if (c.alt) rot(n.nAlt, ((s.altFt / 100) % 10) * 36, ...c.alt);
     if (c.vs) rot(n.nVs, sweep(0.5 + s.vs / 4000, -150, -30), ...c.vs);
     if (c.comp) rot(n.nCompass, -s.heading, ...c.comp);
     if (c.att) n.nAtt?.setAttribute('transform', `rotate(${((-s.roll * 180) / Math.PI).toFixed(1)} ${c.att[0]} ${c.att[1]}) translate(0 ${(s.pitch * 120).toFixed(1)})`);
-    const wheelTurn = t === 'heli' || t === 'plane' ? s.steer * 25 : s.steer * 120;
-    if (t === 'heli' || t === 'plane') {
+    const wheelTurn = t === 'heli' || t === 'plane' || t === 'jet' ? s.steer * 25 : s.steer * 120;
+    if (t === 'heli' || t === 'plane' || t === 'jet') {
       // A yoke or stick also moves with pitch.
       n.nWheel?.setAttribute('transform', `rotate(${wheelTurn.toFixed(1)} ${c.wheel[0]} ${c.wheel[1]}) translate(0 ${(s.stick * 18).toFixed(1)})`);
     } else if (c.wheel) rot(n.nWheel, wheelTurn, ...c.wheel); // (the robot has no wheel)
-    if (n.nThrottle) n.nThrottle.setAttribute('transform', `translate(0 ${((1 - s.throttle) * 50).toFixed(1)})`);
+    if (n.nThrottle) n.nThrottle.setAttribute('transform', `translate(0 ${((1 - s.throttle) * (t === 'jet' ? 30 : 50)).toFixed(1)})`);
     if (n.tGear) n.tGear.textContent = s.gear;
+    // The jet's glass cockpit: the second engine, speed and altitude readouts.
+    if (n.nRpm2) rot(n.nRpm2, sweep(s.throttle), 620, 180);
+    if (n.tSpd) n.tSpd.textContent = String(Math.round(s.mph * 0.869));
+    if (n.tAltJ) n.tAltJ.textContent = String(Math.round(s.altFt / 10) * 10);
     // The robot's display: radar sweep, size, smash count, height above ground, jet power.
     if (n.nRadar) rot(n.nRadar, (performance.now() / 1000) * 140 % 360, 160, 215);
     if (n.tSize) n.tSize.textContent = `SIZE ${s.size}×`;

@@ -166,7 +166,7 @@ export class Flight {
     // Turbo (T2X / T3X) multiplies top speed: thrust scales with the square of the
     // factor, so the plane settles at 2x or 3x its normal cruise. Eased in and out.
     this.turboNow += (this.turbo - this.turboNow) * (1 - Math.exp(-dt * 1.5));
-    let accel = this.throttle * THRUST * this.turboNow * this.turboNow - DRAG * this.speed * this.speed - G * f.y;
+    let accel = this.throttle * THRUST * (this.plane.thrustMul || 1) * this.turboNow * this.turboNow - DRAG * this.speed * this.speed - G * f.y;
     if (this.onGround) accel -= input.brake ? 8 : 0.4;
     if (this.floats) accel -= 0.002 * this.speed * this.speed; // floats add drag
     this.speed = Math.max(0, this.speed + accel * dt);

@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { World } from './world.js';
 import { createLegoPlane, GROUND_TILT, MAIN_CONTACT } from './airplane.js';
 import { createGhostSpiderHeli, HeliFlight } from './heli.js';
+import { createPassengerJet, JET_ACCENT } from './jet.js';
 import { GoogleWorld } from './google3d.js';
 import { setLook, NIGHT } from './lego.js';
 import { Flight } from './flight.js';
@@ -38,7 +39,10 @@ const CITIES = {
   denver: 'Denver, CO', stlouis: 'St. Louis, MO',
   sanfrancisco: 'San Francisco, CA', hongkong: 'Hong Kong & Shenzhen', tokyo: 'Tokyo, Japan', singapore: 'Singapore',
 };
-const VEHICLE_NAMES = { plane: 'Bush Plane', heli: 'Ghost-Spider Copter' };
+const VEHICLE_NAMES = { plane: 'Bush Plane', heli: 'Ghost-Spider Copter', jet: 'Passenger Jet' };
+/** A fresh model of one of your own vehicles: 'plane', 'heli' or 'jet'. */
+const createOwnModel = (kind) => (kind === 'heli' ? createGhostSpiderHeli() : kind === 'jet' ? createPassengerJet() : createLegoPlane());
+const ownKind = (v) => (v === 'heli' || v === 'jet' ? v : 'plane');
 const LOOK_NAMES = { lego: 'Lego', real: 'Realistic', google: 'Google 3D' };
 const MODES = { free: 'Free flight', rings: 'Ring Race', rampage: 'Rampage', beer: 'Beer Run' }; // Beer Run: only in Fort Collins
 // Preferences that stay on this device (not shared with a room). The PSG1 keeps
@@ -165,8 +169,8 @@ const mp = new Multiplayer({
       return model;
     }
     if (v.startsWith('bot-')) return createRobot(v.slice(4));
-    const m = v === 'heli' ? createGhostSpiderHeli() : createLegoPlane();
-    addNavLights(m, v === 'heli' ? 'heli' : 'plane'); // friends' aircraft blink too
+    const m = createOwnModel(ownKind(v));
+    addNavLights(m, ownKind(v)); // friends' aircraft blink too
     return m;
   },
   onChange: () => updateMpUi(),
@@ -370,9 +374,9 @@ function buildVehicle() {
   if (plane) disposeObjects([plane.group]);
   clearDebris();
   isHeli = settings.vehicle === 'heli';
-  plane = isHeli ? createGhostSpiderHeli() : createLegoPlane();
+  plane = createOwnModel(ownKind(settings.vehicle));
   scene.add(plane.group);
-  addNavLights(plane, isHeli ? 'heli' : 'plane'); // wingtip, tail, beacon and strobe lights
+  addNavLights(plane, ownKind(settings.vehicle)); // wingtip, tail, beacon and strobe lights
   flight = isHeli ? new HeliFlight(world, plane) : new Flight(world, plane);
   const model = createRobot(settings.vehicle);
   model.group.visible = false;
@@ -394,7 +398,7 @@ function buildVehicle() {
   input.heliMode = isHeli;
   document.body.classList.toggle('heli', isHeli);
   $('throttleLabel').textContent = isHeli ? 'SPEED' : 'THROTTLE';
-  tilt = flight.onGround && !isHeli ? GROUND_TILT : 0;
+  tilt = flight.onGround && !isHeli && !plane.level ? GROUND_TILT : 0;
   floatsAnim = 0;
   boosterLevel = 0;
   camInit = false;
@@ -428,7 +432,9 @@ function updateBoosters(dt) {
   const jets = isBot && flight.jetting;
   const on = (flight.turbo > 1 || jets) && !flight.crashed;
   if (on) boosterColor = Math.max(flight.turbo, 2);
-  sound.jet?.(jets && running ? 1 + 0.25 * (flight.turboNow - 1) : 0);
+  // The passenger jet's engines roar with the throttle; the robot's jets when burning.
+  const engines = !isBot && plane.jet && running && !flight.crashed ? 0.35 + 0.55 * flight.throttle : 0;
+  sound.jet?.(jets && running ? 1 + 0.25 * (flight.turboNow - 1) : engines);
   boosterLevel += ((on ? 1 : 0) - boosterLevel) * (1 - Math.exp(-dt * 5));
   // The robot's rockets burn hardest while running or jet-jumping.
   const power = isBot ? (flight.jetting ? 1 : Math.min(1, flight.speed / 40)) : flight.throttle;
@@ -552,10 +558,10 @@ function updateDashboard() {
   let type = null;
   if (running && CAMS[camMode] === 'cockpit' && !flight.crashed && !window.__game?.photo) {
     if (dr) type = driveInfo(dr.item)?.dash || 'car';
-    else type = isBot ? 'robot' : isHeli ? 'heli' : 'plane';
+    else type = isBot ? 'robot' : isHeli ? 'heli' : plane.jet ? 'jet' : 'plane';
   }
   const tint = dr ? '#' + new THREE.Color(props.kinds[dr.item.kind]?.tint ? dr.item.tint : 0xf2c200).getHexString()
-    : takenPlane?.it && !isHeli ? '#' + new THREE.Color(takenPlane.it.tint).getHexString() : isHeli ? '#5b6770' : '#c62828';
+    : takenPlane?.it && !isHeli ? '#' + new THREE.Color(takenPlane.it.tint).getHexString() : isHeli ? '#5b6770' : plane.jet ? '#f2f2f2' : '#c62828';
   dashboard.show(type, tint);
   setDashView(dashboard.height);
   if (!type) return;
@@ -564,7 +570,7 @@ function updateDashboard() {
   const fw = flight.forward;
   dashboard.update({
     mph: type === 'boat' || type === 'heli' ? mph * 0.869 : mph, // knots on the water and in the copter
-    maxMph: type === 'car' || type === 'police' || type === 'ambulance' || type === 'fire' || type === 'robot' ? 140 : type === 'boat' ? 60 : type === 'heli' ? 160 : 200,
+    maxMph: type === 'car' || type === 'police' || type === 'ambulance' || type === 'fire' || type === 'robot' ? 140 : type === 'boat' ? 60 : type === 'heli' ? 160 : type === 'jet' ? 320 : 200,
     throttle: dr ? Math.min(1, Math.abs(c.pitch || 0)) : flight.throttle ?? 0.5,
     altFt: (flight.pos.y - (plane.gearHeight || 0) + world.baseElevation) * 3.281,
     vs: (flight.vel?.y || 0) * 196.9,
@@ -619,7 +625,7 @@ function updateCamera(dt) {
   for (const m of plane.cockpitHidden) m.visible = mode !== 'cockpit';
   // From the cockpit the propeller is a see-through blur that turns (solid blades
   // a metre from your eyes looked like frozen black bars); outside, the real blades.
-  if (!isHeli && !isBot) {
+  if (!isHeli && !isBot && !plane.noProp) {
     const inside = mode === 'cockpit';
     for (const c of plane.propeller.children) c.visible = !inside;
     const blur = propBlur(plane);
@@ -1302,7 +1308,7 @@ function start(airborne, { lesson = false, roomGame = false } = {}) {
   airborne ? flight.resetAirborne() : flight.reset();
   snapToGoogleGround();
   input.syncThrottle(flight.throttle);
-  tilt = flight.onGround && !isHeli ? GROUND_TILT : 0;
+  tilt = flight.onGround && !isHeli && !plane.level ? GROUND_TILT : 0;
   floatsAnim = 0;
   wasOnGround.v = flight.onGround;
   crashTimer = 0;
@@ -1856,7 +1862,7 @@ function renderBoard() {
     const sc = document.createElement('span');
     sc.className = 'sc';
     sc.textContent = fmt(e.score);
-    li.append(`${e.name} ${e.vehicle === 'heli' ? '🕷️' : '✈️'}${e.note ? ` · ${e.note}` : e.deliveries ? ` · ${e.deliveries} deliveries` : ''}`, sc);
+    li.append(`${e.name} ${e.vehicle === 'heli' ? '🕷️' : e.vehicle === 'jet' ? '🛫' : '✈️'}${e.note ? ` · ${e.note}` : e.deliveries ? ` · ${e.deliveries} deliveries` : ''}`, sc);
     if (me && e.name === me.postedName && e.score === me.cash) li.className = 'me';
     return li;
   }) : [Object.assign(document.createElement('li'), { className: 'muted', textContent: board ? 'No scores yet. Be the first!' : 'Leaderboard needs the game server.' })]));
@@ -1915,7 +1921,7 @@ const PAINTS = [
   { id: 'purple', name: 'Royal Purple', color: 0x7a3fd0, need: (c) => c.landmarks >= 25, how: 'Find 25 landmarks' },
   { id: 'gold', name: 'Gold', color: 0xe8b923, need: (c) => c.stars >= 15, how: 'Earn 15 ★ in games' },
 ];
-const ACCENT = { plane: 0xf2cd37, heli: 0xf0368f }; // the part of each vehicle that takes the paint
+const ACCENT = { plane: 0xf2cd37, heli: 0xf0368f, jet: JET_ACCENT }; // the part of each vehicle that takes the paint
 /** Repaint a model's accent-colored parts. */
 function applyPaint(model) {
   const paint = PAINTS.find((x) => x.id === prefs.paint);
@@ -2322,7 +2328,7 @@ async function rgPrepare(m) {
   game?.stop();
   beerRun?.stop();
   $('beerEnd').hidden = $('rgResults').hidden = true;
-  const v = m.options?.vehicle === 'heli' ? 'heli' : 'plane';
+  const v = ownKind(m.options?.vehicle);
   if (settings.vehicle !== v) await applySettings({ vehicle: v });
   $('menu').hidden = true;
   start(false, { roomGame: true });
@@ -3257,7 +3263,7 @@ setInterval(() => {
     gear: isBot ? 'ROBOT' : flight.floats ? 'FLOATS' : isHeli ? 'LEGS' : 'WHEELS',
     bot: isBot,
     turbo: flight.turbo,
-    vehicle: isHeli ? 'heli' : 'plane',
+    vehicle: ownKind(settings.vehicle),
     crashed: flight.crashed,
     thr: flight.throttle,
   });
@@ -3332,7 +3338,7 @@ function transform() {
       flight._updateQuat();
     } else {
       flight.quat.setFromAxisAngle(Y_AXIS, yaw);
-      tilt = parked ? GROUND_TILT : 0;
+      tilt = parked && !plane.level ? GROUND_TILT : 0;
     }
     if (parked && world.isWater(p.x, p.z)) flight.floats = true; // changing back in a lake: floats out
     input.syncThrottle(flight.throttle);
@@ -3820,7 +3826,7 @@ function poseAirplane(dt) {
     plane.animate(flight, dt);
     return;
   }
-  const want = flight.onGround && !flight.floats ? GROUND_TILT * THREE.MathUtils.clamp(1 - flight.speed / 24, 0, 1) : 0;
+  const want = flight.onGround && !flight.floats && !plane.level ? GROUND_TILT * THREE.MathUtils.clamp(1 - flight.speed / 24, 0, 1) : 0;
   tilt += (want - tilt) * (1 - Math.exp(-dt * 5));
   tiltQ.setFromAxisAngle(AXIS_X, tilt);
   const offset = MAIN_CONTACT.clone().sub(MAIN_CONTACT.clone().applyQuaternion(tiltQ)).applyQuaternion(flight.quat);
@@ -4041,8 +4047,8 @@ function updateDriveButton() {
     if (it && !driveTargetNow) sound.blip('ring');
     driveTargetNow = it;
     if (it === leftBehind) {
-      $('driveName').textContent = leftBehind.vehicle === 'heli' ? 'your copter' : 'your plane';
-      $('driveVerb').textContent = leftBehind.vehicle === 'heli' ? '🚁 FLY' : '✈️ FLY';
+      $('driveName').textContent = { heli: 'your copter', jet: 'your jet', plane: 'your plane' }[leftBehind.vehicle];
+      $('driveVerb').textContent = leftBehind.vehicle === 'heli' ? '🚁 FLY' : leftBehind.vehicle === 'jet' ? '🛫 FLY' : '✈️ FLY';
     } else if (it) {
       const info = props.info(it.kind);
       $('driveName').textContent = `the ${info.name}`;
@@ -4161,14 +4167,14 @@ function parkOwnVehicle(x, z, clear) {
     return;
   }
   if (leftBehind) return; // your own is already parked somewhere
-  const kind = settings.vehicle === 'heli' ? 'heli' : 'plane';
-  const model = kind === 'heli' ? createGhostSpiderHeli() : createLegoPlane();
+  const kind = ownKind(settings.vehicle);
+  const model = createOwnModel(kind);
   addNavLights(model, kind);
   applyPaint(model);
   const y = world.heightAt(px, pz) + model.gearHeight;
   model.group.position.set(px, y, pz);
   model.group.quaternion.setFromAxisAngle(Y_AXIS, yaw);
-  if (kind === 'plane') model.group.quaternion.multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), GROUND_TILT));
+  if (kind === 'plane' && !model.level) model.group.quaternion.multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), GROUND_TILT));
   scene.add(model.group);
   leftBehind = { vehicle: kind, x: px, z: pz, yaw, model };
 }
@@ -4183,10 +4189,10 @@ function rebuildOwnVehicle() {
   ownStale = false;
   disposeObjects([vehicle.model.group]);
   isHeli = settings.vehicle === 'heli';
-  const model = isHeli ? createGhostSpiderHeli() : createLegoPlane();
+  const model = createOwnModel(ownKind(settings.vehicle));
   model.group.visible = false;
   scene.add(model.group);
-  addNavLights(model, isHeli ? 'heli' : 'plane');
+  addNavLights(model, ownKind(settings.vehicle));
   applyPaint(model);
   vehicle = { model, flight: isHeli ? new HeliFlight(world, model) : new Flight(world, model) };
   input.heliMode = isHeli;
@@ -4201,7 +4207,7 @@ function getBackIn() {
   flight.onGround = true;
   transform(); // (clears the parked copy)
   finishMorph();
-  message(`${lb.vehicle === 'heli' ? '🚁' : '✈️'} Back in your ${lb.vehicle === 'heli' ? 'copter' : 'plane'}!`, 2.5);
+  message(`${lb.vehicle === 'heli' ? '🚁' : lb.vehicle === 'jet' ? '🛫' : '✈️'} Back in your ${{ heli: 'copter', jet: 'jet', plane: 'plane' }[lb.vehicle]}!`, 2.5);
   return true;
 }
 /** Climb into a parked plane: it becomes your plane, in its colour, where it was parked. */
@@ -4213,7 +4219,7 @@ function enterParkedPlane(it) {
   props._write(it);
   mpShareProp('pick', it);
   takenPlane = { it, x: at.x, z: at.z, yaw: at.yaw, prevVehicle: settings.vehicle };
-  if (isHeli || ownStale) {
+  if (isHeli || ownStale || settings.vehicle === 'jet') {
     ownStale = false;
     settings.vehicle = 'plane';
     saveSettings();
@@ -4414,7 +4420,7 @@ function frame() {
     rampage.update(dt, isBot ? flight : null);
     updateBlockers(dt);
     if (google) props.settle(flight.pos.x, flight.pos.z, 500);
-    if (!isHeli && !isBot) {
+    if (!isHeli && !isBot && !plane.noProp) {
       const rpm = 8 + flight.throttle * 60;
       plane.propeller.rotation.z += rpm * dt;
       // The blur disc: from the cockpit only a faint haze, so the view ahead stays clear.
@@ -4439,7 +4445,7 @@ function frame() {
     if (!building && plane) {
       snapToGoogleGround();
       poseAirplane(dt);
-      if (!isHeli && !isBot) plane.propeller.rotation.z += 10 * dt;
+      if (!isHeli && !isBot && !plane.noProp) plane.propeller.rotation.z += 10 * dt;
       const t = timer.getElapsed() * 0.18;
       const p = plane.group.position;
       const r = isBot ? 40 : isHeli ? 22 : 26;
