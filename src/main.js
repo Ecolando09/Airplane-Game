@@ -1103,9 +1103,15 @@ function start(airborne, { lesson = false, roomGame = false } = {}) {
   potty.sitting = 0;
   rampage.reset(); // a fresh start puts the city back together
   if (takenPlane) {
+    // The parked plane goes back where it was, and you get your own vehicle back.
     props.drop(takenPlane.it, takenPlane.x, takenPlane.z, takenPlane.yaw);
     mpShareProp('prop', takenPlane.it);
+    if (settings.vehicle !== takenPlane.prevVehicle) {
+      settings.vehicle = takenPlane.prevVehicle;
+      saveSettings();
+    }
     takenPlane = null;
+    buildVehicle();
   }
   bot.walk.setSize(1); // and the robot back to normal size
   rampage.power = 1;
@@ -3849,23 +3855,39 @@ function enterParkedPlane(it) {
   it.held = true;
   props._write(it);
   mpShareProp('pick', it);
-  takenPlane = { it, x: at.x, z: at.z, yaw: at.yaw };
+  takenPlane = { it, x: at.x, z: at.z, yaw: at.yaw, prevVehicle: settings.vehicle };
   if (isHeli) {
     settings.vehicle = 'plane';
     saveSettings();
     buildVehicle();
   } else leaveBot();
+  dressAsParked(plane, it);
   flight.reset();
   flight.pos.set(at.x, world.heightAt(at.x, at.z) + plane.gearHeight, at.z);
   flight.quat.setFromAxisAngle(Y_AXIS, at.yaw);
   tilt = GROUND_TILT;
-  paintModel(plane, it.tint);
   input.syncThrottle(flight.throttle);
   camInit = false;
   plane.group.visible = true;
   setBotUi();
   sound.blip('transform');
   message('✈️ You took the parked plane!<small>Full throttle to take off</small>', 3);
+}
+/**
+ * Fly the plane you found as it is: its own shape, colour and size (the flying
+ * itself uses the plane's flight model). Stays that way through robot changes
+ * until a restart gives you your own vehicle back.
+ */
+function dressAsParked(model, it) {
+  for (const c of model.group.children) if (c !== model.floats) c.visible = false;
+  const mesh = props.mesh('plane', it.tint);
+  mesh.scale.setScalar(it.scale || 1);
+  mesh.position.y = -model.gearHeight; // its wheels on the ground
+  model.group.add(mesh);
+  model.parked = { mesh, kind: it.kind, tint: it.tint, scale: it.scale || 1 };
+  model.cockpitHidden = [];
+  model.updateBoosters = () => {}; // (the bush plane's turbo flames would float in the wrong place)
+  model.wheels = []; // its own wheels are part of its model
 }
 /** Give a model's accent parts a colour (a parked plane you took keeps its paint). */
 function paintModel(model, hex) {
@@ -3923,7 +3945,8 @@ function frame() {
       group: plane.group, city: settings.city, vehicle: settings.vehicle, speed: flight.speed,
       turbo: flight.turbo || 1, floats: !!flight.floats, crashed: flight.crashed, bot: isBot,
       size: isBot ? bot.walk.size : 1, sit: potty.sitting > 0,
-      ride: isBot && rampage.driving ? { kind: rampage.driving.item.kind, tint: rampage.driving.item.tint, scale: rampage.driving.item.scale || 1 } : null,
+      ride: isBot && rampage.driving ? { kind: rampage.driving.item.kind, tint: rampage.driving.item.tint, scale: rampage.driving.item.scale || 1 }
+        : !isBot && plane?.parked ? { kind: 'plane', tint: plane.parked.tint, scale: plane.parked.scale, lift: +plane.gearHeight.toFixed(2) } : null,
       cash: beerRun?.active ? beerRun.cash : game?.active ? Math.round(game.total ?? game.next * 100) : undefined,
     });
   }

@@ -113,7 +113,7 @@ export class Multiplayer {
       cash: Number.isFinite(m.cash) ? m.cash : null, // Beer Run money, while they're on a shift
       bot: !!m.bot, // walking around as a robot
       size: Math.min(8, Math.max(1, +m.size || 1)), // grown robot
-      ride: m.ride && typeof m.ride.kind === 'string' ? { kind: m.ride.kind.slice(0, 16), tint: +m.ride.tint || 0, scale: Math.min(4, Math.max(0.25, +m.ride.scale || 1)) } : null,
+      ride: m.ride && typeof m.ride.kind === 'string' ? { kind: m.ride.kind.slice(0, 16), tint: +m.ride.tint || 0, scale: Math.min(4, Math.max(0.25, +m.ride.scale || 1)), lift: Math.min(10, Math.max(0, +m.ride.lift || 0)) } : null,
       sit: !!m.sit, // on the toilet
     });
     if (p.isNew) {
@@ -204,6 +204,7 @@ export class Multiplayer {
       p.model.group.position.copy(p.pos);
       p.model.group.quaternion.copy(p.quat);
       p.model.group.scale.setScalar(p.ride ? p.ride.scale : p.bot ? p.size : 1);
+      if (p.ride?.lift) p.model.group.position.y -= p.ride.lift; // a flown parked plane: wheels down, like theirs
       // Whatever they carry sits in their robot's hands.
       if (p.carry && p.model.hands && p.carry.parent !== p.model.hands) {
         p.model.hands.add(p.carry);
