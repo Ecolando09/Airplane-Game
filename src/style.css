@@ -2464,3 +2464,31 @@ kbd.pad-A { background: #1f8a43; }
 kbd.pad-B { background: #d01712; }
 kbd.pad-X { background: #2f7fe0; }
 kbd.pad-Y { background: #e8b923; color: #23272b; }
+
+/* ---------- room code picker (controller: no typing) */
+#mpCodePick {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
+#mpCodePick b {
+  width: 1.6em;
+  padding: 3px 0;
+  border-radius: 6px;
+  border: 2px solid #c9ced6;
+  text-align: center;
+  font: 800 16px ui-monospace, monospace;
+}
+
+#mpCodePick b.on {
+  border-color: #2f7fe0;
+  background: #e6f0fd;
+}
+
+#mpCodePick small {
+  flex-basis: 100%;
+  font-size: 11px;
+  color: #5b6570;
+}

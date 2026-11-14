@@ -67,6 +67,18 @@ try {
     touch: getComputedStyle(document.getElementById('touch')).display !== 'none' }));
   check('PSG1 controller in the browser turns on PSG1 mode', st.psg1 && st.fov === 72, JSON.stringify(st));
   check('PSG1 controls guide shown (not the Xbox one)', st.guide && !st.xbox);
+  // Room code picker: no typing needed.
+  await p2.evaluate(() => window.__game.padNav.focus(document.getElementById('mpCode')));
+  await press2(1); // A: start picking
+  const picking = await p2.evaluate(() => !document.getElementById('mpCodePick').hidden);
+  await press2(12); // up: A -> B
+  await press2(15); // right: next letter
+  await press2(12);
+  await press2(12); // A -> C
+  await press2(0); // B: done without joining
+  const code = await p2.evaluate(() => document.getElementById('mpCode').value);
+  check('room code picker: A opens it, D-pad picks letters, B closes it', picking && code === 'BCAA', code);
+  await p2.evaluate(() => window.__game.padNav.focus(document.getElementById('startAir')));
   await press2(12); // back up to Play
   await press2(1); // A (right button) presses
   check('PSG1 A button (right) presses the highlighted menu button', await p2.evaluate(() => window.__game.running));

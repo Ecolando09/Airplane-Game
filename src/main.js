@@ -1839,13 +1839,47 @@ function navRoot() {
   return null;
 }
 const padNav = new PadNav(navRoot);
+// Room code picker for controllers: A on the code box, then the D-pad picks the
+// letters (up/down change one, left/right move), A joins, B cancels. No typing.
+const CODE_LETTERS = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+let codePick = null; // { letters: [4 indexes], slot }
+function drawCodePick() {
+  $('mpCodePick').innerHTML = codePick.letters
+    .map((i, k) => `<b class="${k === codePick.slot ? 'on' : ''}">${CODE_LETTERS[i]}</b>`).join('') + '<small>▲▼ letter · ◀▶ move · A join · B cancel</small>';
+}
+function startCodePick() {
+  const v = ($('mpCode').value.toUpperCase() + 'AAAA').slice(0, 4);
+  codePick = { letters: [...v].map((c) => Math.max(0, CODE_LETTERS.indexOf(c))), slot: 0 };
+  $('mpCode').hidden = true;
+  $('mpCodePick').hidden = false;
+  drawCodePick();
+}
+function endCodePick(join) {
+  if (!codePick) return;
+  $('mpCode').value = codePick.letters.map((i) => CODE_LETTERS[i]).join('');
+  codePick = null;
+  $('mpCode').hidden = false;
+  $('mpCodePick').hidden = true;
+  padNav.focus($('mpCode'));
+  if (join) $('mpJoin').onclick();
+}
 input.on('nav', (dir) => {
   const [dx, dy] = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] }[dir];
+  if (codePick) {
+    if (dy) codePick.letters[codePick.slot] = (codePick.letters[codePick.slot] - dy + CODE_LETTERS.length) % CODE_LETTERS.length;
+    else codePick.slot = Math.min(3, Math.max(0, codePick.slot + dx));
+    return drawCodePick();
+  }
   if (dx && padNav.nudge(dx)) return;
   padNav.move(dx, dy);
 });
-input.on('navPress', () => padNav.press());
+input.on('navPress', () => {
+  if (codePick) return endCodePick(true);
+  if (padNav.current === $('mpCode')) return startCodePick();
+  padNav.press();
+});
 input.on('navBack', () => {
+  if (codePick) return endCodePick(false);
   const el = padNav.current;
   const d = el?.closest('details[open]');
   if (d) {
@@ -2823,7 +2857,7 @@ function frame() {
   const rawDt = timer.getDelta();
   const dt = Math.min(rawDt, 0.05);
   updatePerf(Math.min(rawDt, 0.25));
-  if (input.pad()) padNav.sync();
+  if (input.pad() && !codePick) padNav.sync();
   input.pollButtons(!!navRoot());
   world.update(timer.getElapsed());
   if (beerRun && !beerRun.active) beerRun.update(dt, {}); // finish the kegs' flight animations
@@ -2944,7 +2978,7 @@ if (new URLSearchParams(location.search).has('debug')) {
   window.__game = {
     get world() { return world; }, get flight() { return flight; }, get plane() { return plane; }, get google() { return google; },
     get running() { return running; }, get isBot() { return isBot; }, get coach() { return coach; },
-    mp, camera, input, prefs, logbook, potty, start, goPotty, skipPotty, updatePotty, transform, finishMorph, botSmash, botGrab, applyPrefs,
+    mp, camera, input, prefs, padNav, logbook, potty, start, goPotty, skipPotty, updatePotty, transform, finishMorph, botSmash, botGrab, applyPrefs,
     autoLandApi: { start: (l) => { autoLandTarget = l; startAutoLand(); }, step: (dt) => autoLand && updateAutoLand(dt), active: () => !!autoLand },
     step: (dt, ctl) => flight.update(dt, ctl), beer: () => beerRun, gameObj: () => game,
     bot: () => ({ isBot, walk: bot.walk, rampage, props }),

@@ -68,7 +68,9 @@ export class PadNav {
     this.current = el || null;
     if (!el) return;
     el.classList.add('padfocus');
-    el.focus({ preventScroll: true });
+    // Text boxes only get the highlight: focusing them would pop up the touch keyboard.
+    if (el.tagName === 'INPUT' && el.type !== 'checkbox' && el.type !== 'range') document.activeElement?.blur();
+    else el.focus({ preventScroll: true });
     el.scrollIntoView({ block: 'nearest', inline: 'nearest' });
   }
 
