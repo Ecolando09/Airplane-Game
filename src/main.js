@@ -16,6 +16,7 @@ import { createRobot, RobotWalk } from './robot.js';
 import { Props } from './props.js';
 import { Rampage, ROBOT_SIZES } from './rampage.js';
 import { RingRace, RampageGame } from './games.js';
+import { PottyTime } from './pottytime.js';
 import { ColliderView } from './colliderview.js';
 import { PadNav, pad as padGlyph, isPsg1, isPsg1Pad, enablePsg1 } from './psg1.js';
 const pad = padGlyph;
@@ -1003,7 +1004,8 @@ function updateLabels() {
     }
     pl.label.style.setProperty('--pin', pl.color);
     // Name, with their latest emote for a few seconds.
-    const emo = pl.emote && performance.now() < pl.emote.until ? pl.emote.text : '';
+    const it = rgGame?.game === 'tag' && rgGame.phase === 'live' && rgScores?.[pl.id]?.it;
+    const emo = pl.emote && performance.now() < pl.emote.until ? pl.emote.text : it ? '🧟' : '';
     if (pl.label.dataset.k !== pl.name + emo) {
       pl.label.dataset.k = pl.name + emo;
       pl.label.replaceChildren(...(emo ? [Object.assign(document.createElement('span'), { className: 'emo', textContent: emo })] : []), pl.name);
@@ -1784,6 +1786,9 @@ function renderLogbook() {
 // is shared with the room all the time.
 const ROOM_GAMES = {
   sky: { name: '🏁 Sky Race', about: 'Fly through the same rings across the city. Miss one and you must go back for it. Fastest time wins.', vehicle: true },
+  rampage: { name: '🤖 Rampage Battle', about: 'Two minutes as robots in the same downtown. Every building counts once: if a friend smashes it first, it\'s gone. Most points wins.', robot: true },
+  tag: { name: '🧟 Infection Tag', about: 'One player starts as IT. Everyone they catch joins the IT team. Last one free wins.', vehicle: true },
+  potty: { name: '🚽 Potty Time', about: 'Robots race potty, snack, potty, snack across the city to the golden toilet. One seat per toilet: wait your turn! Mash SMASH on the seat.', robot: true, laps: true },
 };
 let rgGame = null; // the room's game record from the relay ({ game, phase, players, ... }), or null
 let rgScores = null; // live scores during a game
@@ -1792,6 +1797,7 @@ let rgGoShown = 0;
 const nameOf = (id) => (id === mp.myId ? mp.name || 'You' : mp.players.get(id)?.name || rgGame?.names?.[id] || 'Someone');
 const rgIn = () => !!rgGame && rgGame.players?.includes(mp.myId);
 const rgFrozen = () => !!rgRun && !rgRun.started;
+// (Potty Time's own stops: eating and accidents hold the robot inside the game.)
 
 // ------------------------------------------------------------------ shared world (plan 05 part 1)
 // Loose objects have the same id for everyone in a room (props.js), so picking
@@ -1869,6 +1875,10 @@ function onRobotAct(m) {
   if (m.a === 'punch') p.model.punch?.();
   else if (m.a === 'stomp') rampage.explode(p.pos.x, p.pos.y + 2, p.pos.z, 10 * (p.size || 1));
   else if (m.a === 'morph') rampage.burst(p.pos.x, p.pos.y + 6, p.pos.z, 10, 0x4fd8ff, 14);
+  else if (m.a === 'burp') {
+    rampage.burst(p.pos.x, p.pos.y + 12 * (p.size || 1), p.pos.z, 5, 0xbfe3ff, 10);
+    sound.blip('miss', 1 / (1 + p.pos.distanceTo(flight.pos) / 100));
+  }
 }
 const mpAct = (a) => mp.room && mp.send({ t: 'act', a });
 let pendingCatchup = [];
@@ -1940,6 +1950,11 @@ function updateRoomGamesUi() {
 
 function rgCleanup() {
   if (rgRun?.started && game?.active) game.stop();
+  if (game instanceof PottyTime) {
+    game.dispose();
+    game = null;
+    if (potty.sitting > 0) potty.sitting = 0.01;
+  }
   if (rgRun) {
     document.body.classList.remove('beer');
     $('beerHud').hidden = true;
@@ -1984,7 +1999,21 @@ async function rgPrepare(m) {
   const base = flight.pos.clone();
   const heading = flight.heading;
   const slot = m.slots?.[mp.myId] ?? 0;
-  // Planes line up one behind the other on the runway; copters side by side.
+  // Robot games start downtown, side by side. Planes line up one behind the other
+  // on the runway; copters side by side.
+  if (spec.robot) {
+    transform();
+    finishMorph();
+    const sq = world.landmarks[0];
+    const x = sq.x + 30 + slot * 22;
+    const z = sq.z + 30;
+    flight.place(new THREE.Vector3(x, world.heightAt(x, z), z), 0, null);
+    flight.onGround = true;
+    rgRun = { game: m.game, base: flight.pos.clone(), heading: 0, started: false, done: false, laps: m.options?.laps || 3 };
+    camInit = false;
+    message(`${spec.name}<small>Get ready: everyone starts together</small>`, 3);
+    return;
+  }
   if (isHeli) {
     const side = (slot % 2 ? 1 : -1) * Math.ceil(slot / 2) * 26;
     flight.pos.addScaledVector(flight.right, side);
@@ -2018,11 +2047,56 @@ function rgGo() {
     game.start(rgRun.base, rgRun.heading, !isHeli);
     document.body.classList.add('beer');
     $('beerHud').hidden = false;
+  } else if (rgRun.game === 'rampage') {
+    // Shared city: whatever a friend smashes first is gone, so it can only be scored once.
+    game?.dispose();
+    game = new RampageGame(rampage, { toast, sound: (k) => sound.blip(k), onEnd: () => {} });
+    game.start();
+    document.body.classList.add('beer');
+    $('beerHud').hidden = false;
+    message('🤖 RAMPAGE BATTLE! Smash it before they do', 3);
+  } else if (rgRun.game === 'tag') {
+    rgRun.grace = 5; // seconds of head start for the others
+    rgRun.goReal = performance.now();
+    rgRun.tagCool = new Map();
+    message(rgScores?.[mp.myId]?.it ? '🧟 You are IT! Catch the others (5 s head start for them)' : '🏃 Run! Someone is IT…', 3.5);
+  } else if (rgRun.game === 'potty') {
+    game?.dispose();
+    game = new PottyTime({
+      world, scene, labelsEl: $('labels'), message, toast, sound: (k) => sound.blip(k), send: (msg) => mp.send(msg),
+      bot: () => (isBot ? bot.walk : null), myId: () => mp.myId, progress: () => rgScores?.[mp.myId]?.progress || 0,
+      sit: (t) => {
+        flight.place(new THREE.Vector3(t.x, t.y + 3.4, t.z), t.yaw, null);
+        flight.onGround = true;
+        potty.sitting = 999; // until the server says we're done
+        camInit = false;
+      },
+      stand: () => (potty.sitting = 0.01),
+      puff: (pos, color) => rampage.burst(pos.x, pos.y + 3, pos.z, 6, color, 16),
+      act: (a) => {
+        if (a.startsWith('eat:')) return mp.send({ t: 'emote', e: a.slice(4) });
+        if (a === 'plop') return rampage.burst(flight.pos.x, flight.pos.y + 2, flight.pos.z, 3, 0x6b3e1f, 6);
+        if (a === 'burp') {
+          // The burp knocks nearby robots back a step.
+          for (const pl of friendsHere()) if (pl.bot && pl.target.pos.distanceTo(flight.pos) < 18) mp.send({ t: 'hit', to: pl.id, dx: +(pl.target.pos.x - flight.pos.x > 0 ? 0.7 : -0.7), dz: 0.7, k: 0.6 });
+          mpAct('burp');
+        }
+      },
+    }, rgRun.laps);
+    game.start();
+    document.body.classList.add('beer');
+    $('beerHud').hidden = false;
+    message('🚽 POTTY TIME! Follow the arrow to the toilet', 3);
   }
 }
 
 function rgShowResults(m) {
-  const fmt = (r) => (r.done && r.time ? fmtClock(r.time / 1000) : m.game === 'sky' ? `${r.progress || 0} rings` : String(r.score || 0));
+  const fmt = (r) => {
+    if (m.game === 'rampage') return `${(r.score || 0).toLocaleString()} pts`;
+    if (m.game === 'tag') return r.caughtAt ? `caught at ${fmtClock(r.caughtAt / 1000)}` : r.it && !r.caughtAt ? 'started IT' : 'never caught!';
+    if (r.done && r.time) return fmtClock(r.time / 1000);
+    return m.game === 'sky' ? `${r.progress || 0} rings` : m.game === 'potty' ? `${r.progress || 0} stops` : String(r.score || 0);
+  };
   $('rgResTitle').textContent = `${ROOM_GAMES[m.game]?.name || 'Game'}: results`;
   $('rgResList').replaceChildren(...(m.results || []).map((r) => {
     const li = document.createElement('li');
@@ -2071,6 +2145,18 @@ mp.onEvent = (m) => {
   } else if (m.t === 'game-scores') {
     rgScores = m.scores;
     if (rgGame) rgGame.finished = m.finished;
+  } else if (m.t === 'potty-seat') {
+    if (game instanceof PottyTime) game.onSeat(m);
+  } else if (m.t === 'potty-done') {
+    if (game instanceof PottyTime) game.onDone(m);
+  } else if (m.t === 'tag-hit') {
+    // Caught in Infection Tag: tell the server (it keeps who is IT for everyone).
+    if (m.to === mp.myId && rgRun?.game === 'tag' && rgRun.started && !rgScores?.[mp.myId]?.it) {
+      mp.send({ t: 'game-score', caught: true, by: m.id });
+      if (rgScores?.[mp.myId]) rgScores[mp.myId].it = true;
+      sound.blip('potty');
+      message(`🧟 ${nameOf(m.id)} caught you! Now you're IT: catch the others`, 3);
+    }
   } else if (m.t === 'host') {
     if (m.host === mp.myId) toast('👑 You are now the room host', '#e8b923');
     updateMpUi();
@@ -2107,22 +2193,50 @@ function updateRoomGames() {
     $('rgGo').textContent = String(Math.max(1, Math.ceil(left)));
     if (left <= 0) {
       rgGo();
-      rgGoShown = 0.9;
+      rgGoShown = performance.now();
       $('rgGo').textContent = 'GO!';
       $('rgGo').classList.add('go');
       sound.blip('star');
     }
-  } else if (rgGoShown > 0) {
-    rgGoShown -= 1 / 60;
-    if (rgGoShown <= 0) $('rgGo').hidden = true;
+  } else if (rgGoShown > 0 && performance.now() - rgGoShown > 900) {
+    rgGoShown = 0;
+    $('rgGo').hidden = true;
+  }
+  // Rampage Battle: report my score every second. Infection Tag: catch friends in range.
+  if (rgRun?.started && g?.phase === 'live') {
+    const nowMs = performance.now();
+    if (rgRun.game === 'rampage' && game?.total !== undefined && nowMs - (rgRun.sentAt || 0) > 1000) {
+      rgRun.sentAt = nowMs;
+      mp.send({ t: 'game-score', score: Math.round(game.total) });
+    }
+    if (rgRun.game === 'tag' && rgScores?.[mp.myId]?.it) {
+      if (nowMs - rgRun.goReal > rgRun.grace * 1000) {
+        for (const pl of friendsHere()) {
+          if (rgScores[pl.id]?.it || !g.players.includes(pl.id)) continue;
+          const range = (!flight.onGround ? 60 : 20) + 13 * Math.max(pl.size || 1, isBot ? bot.walk.size : 1) * 0.5;
+          if (pl.target.pos.distanceTo(flight.pos) < range && performance.now() - (rgRun.tagCool.get(pl.id) || 0) > 2000) {
+            rgRun.tagCool.set(pl.id, performance.now());
+            mp.send({ t: 'tag-hit', to: pl.id });
+            toast(`🧟 You caught ${pl.name}!`, '#7fbf3f');
+            sound.blip('star');
+          }
+        }
+      }
+    }
   }
   // Live places.
   const chip = [];
   if (g?.phase === 'live' && rgScores) {
     const fin = g.finished || [];
-    const order = Object.keys(rgScores).map(Number)
-      .sort((a, b) => (fin.includes(a) ? -1000 + fin.indexOf(a) : -rgScores[a].progress) - (fin.includes(b) ? -1000 + fin.indexOf(b) : -rgScores[b].progress));
-    chip.push(order.slice(0, 4).map((id, i) => `${i + 1}. ${id === mp.myId ? 'You' : nameOf(id)}${fin.includes(id) ? ' 🏁' : ''}`).join('  '));
+    const ids = Object.keys(rgScores).map(Number);
+    if (g.game === 'tag') {
+      const it = ids.filter((id) => rgScores[id].it);
+      chip.push(rgScores[mp.myId]?.it ? `🧟 You're IT · ${ids.length - it.length} still free` : rgIn() ? `🏃 Run! ${it.length} IT · ${ids.length - it.length} free` : `🧟 ${it.length} IT · ${ids.length - it.length} free`);
+    } else {
+      const key = (id) => (g.game === 'rampage' ? -rgScores[id].score : fin.includes(id) ? -1000 + fin.indexOf(id) : -rgScores[id].progress);
+      const order = ids.sort((a, b) => key(a) - key(b));
+      chip.push(order.slice(0, 4).map((id, i) => `${i + 1}. ${id === mp.myId ? 'You' : nameOf(id)}${g.game === 'rampage' ? ` ${rgScores[id].score}` : ''}${fin.includes(id) ? ' 🏁' : ''}`).join('  '));
+    }
     if (g.endsAt) {
       const left = Math.max(0, Math.round((g.endsAt - now) / 1000));
       if (left < 120) chip.push(`⏱ ${fmtClock(left)}`);
@@ -2740,6 +2854,7 @@ function updateBotHud() {
 }
 function botSmash() {
   if (!running || !isBot) return;
+  if (game instanceof PottyTime && potty.sitting > 0) return game.mash(); // mash to go faster
   if (!rampage.driving && !rampage.held) {
     mpAct('punch');
     setTimeout(shoveCheck, 160); // when the fist lands

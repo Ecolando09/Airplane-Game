@@ -151,7 +151,7 @@ function gameMsg(code) {
   return { t: 'game', now: Date.now(), ...(g ? publicGame(g) : { phase: 'none' }) };
 }
 function publicGame(g) {
-  const { timer, ...rest } = g;
+  const { timer, seats, pending, ...rest } = g;
   return rest;
 }
 function setGameTimer(code, at, fn) {
@@ -178,6 +178,7 @@ function goLive(code) {
   g.endsAt = g.goAt + len * 1000;
   g.scores = Object.fromEntries(g.players.map((id) => [id, { score: 0, progress: 0, done: false }]));
   g.finished = [];
+  if (g.game === 'potty') g.seats = {}; // toilet index -> { holder, until, queue }
   if (g.game === 'tag') {
     // One player starts "it", picked by the server.
     const it = g.players[Math.floor(Math.random() * g.players.length)];
@@ -190,6 +191,7 @@ function cancelGame(code) {
   const m = meta.get(code);
   if (!m?.game) return;
   clearTimeout(m.game.timer);
+  for (const seat of Object.values(m.game.seats || {})) clearTimeout(seat.timer);
   m.game = null;
   sendGame(code);
 }
@@ -198,6 +200,7 @@ function finishGame(code) {
   const g = m?.game;
   if (!g || g.phase !== 'live') return;
   clearTimeout(g.timer);
+  for (const seat of Object.values(g.seats || {})) clearTimeout(seat.timer);
   const spec = GAMES[g.game];
   const name = (id) => info.get(flights.get(code)?.get(id))?.name || g.names?.[id] || 'Pilot';
   let order;
@@ -222,6 +225,55 @@ function finishGame(code) {
   g.trophies = m.trophies;
   sendGame(code);
 }
+// Potty Time: one seat per toilet. The server keeps the queue and the clock, so
+// every screen shows the same robot on the seat. Sitting takes 4 s; mashing the
+// button takes 0.15 s off per press, down to 1.5 s.
+const SIT_MS = 4000;
+function pottyBroadcast(code, i) {
+  const g = meta.get(code)?.game;
+  const seat = g?.seats?.[i];
+  if (seat) roomBroadcast(code, { t: 'potty-seat', i, holder: seat.holder, until: seat.until, queue: seat.queue, now: Date.now() });
+  // (mashing shortens the wait: pottyDone re-checks the time when its timer fires)
+}
+function pottyNext(code, i) {
+  const g = meta.get(code)?.game;
+  const seat = g?.seats?.[i];
+  if (!seat || g.phase !== 'live') return;
+  const room = flights.get(code);
+  seat.queue = seat.queue.filter((x) => room?.has(x));
+  seat.holder = seat.queue.shift() ?? null;
+  seat.since = Date.now();
+  seat.until = seat.holder ? seat.since + SIT_MS : 0;
+  clearTimeout(seat.timer);
+  if (seat.holder) seat.timer = setTimeout(() => pottyDone(code, i), SIT_MS);
+  pottyBroadcast(code, i);
+}
+function pottyDone(code, i) {
+  const g = meta.get(code)?.game;
+  const seat = g?.seats?.[i];
+  if (!seat?.holder || g.phase !== 'live') return;
+  if (Date.now() < seat.until - 30) {
+    clearTimeout(seat.timer);
+    seat.timer = setTimeout(() => pottyDone(code, i), seat.until - Date.now());
+    return;
+  }
+  const id = seat.holder;
+  const sc = g.scores[id];
+  roomBroadcast(code, { t: 'potty-done', i, id });
+  if (sc && !sc.done) {
+    sc.progress++;
+    if (sc.progress >= (g.options.laps * 2 + 1)) {
+      sc.done = true;
+      sc.time = Math.round(Date.now() - g.goAt);
+      g.finished.push(id);
+    }
+  }
+  roomBroadcast(code, { t: 'game-scores', scores: g.scores, finished: g.finished });
+  const live = g.players.filter((x) => flights.get(code)?.has(x));
+  if (live.length && live.every((x) => g.scores[x].done)) return finishGame(code);
+  pottyNext(code, i);
+}
+
 function onGameMessage(code, id, m) {
   const meta_ = meta.get(code);
   if (!meta_) return;
@@ -257,13 +309,36 @@ function onGameMessage(code, id, m) {
     (m.t === 'game-join' ? g.players : g.skipped).push(id);
     return sendGame(code);
   }
+  if (g.game === 'potty' && g.phase === 'live' && g.players.includes(id) && now >= g.goAt) {
+    const i = Math.round(Number(m.i));
+    const sc = g.scores[id];
+    // Only the toilet that is this player's next stop (even steps of the route).
+    if (m.t === 'game-potty' && sc && !sc.done && i === sc.progress / 2 && Number.isInteger(i)) {
+      const seat = (g.seats[i] ||= { holder: null, until: 0, queue: [] });
+      if (seat.holder === id || seat.queue.includes(id)) return;
+      seat.queue.push(id);
+      if (!seat.holder) pottyNext(code, i);
+      else pottyBroadcast(code, i);
+      return;
+    }
+    if (m.t === 'game-mash') {
+      const seat = g.seats[i];
+      if (seat?.holder === id) {
+        seat.until = Math.max(seat.until - 150, seat.since + 1500);
+        clearTimeout(seat.timer);
+        seat.timer = setTimeout(() => pottyDone(code, i), seat.until - now);
+      }
+      return;
+    }
+  }
   if (m.t === 'game-score' && g.phase === 'live' && g.players.includes(id) && now >= g.goAt) {
     const sc = g.scores[id];
     const spec = GAMES[g.game];
     if (!sc || sc.done) return;
     // Basic sanity: progress goes up one step at a time, scores grow at a sane rate.
     const progress = Math.round(Number(m.progress) || 0);
-    if (progress === sc.progress + 1 || progress === sc.progress) sc.progress = progress;
+    const okStep = g.game !== 'potty' || sc.progress % 2 === 1; // in Potty Time only snack stops are self-reported
+    if ((progress === sc.progress + 1 && okStep) || progress === sc.progress) sc.progress = progress;
     const score = Math.round(Number(m.score) || 0);
     const secs = (now - g.goAt) / 1000;
     if (score >= 0 && score <= 5000 + secs * 2000) sc.score = score;
@@ -272,7 +347,7 @@ function onGameMessage(code, id, m) {
       sc.it = true; // infection: the caught join the "it" team
       sc.by = Number(m.by) || null;
     }
-    if (m.done && spec.kind === 'race') {
+    if (m.done && spec.kind === 'race' && g.game !== 'potty') {
       sc.done = true;
       sc.time = Math.round(now - g.goAt);
       g.finished.push(id);

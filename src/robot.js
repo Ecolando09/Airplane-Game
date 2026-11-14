@@ -286,7 +286,7 @@ export class RobotWalk {
     // The climb rate eases toward JET_CLIMB (a tap is a hop, holding climbs, and
     // holding while falling cushions the landing) and fades out near the ceiling.
     if (input.brake && this.onGround) {
-      this.vel.y = 24 * Math.sqrt(this.size);
+      this.vel.y = 24 * Math.sqrt(this.size) * (this.jumpBoost || 1); // soda in Potty Time jumps higher
       this.onGround = false;
     }
     this.jetting = !this.onGround && input.brake;
