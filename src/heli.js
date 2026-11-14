@@ -58,6 +58,7 @@ export function createGhostSpiderHeli() {
     const intake = add(new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.5, 1.3, 16).rotateX(Math.PI / 2), mat(CYAN)), CYAN);
     intake.position.set(sx * 0.9, 1.75, 0.6);
   }
+  const webs = [];
   for (let i = 0; i < 5; i++) {
     const web = new THREE.Mesh(new THREE.TorusGeometry(2.33 - Math.abs(i - 2) * 0.12, 0.05, 6, 40, Math.PI), mat(PINK));
     web.rotation.y = Math.PI / 2;
@@ -65,6 +66,7 @@ export function createGhostSpiderHeli() {
     web.rotation.z = -0.25 + i * 0.12;
     web.position.set(0, 0.05, 0.6 + (i - 2) * 0.55);
     heli.add(web);
+    webs.push(web);
   }
 
   // Tail boom tapering back to a shrouded (fenestron) tail rotor.
@@ -158,7 +160,7 @@ export function createGhostSpiderHeli() {
     wheels: legs,
     animate,
     updateBoosters,
-    cockpitHidden: [canopy, frame],
+    cockpitHidden: [canopy, frame, ...webs], // the web lines over the body arch across the windscreen
     cockpitEye: new THREE.Vector3(0, 0.9, -1.7),
     gearHeight: SKID,
     radius: 3.2,

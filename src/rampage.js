@@ -237,8 +237,43 @@ export class Rampage {
     return it;
   }
 
+  /** A toilet the supersizer is pointed at (closer than any loose object), or null. */
+  _aimToilet(bot) {
+    const f = bot.forward;
+    const k = bot.size || 1;
+    const cx = bot.pos.x + f.x * 8 * k;
+    const cz = bot.pos.z + f.z * 8 * k;
+    let best = null;
+    let bestD = Infinity;
+    for (const t of this.world.toilets || []) {
+      const d = Math.hypot(t.x - cx, t.z - cz) - 6 * (t.scale || 1);
+      if (d < 10 + 6 * k && d < bestD) {
+        best = t;
+        bestD = d;
+      }
+    }
+    if (!best) return null;
+    const it = this.props.nearest(cx, cz, 16);
+    if (it && Math.hypot(it.x - cx, it.z - cz) - this.props.radius(it) < bestD) return null;
+    return best;
+  }
+
+  /** Grow or shrink a toilet: 1x (robot-sized) up to 8x, the biggest robot. */
+  _resizeToilet(t, factor) {
+    const scale = THREE.MathUtils.clamp((t.scale || 1) * factor, 1, 8);
+    if (scale === (t.scale || 1)) return this.hooks.message(factor > 1 ? "The toilet can't get any bigger!" : 'The toilet is already robot-sized.');
+    this.world.resizeToilet(t, scale);
+    this.hooks.toilet?.(t);
+    this.hooks.sound(factor > 1 ? 'grow' : 'shrink');
+    this.burst(t.x, t.y + 5 * scale, t.z, 4 * scale, factor > 1 ? 0x4fd8ff : 0xc06bff, 8);
+    this.hooks.message(`${factor > 1 ? '🔍 Supersized' : '🔬 Shrunk'} the toilet: ${scale === 1 ? 'robot-sized' : `${scale}× bigger`}. Fits a ${scale}× robot.`);
+    return true;
+  }
+
   /** Grow (factor 2) or shrink (factor 0.5) what the supersizer is pointed at. */
   resize(bot, factor) {
+    const t = !this.held && !this.driving ? this._aimToilet(bot) : null;
+    if (t) return this._resizeToilet(t, factor);
     const it = this._aim(bot);
     if (!it) return this.hooks.message('Point the supersizer at a car or another object nearby');
     const scale = THREE.MathUtils.clamp((it.scale || 1) * factor, 0.25, 4);
@@ -613,6 +648,7 @@ export class Rampage {
     this.pending = [];
     this.points = 0;
     for (const it of this.props.items) if (it.scale !== 1) this.props.resize(it, 1);
+    for (const t of this.world.toilets || []) if ((t.scale || 1) !== 1) this.world.resizeToilet(t, 1);
     this.stats = { buildings: 0, trees: 0, cars: 0, thrown: 0 };
   }
 

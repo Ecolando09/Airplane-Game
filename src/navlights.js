@@ -3,7 +3,7 @@ import { glowTexture } from './nightlights.js';
 
 // Aircraft lights, like real ones: steady red (left wingtip), blue-green (right
 // wingtip: aviation green looks teal-blue at night) and white (tail) navigation lights, a flashing red beacon, white
-// double-flash strobes on the wingtips, and a landing light beam at night.
+// double-flash strobes on the wingtips, and a white landing light on the nose.
 // They are always on (as on a real aircraft) but small by day and bright at night.
 
 const SPECS = {
@@ -57,16 +57,8 @@ export function addNavLights(model, kind) {
     steady: [at(sprite(0xff2a1a, 1.4), spec.left), at(sprite(0x1fe6d2, 1.4), spec.right), at(sprite(0xffffff, 1.2), spec.tail)],
     beacons: spec.beacons.map((p) => at(sprite(0xff1a0a, 2.2), p)),
     strobes: spec.strobes.map((p) => at(sprite(0xffffff, 2.4), p)),
-    beams: spec.landing.map((p) => {
-      // A soft cone of light ahead and a little down.
-      const geo = new THREE.CylinderGeometry(0.12, 3.5, 38, 18, 1, true).translate(0, -19, 0).rotateX(-Math.PI / 2 + 0.1);
-      const beam = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: 0xfff1c8, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: true }));
-      beam.position.set(p[0], p[1], p[2]);
-      beam.renderOrder = 3;
-      group.add(beam);
-      group.add(at(sprite(0xfff1c8, 1.6), p));
-      return beam;
-    }),
+    // Landing lights: a small white glow on the nose (no beam cones).
+    landing: spec.landing.map((p) => at(sprite(0xfff1c8, 1.6), p)),
     phase: Math.random() * 2,
   };
   model.group.add(group);
@@ -110,6 +102,5 @@ export function updateNavLights(t, night) {
       s.material.opacity = pulse * k;
       s.visible = pulse > 0.02;
     }
-    for (const b of set.beams) b.material.opacity = 0.055 * Math.max(0, night - 0.2);
   }
 }

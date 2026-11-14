@@ -83,6 +83,26 @@ const CARS = {
 };
 export const CAR_KINDS = Object.keys(CARS);
 
+/**
+ * Size and seats of every drivable kind (scale 1), for lights and the driver's
+ * view: L length, W width, eye = driver's eye [x, y, z], dash = dashboard style.
+ */
+const OTHER = {
+  bus: { L: 11.2, W: 3.1, eye: [-0.9, 3.0, -4.6], lampY: 1.2, dash: 'car' },
+  truck: { L: 6.8, W: 2.8, eye: [-0.6, 2.7, -2.0], lampY: 1.1, dash: 'car' },
+  tanker: { L: 9.6, W: 2.7, eye: [-0.6, 2.8, -3.9], lampY: 1.2, dash: 'car' },
+  cart: { L: 3.0, W: 1.7, eye: [-0.4, 1.9, 0.3], lampY: 0.9, dash: 'car' },
+  boat: { L: 8.0, W: 2.7, eye: [0, 2.5, 0.9], lampY: 1.6, dash: 'boat' },
+};
+export function vehicleInfo(kind) {
+  if (CARS[kind]) {
+    const c = CARS[kind];
+    const roof = Math.max(...c.sil.map(([, y]) => y));
+    return { L: c.L, W: c.W, eye: [-c.W * 0.2, roof - 0.42, (c.cab?.[0] ?? -0.5) + 0.55], lampY: 1.0, dash: 'car' };
+  }
+  return OTHER[kind] || null;
+}
+
 /** Where a car kind's wheels go: [[x, z, r], ...]. */
 export function carWheels(kind) {
   const c = CARS[kind];

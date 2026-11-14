@@ -716,7 +716,15 @@ export class World {
     add(new THREE.BoxGeometry(7.8, 0.5, 2.8), M.seat, 0, 10.1, 4.6);
     add(new THREE.BoxGeometry(1.4, 0.5, 0.6), M.gold, -2.4, 8.8, 3.2); // flush handle
     this.scene.add(g);
+    at.group = g;
+    at.scale = 1; // the supersizer can grow it, for a grown robot
     return { at, group: g };
+  }
+
+  /** Grow or shrink a toilet (1 = robot-sized .. 8 = for an 8x robot). */
+  resizeToilet(t, scale) {
+    t.scale = scale;
+    t.group?.scale.setScalar(scale);
   }
 
   // ------------------------------------------------------- custom buildings

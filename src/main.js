@@ -20,6 +20,9 @@ import { PottyTime } from './pottytime.js';
 import { ColliderView } from './colliderview.js';
 import { NightLights } from './nightlights.js';
 import { addNavLights, updateNavLights, parkedPlaneSpec } from './navlights.js';
+import { vehicleLights, addRideLights, setVehicleLightsNight, GrownLights } from './vehlights.js';
+import { vehicleInfo } from './vehicles.js';
+import { Dashboard } from './dashboard.js';
 import { PadNav, pad as padGlyph, isPsg1, isPsg1Pad, enablePsg1 } from './psg1.js';
 const pad = padGlyph;
 import { wsUrl, SITE, SERVER_OK } from './server.js';
@@ -130,6 +133,7 @@ let beerRun = null; // the Beer Run game, in cities that have one
 let nightLights = null; // street lamps (and Google 3D's lit windows) after dark
 let colView = null; // collision-shape outlines (debug view, and flashing whatever blocks the robot)
 let props = null; // loose objects lying around the city
+let grownLights = null; // lights on supersized cars and boats lying around
 let rampage = null; // robot-mode destruction
 // Robot mode: `plane` and `flight` point at the robot while it's out, and the
 // vehicle waits in `vehicle` until you change back.
@@ -153,7 +157,7 @@ const mp = new Multiplayer({
       const group = new THREE.Group();
       if (props.info(kind)) group.add(props.mesh(kind, Number(tint)));
       const model = { group };
-      if (kind === 'plane') addNavLights(model, parkedPlaneSpec(1, 0)); // a friend flying a parked plane
+      addRideLights(model, kind, props?.kinds); // head/tail lights, or a flown parked plane's nav lights
       return model;
     }
     if (v.startsWith('bot-')) return createRobot(v.slice(4));
@@ -248,6 +252,8 @@ async function buildWorld() {
   world = new World(scene, data, { satImage });
   traffic = new Traffic(scene, world, prefs.low ? 350 : IS_TOUCH || isPsg1() ? 900 : 2500, { city: settings.city, detail: prefs.low || isPsg1() ? 40 : IS_TOUCH ? 80 : 150, lightCap: prefs.low || isPsg1() ? 300 : 1200 });
   props = new Props(scene, world);
+  grownLights?.dispose();
+  grownLights = new GrownLights(scene, props, prefs.low || isPsg1() ? 6 : 12);
   // A car taken off the road (grabbed, kicked, squashed) vanishes for the whole room.
   traffic.onRemove = (i) => mp.room && mp.send({ t: 'car-gone', city: settings.city, i });
   rampage = new Rampage(scene, world, traffic, props, {
@@ -261,7 +267,15 @@ async function buildWorld() {
     canBreak: () => !google,
     // Objects picked up, thrown, dropped, resized or driven: the room sees it too.
     shared: (type, it, extra) => mpShareProp(type, it, extra),
-    driving: () => {
+    // A grown toilet is grown for the whole room.
+    toilet: (t) => mp.room && mp.send({ t: 'toilet', city: settings.city, i: world.toilets.indexOf(t), scale: t.scale }),
+    driving: (on) => {
+      // Head and tail lights on the car being driven (they grow with it).
+      const dr = rampage.driving;
+      if (on && dr && !dr.mesh.getObjectByName('vehLights')) {
+        const l = vehicleLights(dr.item.kind, props.kinds[dr.item.kind]?.model);
+        if (l) dr.mesh.add(l);
+      }
       setBotUi();
       $('driveBtn').hidden = true;
     },
@@ -456,7 +470,39 @@ function clearDebris() {
 }
 
 // ------------------------------------------------------------------ camera
-const CAMS = ['chase', 'far', 'cockpit'];
+/** Size, seat and dashboard of a drivable object (car kinds go by their model). */
+const driveInfo = (it) => vehicleInfo(props.kinds[it.kind]?.model || it.kind);
+const dashboard = new Dashboard();
+/** The dashboard for the first-person view: what you're in, tinted its colour, needles live. */
+function updateDashboard() {
+  const dr = isBot && rampage?.driving;
+  let type = null;
+  if (running && CAMS[camMode] === 'cockpit' && !flight.crashed && !window.__game?.photo) {
+    if (dr) type = driveInfo(dr.item)?.dash || 'car';
+    else if (!isBot) type = isHeli ? 'heli' : 'plane';
+  }
+  const tint = dr ? '#' + new THREE.Color(props.kinds[dr.item.kind]?.tint ? dr.item.tint : 0xf2c200).getHexString()
+    : takenPlane?.it && !isHeli ? '#' + new THREE.Color(takenPlane.it.tint).getHexString() : isHeli ? '#5b6770' : '#c62828';
+  dashboard.show(type, tint);
+  if (!type) return;
+  const c = flight.ctrl || {};
+  const mph = (dr ? Math.hypot(flight.vel.x, flight.vel.z) : flight.speed) * 2.237;
+  const fw = flight.forward;
+  dashboard.update({
+    mph: type === 'boat' || type === 'heli' ? mph * 0.869 : mph, // knots on the water and in the copter
+    maxMph: type === 'car' ? 140 : type === 'boat' ? 60 : type === 'heli' ? 160 : 200,
+    throttle: dr ? Math.min(1, Math.abs(c.pitch || 0)) : flight.throttle ?? 0.5,
+    altFt: (flight.pos.y - (plane.gearHeight || 0) + world.baseElevation) * 3.281,
+    vs: (flight.vel?.y || 0) * 196.9,
+    heading: flight.heading || 0,
+    pitch: Math.asin(THREE.MathUtils.clamp(fw.y, -1, 1)),
+    roll: isHeli ? (c.roll || 0) * 0.3 : Math.atan2(-flight.right.y, flight.up.y),
+    steer: THREE.MathUtils.clamp(c.roll || 0, -1, 1),
+    stick: THREE.MathUtils.clamp(c.pitch || 0, -1, 1),
+    gear: mph < 1 ? 'P' : (c.pitch || 0) < -0.1 ? 'R' : 'D',
+  });
+}
+const CAMS = ['chase', 'cockpit']; // behind and above, or the driver's seat
 let camMode = 0;
 const camPos = new THREE.Vector3();
 const camLook = new THREE.Vector3();
@@ -491,6 +537,23 @@ function updateCamera(dt) {
   for (const m of plane.cockpitHidden) m.visible = mode !== 'cockpit';
   // From the cockpit the propeller is hidden (up close, its blur disc filled the sky).
   if (!isHeli && !isBot) for (const c of plane.propeller.children) c.visible = mode !== 'cockpit';
+  const dr = isBot && rampage?.driving;
+  if (dr) dr.mesh.visible = true;
+  if (mode === 'cockpit' && dr) {
+    // Driving a car, truck or boat: from the driver's seat, looking out over the dashboard.
+    const eye = driveInfo(dr.item)?.eye || [0, 2, 0];
+    plane.group.updateMatrixWorld();
+    camera.position.set(eye[0], eye[1], eye[2]);
+    dr.mesh.localToWorld(camera.position);
+    dr.mesh.getWorldQuaternion(camera.quaternion);
+    camera.rotateX(-0.06); // a touch down, to see the road (and the dashboard) ahead
+    // The car's own body would fill the view from inside (the dashboard stands in for it);
+    // a boat's open deck and bow stay.
+    if (!flight.boat) dr.mesh.visible = false;
+    camera.up.set(0, 1, 0);
+    camInit = false;
+    return;
+  }
   if (mode === 'cockpit') {
     plane.group.updateMatrixWorld();
     camera.position.copy(plane.cockpitEye).applyMatrix4(plane.group.matrixWorld);
@@ -504,20 +567,22 @@ function updateCamera(dt) {
     // Pull back a little while flying on the jets, to see where you're going.
     botAir += ((isBot && !flight.onGround ? 1 : 0) - botAir) * (1 - Math.exp(-dt * 1.5));
     const big = (flight.size || 1) ** 0.85; // a grown robot needs the camera farther back
-    const back = (mode === 'chase' ? 36 : 80) * (1 + 0.35 * (flight.driving || 0)) * (1 + 0.5 * botAir) * big;
-    want = p.clone().addScaledVector(flatF, -back).add(new THREE.Vector3(0, (mode === 'chase' ? 19 : 42) * big * (1 + (big - 1) * 0.25), 0)); // higher too, to see over towers
+    // Driving: farther back and higher, looking down on the car's roof, not just its bumper.
+    const drv = 1 + 0.2 * (flight.driving || 0);
+    const back = 28 * drv * (1 + 0.5 * botAir) * big;
+    want = p.clone().addScaledVector(flatF, -back).add(new THREE.Vector3(0, 22 * drv * big * (1 + (big - 1) * 0.25), 0)); // higher too, to see over towers
     look = p.clone().addScaledVector(flatF, 14 * big).add(new THREE.Vector3(0, 9 * big, 0));
     if (potty.sitting > 0) {
       // On the toilet: look from the front, so the tank isn't in the way.
-      want = p.clone().addScaledVector(flatF, 30).addScaledVector(flight.right, 12).add(new THREE.Vector3(0, 13, 0));
-      look = p.clone().add(new THREE.Vector3(0, 7, 0));
+      const tk = big; // a grown robot on a grown toilet: same view, farther out
+      want = p.clone().addScaledVector(flatF, 30 * tk).addScaledVector(flight.right, 12 * tk).add(new THREE.Vector3(0, 13 * tk, 0));
+      look = p.clone().add(new THREE.Vector3(0, 7 * tk, 0));
     }
-  } else if (mode === 'chase') {
-    want = p.clone().addScaledVector(f, -24).addScaledVector(flatF, -2).add(new THREE.Vector3(0, 7, 0));
-    look = p.clone().addScaledVector(f, 12);
   } else {
-    want = p.clone().addScaledVector(flatF, -70).add(new THREE.Vector3(0, 28, 0));
-    look = p.clone().addScaledVector(f, 25);
+    // Behind and well above, looking down a little: you see the top of the
+    // wings (or rotor), not just the tail.
+    want = p.clone().addScaledVector(f, -21).addScaledVector(flatF, -2).add(new THREE.Vector3(0, 10.5, 0));
+    look = p.clone().addScaledVector(f, 10).add(new THREE.Vector3(0, 1.5, 0));
   }
   if (flight.crashed) {
     // Pull back and up so the whole wreck is in view.
@@ -537,7 +602,7 @@ function updateCamera(dt) {
     camLookOff.copy(lookOff);
     camInit = true;
   }
-  const k = 1 - Math.exp(-dt * (mode === 'chase' ? 7 : 3));
+  const k = 1 - Math.exp(-dt * 7);
   camOff.lerp(wantOff, k);
   camLookOff.lerp(lookOff, 1 - Math.exp(-dt * 12));
   if (flight.crashed) {
@@ -2628,6 +2693,8 @@ function onFriendEvent(m) {
     else message(`🙌 ${pl.name} wants a high-five!<small>Press 🙌 (J) back</small>`, 3);
   } else if (m.t === 'hi5ok' && pl && m.to === mp.myId) {
     celebrateHi5(pl, false);
+  } else if (m.t === 'toilet' && m.city === settings.city && world?.toilets[m.i]) {
+    world.resizeToilet(world.toilets[m.i], THREE.MathUtils.clamp(+m.scale || 1, 1, 8));
   } else if (m.t === 'hit' && pl && m.to === mp.myId && roomOpts.shove && isBot && !rampage.driving && potty.sitting <= 0 && !rgFrozen()) {
     // Shoved by a friend's robot: knocked back a few steps, no damage. Bigger robots shove harder;
     // bigger targets move less.
@@ -3310,6 +3377,7 @@ function applyNight() {
   const v = NIGHT.value;
   nightLights?.setNight(v);
   traffic?.setNight(v);
+  setVehicleLightsNight(v);
   google?.setNight(v, prefs.sky === 'sunset');
 }
 for (const b of $('segSky').querySelectorAll('button')) {
@@ -3542,10 +3610,15 @@ function nearestToilet() {
   const p = flight.pos;
   return [...world.toilets].sort((a, b) => Math.hypot(a.x - p.x, a.z - p.z) - Math.hypot(b.x - p.x, b.z - p.z))[0];
 }
+const toiletScale = (t) => t?.scale || 1;
+/** How big a robot this player would be on the seat: a plane or copter turns into a 1x robot. */
+const sitterSize = () => (isBot ? bot.walk?.size || 1 : 1);
 function pottyReady() {
   const t = nearestToilet();
-  return !!t && Math.hypot(t.x - flight.pos.x, t.z - flight.pos.z) < POTTY_REACH && (isBot || flight.onGround) && !flight.crashed && !bot.walk?.driving;
+  return !!t && Math.hypot(t.x - flight.pos.x, t.z - flight.pos.z) < POTTY_REACH + 10 * Math.max(toiletScale(t), sitterSize()) && (isBot || flight.onGround) && !flight.crashed && !bot.walk?.driving;
 }
+/** A grown robot can't sit on a small toilet: it has to supersize the toilet first. */
+const toiletTooSmall = () => toiletScale(nearestToilet()) < sitterSize();
 /** Wave the prompt away until the next interval. */
 function skipPotty() {
   potty.need = false;
@@ -3559,8 +3632,9 @@ function updatePotty(dt) {
     if (potty.sitting <= 0) {
       // Done: stand up in front of the toilet.
       const f = flight.forward;
-      flight.pos.x += f.x * 9;
-      flight.pos.z += f.z * 9;
+      const k = toiletScale(nearestToilet());
+      flight.pos.x += f.x * 9 * k;
+      flight.pos.z += f.z * 9 * k;
       flight.pos.y = world.heightAt(flight.pos.x, flight.pos.z);
       message('Ahh! All better ✨🚽', 2.5);
     }
@@ -3589,7 +3663,7 @@ function updatePotty(dt) {
   $('pottySkip').hidden = !potty.need;
   if (!show) return;
   $('pottyBtn').classList.toggle('ready', ready);
-  $('pottyText').textContent = ready ? (potty.need ? 'Sit on the toilet' : '🚽 Sit') : `Potty! 🚽 ${fmtDist(Math.hypot(nearestToilet().x - flight.pos.x, nearestToilet().z - flight.pos.z))}`;
+  $('pottyText').textContent = ready ? (toiletTooSmall() ? `🚽 Too small! Grow it to ${sitterSize()}×` : potty.need ? 'Sit on the toilet' : '🚽 Sit') : `Potty! 🚽 ${fmtDist(Math.hypot(nearestToilet().x - flight.pos.x, nearestToilet().z - flight.pos.z))}`;
 }
 function goPotty() {
   if (!running || potty.sitting > 0) return;
@@ -3597,11 +3671,16 @@ function goPotty() {
     if (potty.need) message(`The 🚽 is next to the ${world.data.helipad ? 'helipad and the ' : ''}runway. Land or walk right up to it!`, 3);
     return;
   }
+  if (toiletTooSmall()) {
+    const grow = isPsg1() || padPlay ? '<kbd class="pad">▲</kbd>' : input.isTouch ? 'the supersizer' : '<kbd>.</kbd>';
+    message(`🚽 This toilet is too small for a ${sitterSize()}× robot!<small>Face it and grow it with ${grow} until it's ${sitterSize()}×</small>`, 3.5);
+    return;
+  }
   // Only a robot can sit down: change shape if needed, then take a seat.
   if (!isBot) transform();
   finishMorph();
   const t = nearestToilet();
-  flight.place(new THREE.Vector3(t.x, t.y + 3.4, t.z), t.yaw, null);
+  flight.place(new THREE.Vector3(t.x, t.y + 3.4 * toiletScale(t), t.z), t.yaw, null);
   flight.onGround = true;
   camInit = false;
   potty.need = false;
@@ -3908,6 +3987,8 @@ function dressAsParked(model, it) {
   model.group.add(mesh);
   model.parked = { mesh, kind: it.kind, tint: it.tint, scale: it.scale || 1 };
   model.cockpitHidden = [];
+  // First person: in its own cabin, under the high wing.
+  model.cockpitEye = new THREE.Vector3(0, 2.62 * (it.scale || 1) - model.gearHeight, -1.25 * (it.scale || 1));
   model.updateBoosters = () => {}; // (the bush plane's turbo flames would float in the wrong place)
   model.wheels = []; // its own wheels are part of its model
   addNavLights(model, parkedPlaneSpec(it.scale || 1, model.gearHeight)); // lights on its own wingtips
@@ -3951,6 +4032,8 @@ function frame() {
   updatePerf(Math.min(rawDt, 0.25));
   if (input.pad() && !codePick) padNav.sync();
   updateNavLights(timer.getElapsed(), NIGHT.value);
+  if (!running && dashboard.visible) dashboard.show(null);
+  if (running && grownLights) grownLights.update(flight.pos.x, flight.pos.z, NIGHT.value);
   updateRoomGames(); // countdowns run in the menu too
   updateFriends();
   if (running) updateFormation(dt);
@@ -4028,6 +4111,7 @@ function frame() {
     }
     sound.update(flight.crashed ? 0 : flight.throttle, flight.speed);
     updateCamera(dt);
+    updateDashboard();
     updateHud(dt);
     updateLabels();
     // The map moves well under a pixel in 1/15 s, and redrawing every street and
@@ -4088,6 +4172,7 @@ if (new URLSearchParams(location.search).has('debug')) {
     autoLandApi: { start: (l) => { autoLandTarget = l; startAutoLand(); }, step: (dt) => autoLand && updateAutoLand(dt), active: () => !!autoLand },
     step: (dt, ctl) => flight.update(dt, ctl), beer: () => beerRun, gameObj: () => game,
     bot: () => ({ isBot, walk: bot.walk, rampage, props }),
+    cam: (m) => (m != null && (camMode = CAMS.indexOf(m)), CAMS[camMode]), dashboard, get grownLights() { return grownLights; },
     roomGame: () => ({ g: rgGame, run: rgRun, game, scores: rgScores, keg: rgKeg, landed: rgLanded }),
     friendState: () => ({ formationWith: formation.with, trails: formation.partnerTrail.size, carriedBy: carry.by, carrying: carry.who }),
   };
