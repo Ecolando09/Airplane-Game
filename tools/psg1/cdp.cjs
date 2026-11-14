@@ -8,7 +8,7 @@
 //   node tools/psg1/cdp.cjs eval "window.__game.mp.status"
 //   node tools/psg1/cdp.cjs eval "window.__game.flight.pos"      (prints JSON)
 //   node tools/psg1/cdp.cjs shot psg1.png                         (screenshot)
-//   node tools/psg1/cdp.cjs pad 1                                  (press browser button 1 = A on the PSG1)
+//   Buttons: use adb (adb shell input keyevent 96 = BUTTON_A, 97 = BUTTON_B, 19-22 D-pad, 108 START).
 // Options: CDP_PORT (default 9222), CDP_MATCH (text in the tab's URL, default "4173").
 // Needs the "ws" package (already a dependency of the relay).
 const http = require('node:http');
@@ -73,15 +73,8 @@ async function main() {
     fs.writeFileSync(arg || 'psg1.png', Buffer.from(r.result.data, 'base64'));
     c.close();
     console.log(`saved ${arg || 'psg1.png'}`);
-  } else if (cmd === 'pad') {
-    // Press a browser gamepad button through the game's virtual pad (for checks
-    // after the real controller has been seen once).
-    const i = Number(arg);
-    await evaluate(`(async () => { const p = window.__game.input; const gp = p.pad(); if (!gp) return 'no pad seen yet: press any PSG1 button once';
-      const b = gp.buttons[${i}]; const orig = Object.getOwnPropertyDescriptor(b, 'pressed');
-      return 'pad ready (use adb keyevents for real presses)'; })()`).then(console.log);
   } else {
-    console.log('usage: node tools/psg1/cdp.cjs eval <expression> | shot <file.png> | pad <button>');
+    console.log('usage: node tools/psg1/cdp.cjs eval <expression> | shot <file.png>');
   }
 }
 if (require.main === module) main().catch((e) => {
