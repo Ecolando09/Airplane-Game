@@ -4881,6 +4881,7 @@ function frame() {
   }
   sun.target.position.copy(running ? plane.group.position : camera.position);
   sun.position.copy(sun.target.position).addScaledVector(SUN_DIR, 800);
+  if (world && !google) world.cullFar(camera.position, scene.fog.far + 200); // past the fog everything is sky-colored
   renderer.render(scene, camera);
 }
 

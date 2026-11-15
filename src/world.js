@@ -47,6 +47,7 @@ export class World {
     this.data = data;
     this.satImage = satImage;
     this.meshes = []; // everything a Google 3D-tiles world replaces
+    this.farParts = []; // building and tree chunks, hidden when wholly past the fog (cullFar)
     [this.sizeX, this.sizeZ] = data.size;
     this.halfX = this.sizeX / 2;
     this.halfZ = this.sizeZ / 2;
@@ -404,6 +405,17 @@ export class World {
     this.meshes.push(beacon);
   }
 
+  /**
+   * Skip drawing building and tree chunks wholly farther than `far` (the fog)
+   * from `pos`: they would be sky-colored anyway, and the big maps have hundreds.
+   */
+  cullFar(pos, far) {
+    for (const m of this.farParts) {
+      const s = m.boundingSphere || m.geometry.boundingSphere;
+      m.visible = pos.distanceTo(s.center) - s.radius < far;
+    }
+  }
+
   // -------------------------------------------------------------- buildings
   _chunkKey(x, z) {
     return `${Math.floor((x + this.halfX) / CHUNK)},${Math.floor((z + this.halfZ) / CHUNK)}`;
@@ -539,6 +551,7 @@ export class World {
         im.castShadow = im.receiveShadow = true;
         this.scene.add(im);
         this.meshes.push(im);
+        this.farParts.push(im);
       }
       if (ch.polys.length) {
         const mesh = new THREE.Mesh(mergeGeometries(ch.polys), polyMat);
@@ -547,9 +560,11 @@ export class World {
           Object.assign(ch.polyCols[i], { mesh, v0, vn: g.attributes.position.count });
           v0 += g.attributes.position.count;
         });
+        mesh.geometry.computeBoundingSphere();
         mesh.castShadow = mesh.receiveShadow = true;
         this.scene.add(mesh);
         this.meshes.push(mesh);
+        this.farParts.push(mesh);
       }
     }
   }
@@ -598,6 +613,7 @@ export class World {
         im.castShadow = true;
         this.scene.add(im);
         this.meshes.push(im);
+        this.farParts.push(im);
       }
     }
   }
