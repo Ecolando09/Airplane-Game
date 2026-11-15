@@ -253,6 +253,10 @@ function ggbridge(world, s) {
     const u = (Math.abs(t) - anchor) / (Math.abs(end) - anchor);
     return DECK + (Math.max(ground, 8) - DECK) * u;
   };
+  // Drivable: the deck's road surface, for cars, traffic and the robot (see bridges.js).
+  const surface = [];
+  for (let t = -s.south; t <= s.north; t += 20) surface.push([s.x + fwd.x * t, s.z + fwd.z * t, water + deckY(t) - 3.5]);
+  (world.customBridges ||= []).push({ w: 26, pts: surface, water });
   // Deck in 60 m pieces (local z = -t, since -Z is north).
   for (let t = -s.south; t < s.north; t += 60) {
     const t1 = Math.min(t + 60, s.north);

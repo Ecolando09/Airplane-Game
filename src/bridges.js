@@ -19,7 +19,12 @@ export class Bridges {
     this.world = world;
     this.list = []; // { w, pts: [[x, z, y], ...] }
     this.grid = new Map();
+    // Hand-built bridges (the Golden Gate) first: the roads over them don't get a second deck.
+    this.list.push(...(world.customBridges || []));
+    this._index();
+    this.custom = this.list.length;
     this._find();
+    this.grid = new Map();
     this._index();
   }
 
@@ -80,6 +85,21 @@ export class Bridges {
   /** One bridge over the sampled points: deck heights ramp up from both banks to clear the water. */
   _add(pts, width, major) {
     const w = this.world;
+    if (this.custom) {
+      // A hand-built bridge here already (the map's carriageways run either side of its middle).
+      const m = pts[Math.floor(pts.length / 2)];
+      for (let i = 0; i < this.custom; i++) {
+        const c = this.list[i];
+        for (let k = 1; k < c.pts.length; k++) {
+          const [x0, z0] = c.pts[k - 1];
+          const [x1, z1] = c.pts[k];
+          const dx = x1 - x0;
+          const dz = z1 - z0;
+          const t = Math.max(0, Math.min(1, ((m[0] - x0) * dx + (m[1] - z0) * dz) / (dx * dx + dz * dz || 1)));
+          if (Math.hypot(m[0] - (x0 + dx * t), m[1] - (z0 + dz * t)) < 60) return;
+        }
+      }
+    }
     const total = (pts.length - 1) * STEP;
     const gA = w.groundAt(pts[0][0], pts[0][1]);
     const gB = w.groundAt(pts[pts.length - 1][0], pts[pts.length - 1][1]);
@@ -154,7 +174,7 @@ export class Bridges {
     const s = new THREE.Vector3();
     const UP = new THREE.Vector3(0, 1, 0);
     const qp = new THREE.Quaternion();
-    for (const b of this.list) {
+    for (const b of this.list.slice(this.custom)) { // (hand-built bridges have their own model)
       let sincePier = 30;
       // Straight, even stretches are drawn as one long piece (far fewer pieces to draw).
       const keep = [b.pts[0]];

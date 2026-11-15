@@ -3257,7 +3257,7 @@ const PSG1_CONTROLS = `
 <div class="controls psg1-only">
             <div><b>Left stick</b> steer &amp; climb · <b>Right stick</b> ◀▶ rudder, ▲▼ throttle · <kbd class="pad">B</kbd> brake</div>
             <div>Copter: <b>left stick</b> ◀▶ turn, ▲▼ speed · <b>right stick</b> ▲▼ up / down</div>
-            <div><kbd class="pad">A</kbd> floats · <kbd class="pad">R1</kbd> turbo · <kbd class="pad">L1</kbd> auto-land · <kbd class="pad">X</kbd> camera</div>
+            <div><kbd class="pad">A</kbd> floats (shuttle: hover mode) · <kbd class="pad">R1</kbd> turbo · <kbd class="pad">L1</kbd> auto-land · <kbd class="pad">X</kbd> camera</div>
             <div><kbd class="pad">Y</kbd> robot mode: walk with the left stick (all the way to run), <kbd class="pad">B</kbd> jump (hold to fly),
               <kbd class="pad">R1</kbd> smash, <kbd class="pad">A</kbd> grab and throw, <kbd class="pad">Y</kbd> drive (next to a car, boat or plane), <kbd class="pad">L1</kbd> turbo, <kbd class="pad">▲</kbd><kbd class="pad">▼</kbd> supersizer,
               click the <b>right stick</b> to grow the robot, the <b>left stick</b> to shrink it</div>
