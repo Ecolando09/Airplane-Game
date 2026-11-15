@@ -188,8 +188,12 @@ export class Rampage {
     return true;
   }
 
-  /** Break everything within `r` of a point (a punch, a stomp, a thrown bus). */
-  blast(x, y, z, r, from) {
+  /**
+   * Break everything within `r` of a point (a punch, a stomp, a thrown bus).
+   * kind ('punch' | 'stomp' | 'car') and size (the robot's) tell the giant squid what hit it.
+   */
+  blast(x, y, z, r, from, kind = null, size = 1) {
+    if (kind) this.hooks.blasted?.(x, y, z, r, kind, size);
     const w = this.world;
     let n = 0;
     let tough = false;
@@ -393,7 +397,7 @@ export class Rampage {
     const r = THREE.MathUtils.clamp(speed * 0.3, 10, 22) * (bot.size || 1);
     this.burst(bot.pos.x, bot.pos.y, bot.pos.z, 8, 0xb5b0a4, 14);
     this.explode(bot.pos.x, bot.pos.y + 2, bot.pos.z, r * 0.8);
-    return this.blast(bot.pos.x, bot.pos.y + 3, bot.pos.z, r, bot.pos);
+    return this.blast(bot.pos.x, bot.pos.y + 3, bot.pos.z, r, bot.pos, 'stomp', bot.size || 1);
   }
 
   /** How the drive, horn and exit controls are named on this device (hooks.keys). */
@@ -528,7 +532,7 @@ export class Rampage {
       const k = p.bot.size || 1; // a bigger robot's fist lands farther out and hits a wider area
       const x = p.bot.pos.x + f.x * 7 * k;
       const z = p.bot.pos.z + f.z * 7 * k;
-      this.blast(x, p.bot.pos.y + 8 * k, z, REACH * k, p.bot.pos);
+      this.blast(x, p.bot.pos.y + 8 * k, z, REACH * k, p.bot.pos, 'punch', k);
     }
     // The car being driven: wheels roll and steer, the body leans into turns and dips when braking.
     const dr = this.driving;
@@ -606,7 +610,7 @@ export class Rampage {
         // Thrown things smash what they hit and lose most of their speed.
         if (o.thrown && !o.remote && w.hitsObstacle({ x: p.x, y: p.y + info.r, z: p.z }, info.r)) {
           this.explode(p.x, p.y + info.r, p.z, info.r * 2.2 + 4);
-          const n = this.blast(p.x, p.y + info.r, p.z, info.r + 3, o.from);
+          const n = this.blast(p.x, p.y + info.r, p.z, info.r + 3, o.from, 'car');
           o.hits += n;
           if (!n || o.hits > 3) {
             o.v.multiplyScalar(-0.15);
@@ -622,7 +626,8 @@ export class Rampage {
           p.y = g;
           if (o.thrown) {
             this.explode(p.x, p.y + 2, p.z, info.r * 2 + 3);
-            this.blast(p.x, p.y + 2, p.z, info.r + 2, o.from); // cars and props it lands on
+            this.blast(p.x, p.y + 2, p.z, info.r + 2, o.from, 'car'); // cars and props it lands on
+            this.hooks.landed?.(o.item, p.x, p.z); // in the water by an awake squid: it's eaten instead of you
           }
           o.thrown = false;
           if (Math.abs(o.v.y) > 9 && (o.bounces = (o.bounces || 0) + 1) < (info.bouncy ? 6 : 2)) {

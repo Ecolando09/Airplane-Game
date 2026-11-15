@@ -27,6 +27,9 @@ import { Dashboard } from './dashboard.js';
 import { PadNav, pad as padGlyph, isPsg1, isPsg1Pad, enablePsg1 } from './psg1.js';
 const pad = padGlyph;
 import { wsUrl, SITE, SERVER_OK } from './server.js';
+import { SquidPlay, SquidHunt } from './squidplay.js';
+import { Melons, MELON_COOLDOWN } from './melon.js';
+import { nearestShore } from './squid.js';
 
 const $ = (id) => document.getElementById(id);
 const SKY = 0x9fd0ff;
@@ -44,12 +47,12 @@ const VEHICLE_NAMES = { plane: 'Bush Plane', heli: 'Ghost-Spider Copter', jet: '
 const createOwnModel = (kind) => (kind === 'heli' ? createGhostSpiderHeli() : kind === 'jet' ? createPassengerJet() : createLegoPlane());
 const ownKind = (v) => (v === 'heli' || v === 'jet' ? v : 'plane');
 const LOOK_NAMES = { lego: 'Lego', real: 'Realistic', google: 'Google 3D' };
-const MODES = { free: 'Free flight', rings: 'Ring Race', rampage: 'Rampage', beer: 'Beer Run' }; // Beer Run: only in Fort Collins
+const MODES = { free: 'Free flight', rings: 'Ring Race', rampage: 'Rampage', beer: 'Beer Run', squid: 'Squid Hunt' }; // Beer Run: only in Fort Collins; Squid Hunt: cities with a squid
 // Preferences that stay on this device (not shared with a room). The PSG1 keeps
 // its own (see usePsg1Prefs) and starts on Low graphics: on the PSG1 that is the
 // PSG1 preset (see pixelRatio).
 let PREFS_KEY = __PSG1__ ? 'legosky.psg1.prefs' : 'legosky.prefs';
-const prefs = { sens: 100, invert: false, sound: true, music: false, low: __PSG1__, sky: 'day', paint: 'classic', potty: 'some', ...(() => {
+const prefs = { sens: 100, invert: false, sound: true, music: false, low: __PSG1__, sky: 'day', paint: 'classic', potty: 'off', monster: 'on', ...(() => {
   try {
     return JSON.parse(localStorage.getItem(PREFS_KEY) || '{}');
   } catch {
@@ -60,6 +63,13 @@ function savePrefs() {
   try {
     localStorage.setItem(PREFS_KEY, JSON.stringify(prefs));
   } catch {}
+}
+// The owner's choice (2026-11-14): no potty pop-up unless switched on in
+// Settings. Players who had it on get it switched off once.
+if (!prefs.pottyOffOnce) {
+  prefs.potty = 'off';
+  prefs.pottyOffOnce = 1;
+  savePrefs();
 }
 const CONFIG = window.LEGOSKY_CONFIG || {};
 const DEBUG = new URLSearchParams(location.search).has('debug');
@@ -311,7 +321,11 @@ async function buildWorld() {
     },
     wrecked: (c) => mpSendSmash(c),
     threw: () => {},
+    // The giant squid: punches, stomps and thrown cars that land on it, and cars thrown in beside it.
+    blasted: (x, y, z, r, kind, size) => squid?.blast(x, y, z, r, kind, size),
+    landed: (it, x, z) => squid?.landed(x, z),
   });
+  makeSquid();
   game?.dispose();
   game = null;
   beerRun?.dispose();
@@ -1003,6 +1017,22 @@ function drawMinimap() {
     }
   }
 
+  // Giant squids within 400 m: a ripple mark (red and pulsing when awake).
+  for (const s of squid?.marks(p.x, p.z) || []) {
+    const [x, y] = toMap(s.x, s.z);
+    const r = Math.max(10, 18 * k);
+    const pulse = s.awake ? 0.5 + 0.5 * Math.sin(performance.now() / 150) : 0;
+    mctx.lineWidth = 2.5;
+    mctx.strokeStyle = s.awake ? `rgba(255, 60, 90, ${0.6 + 0.4 * pulse})` : 'rgba(30, 40, 90, 0.75)';
+    for (const f of [0.55, 1, 1.45]) {
+      mctx.beginPath();
+      mctx.arc(x, y, r * f * (1 + pulse * 0.15), 0, Math.PI * 2);
+      mctx.stroke();
+    }
+    mctx.font = '16px system-ui, sans-serif';
+    mctx.fillText('🦑', x, y + 6);
+  }
+
   // Beer Run: the followed order's route as a dashed line, then each stop in
   // its order's color with the letter (squares load, circles deliver).
   const route = play()?.mapRoute();
@@ -1256,6 +1286,7 @@ function updateLabels() {
       items.push({ el: kegLabel, x: ks.x, y: (ks.y ?? world.heightAt(ks.x, ks.z)) + 80, z: ks.z, d, pin: true });
     }
   } else kegLabel.style.display = 'none';
+  if (squid) items.push(...squid.labelItems(p, fmtDist)); // the giant squids' deep navy markers
   for (const pg of pings) {
     const d = Math.hypot(pg.x - p.x, pg.z - p.z);
     pg.label.textContent = `📍 ${pg.name} · ${fmtDist(d)}`;
@@ -1458,12 +1489,13 @@ function updateMenu() {
     b.setAttribute('aria-pressed', String(on));
     b.disabled = building;
     if (b.dataset.v === 'beer') b.hidden = !data.beerRun;
+    if (b.dataset.v === 'squid') b.hidden = !squid?.spots.length; // no squid in this city: no Squid Hunt
   }
   $('beerIntro').hidden = mode === 'free';
   $('modeIntro').innerHTML = MODE_INTRO[mode] || '';
   $('startAir').hidden = mode === 'rampage' || mode === 'rings';
   if (mode !== 'free' && !pausedFlight) {
-    $('startRunway').textContent = { beer: `🍺 Start a shift from ${base}`, rings: '⭕ Start the Ring Race', rampage: '🤖 Start the Rampage' }[mode];
+    $('startRunway').textContent = { beer: `🍺 Start a shift from ${base}`, rings: '⭕ Start the Ring Race', rampage: '🤖 Start the Rampage', squid: '🦑 Start the Squid Hunt' }[mode];
     $('startAir').textContent = '🍺 Start a shift in the air';
   }
   if (mode !== 'free') watchBoard();
@@ -1710,7 +1742,7 @@ $('helpBtn').onclick = () => {
 // Beer Run (Fort Collins, src/beerrun.js), Ring Race and Rampage (src/games.js).
 // Here: starting them, the shared HUD strip, the end card, personal bests and
 // the leaderboards kept on the relay server (one per game and city).
-const gameMode = () => (settings.mode === 'beer' && !data?.beerRun ? 'free' : settings.mode);
+const gameMode = () => ((settings.mode === 'beer' && !data?.beerRun) || (settings.mode === 'squid' && !squid?.spots.length) ? 'free' : settings.mode);
 const beerOn = () => !!beerRun && gameMode() === 'beer';
 /** The game in progress, if any. */
 const play = () => (beerRun?.active ? beerRun : game?.active ? game : null);
@@ -1719,6 +1751,7 @@ const GAME_UI = {
   beer: { over: "🍺 Shift's over!", fmt: (n) => `$${n.toLocaleString()}`, again: 'Run another shift' },
   rings: { over: '⭕ Race finished!', fmt: (n) => `${n.toLocaleString()} pts`, again: 'Race again' },
   rampage: { over: '🤖 Rampage over!', fmt: (n) => `${n.toLocaleString()} pts`, again: 'Rampage again' },
+  squid: { over: '🦑 Squid Hunt over!', fmt: (n) => `${n.toLocaleString()} pts`, again: 'Hunt again' },
 };
 const MODE_INTRO = {
   beer: `Five-minute shift, one delivery at a time. Fly low through the brewery's <b class="amber">amber beam</b> (or land in it) to
@@ -1728,6 +1761,8 @@ const MODE_INTRO = {
     Beat the par time for ★★★.`,
   rampage: `Two minutes as a giant robot downtown. Smash buildings (taller pays more), throw cars, stomp from jet-jumps, and
     keep hitting things to build your combo.`,
+  squid: `Four minutes against the giant squid boss: tougher, with two extra arms, and it never gives up. Watermelons
+    (<kbd>Z</kbd>) 2 points, punches 1 to 3, thrown cars 3, stomps 4, the final blow 10, beating it 10 more. Pulled under: −3.`,
 };
 
 /** Start the chosen game right after a normal start (called from start()). */
@@ -1752,6 +1787,23 @@ function startGame() {
     }) });
     game.start(flight.pos, flight.heading, !isHeli);
     message(`⭕ Ring Race! ${game.rings.length} rings<small>Fly through the yellow ring, then the next. Par ${fmtClock(game.par)}</small>`, 4);
+    return true;
+  }
+  if (mode === 'squid') {
+    // The squid nearest downtown becomes the boss; you start 400 m out, 120 m up, facing it.
+    const i = squid.bossIndex(world.landmarks[0]);
+    squid.makeBoss(i);
+    game = new SquidHunt(squid, { ...hooks, onEnd: (r) => {
+      squid.endBoss();
+      endGame('squid', r.score, {
+        title: r.beaten ? `🦑 Beaten! ${'★'.repeat(r.stars)}${'☆'.repeat(3 - r.stars)}` : r.stars ? `${'★'.repeat(r.stars)}${'☆'.repeat(3 - r.stars)}` : 'No hits!', stars: r.stars,
+        chips: [`🎯 ${r.hits} hits`, r.beaten ? `🏆 beaten in ${fmtClock(r.time)}` : '⏱ time ran out', `🌊 pulled under ${r.lost}×`],
+        note: r.beaten ? `beaten ${fmtClock(r.time)}` : `${r.hits} hits`,
+      });
+    } });
+    huntPlace(i, 0, 1, false, 400);
+    game.start();
+    message('🦑 SQUID HUNT! Four minutes<small>Throw watermelons (Z), punch it as the robot, throw cars at it</small>', 4);
     return true;
   }
   if (mode === 'rampage') {
@@ -1984,6 +2036,7 @@ function saveLogbook() {
 const logCount = () => ({
   cities: Object.keys(logbook.cities).length, landmarks: Object.keys(logbook.landmarks).length,
   stars: Object.values(logbook.stars).reduce((a, n) => a + n, 0), smashed: logbook.smashed, butter: logbook.butter,
+  squid: logbook.squid || 0,
 });
 const PAINTS = [
   { id: 'classic', name: 'Classic', color: null, need: () => true, how: '' },
@@ -1994,6 +2047,7 @@ const PAINTS = [
   { id: 'silver', name: 'Chrome', color: 0xc9d0d6, need: (c) => c.butter >= 1, how: 'Make a ★★★ butter landing' },
   { id: 'purple', name: 'Royal Purple', color: 0x7a3fd0, need: (c) => c.landmarks >= 25, how: 'Find 25 landmarks' },
   { id: 'gold', name: 'Gold', color: 0xe8b923, need: (c) => c.stars >= 15, how: 'Earn 15 ★ in games' },
+  { id: 'ink', name: 'Squid Ink', color: 0x2a1a4a, need: (c) => c.squid >= 1, how: 'Beat the giant squid' },
 ];
 const ACCENT = { plane: 0xf2cd37, heli: 0xf0368f, jet: JET_ACCENT }; // the part of each vehicle that takes the paint
 /** Repaint a model's accent-colored parts. */
@@ -2029,7 +2083,7 @@ function renderLogbook() {
   const rows = [
     ['Cities flown', `${c.cities} of ${Object.keys(CITIES).length}`], [`Landmarks found in ${CITIES[settings.city]}`, `${here} of ${world.landmarks.length}`],
     ['Landmarks found everywhere', c.landmarks], ['Stars earned in games', `${c.stars} ★`], ['Things smashed as the robot', c.smashed.toLocaleString()],
-    ['Butter landings (★★★)', c.butter], ['Potty breaks taken 🚽', logbook.potty || 0],
+    ['Butter landings (★★★)', c.butter], ['Potty breaks taken 🚽', logbook.potty || 0], ['Giant squids beaten 🦑', c.squid],
   ];
   $('logbook').replaceChildren(...rows.map(([k, v]) => {
     const d = document.createElement('div');
@@ -2068,6 +2122,7 @@ const ROOM_GAMES = {
   keg: { name: '🍺 Keg Rush', about: 'One keg at a time somewhere in the city. Grab it, fly it to the drop-off. Bump the carrier to make them drop it. First to 5 deliveries wins.', vehicle: true },
   landing: { name: '🛬 Landing Contest', about: 'Everyone starts on approach to the runway. Land softly, on the centerline, near the target mark. Best of 3 landings.', plane: true },
   toss: { name: '🚗 Car Toss', about: 'Robots throw a supersized car as far as they can. Bonus for landing it on a toilet! Best of 3 throws.', robot: true },
+  squid: { name: '🦑 Squid Hunt', about: 'Fight the giant squid boss together, as you are (plane, copter, shuttle or robot). Melons, punches, stomps and thrown cars score; freeing a friend 5; pulled under −3. More players, more health. Four minutes.', squid: true },
   potty: { name: '🚽 Potty Time', about: 'Robots race potty, snack, potty, snack across the city to the golden toilet. One seat per toilet: wait your turn! Mash SMASH on the seat.', robot: true, laps: true },
 };
 let rgGame = null; // the room's game record from the relay ({ game, phase, players, ... }), or null
@@ -2164,6 +2219,7 @@ function onRobotAct(m) {
 const mpAct = (a) => mp.room && mp.send({ t: 'act', a });
 let pendingCatchup = [];
 function applyCatchup(m) {
+  if (m.t === 'squid') return squid?.onMessage(m);
   for (const i of m.cars || []) traffic.removeIndex(Number(i));
   for (const pm of m.props || []) onSharedProp({ ...pm, t: 'prop', city: m.city, id: 0 });
   if (m.smashed?.length) mp.onEvent({ t: 'smash', city: m.city, ids: m.smashed });
@@ -2186,9 +2242,12 @@ function rgSyncPicker() {
 }
 $('rgGame').onchange = rgSyncPicker;
 rgSyncPicker();
-$('rgStart').onclick = () => openRoomGames(false) || mp.send({ t: 'game-start', game: $('rgGame').value, name: mp.name,
-  options: { vehicle: ROOM_GAMES[$('rgGame').value]?.vehicle ? $('rgVehicle').value : ROOM_GAMES[$('rgGame').value]?.plane ? 'plane' : 'bot',
-    laps: Number($('rgLaps').value), spots: world.landmarks.length } });
+$('rgStart').onclick = () => {
+  if ($('rgGame').value === 'squid' && !squid?.spots.length) return toast('No giant squid lives in this city: pick another game', '#7a3fd0');
+  openRoomGames(false) || mp.send({ t: 'game-start', game: $('rgGame').value, name: mp.name,
+    options: { vehicle: ROOM_GAMES[$('rgGame').value]?.vehicle ? $('rgVehicle').value : ROOM_GAMES[$('rgGame').value]?.plane ? 'plane' : 'bot',
+      laps: Number($('rgLaps').value), spots: world.landmarks.length, boss: squid?.bossIndex(world.landmarks[0]) ?? 0 } });
+};
 $('rgGoNow').onclick = $('rgBannerGo').onclick = () => mp.send({ t: 'game-go-now' });
 $('rgCancel').onclick = () => mp.send({ t: rgGame?.phase === 'live' ? 'game-end' : 'game-cancel' });
 $('rgJoin').onclick = () => mp.send({ t: 'game-join', name: mp.name });
@@ -2355,6 +2414,7 @@ function tossTrack(type, it, extra) {
 }
 
 function rgCleanup() {
+  if (rgRun?.game === 'squid' && squid) squid.boss = -1;
   if (rampage) rampage.noDrive = false;
   if (rampage) rampage.prefer = null;
   if (rgRun?.started && game?.active) game.stop();
@@ -2402,6 +2462,16 @@ async function rgPrepare(m) {
   game?.stop();
   beerRun?.stop();
   $('beerEnd').hidden = $('rgResults').hidden = true;
+  if (spec.squid) {
+    // Squid Hunt: everyone comes as they are, in a ring 400 m from the boss.
+    const wasBot = isBot;
+    $('menu').hidden = true;
+    start(false, { roomGame: true });
+    huntPlace(m.options?.boss ?? 0, m.slots?.[mp.myId] ?? 0, m.players?.length || 1, wasBot, 400);
+    rgRun = { game: m.game, base: flight.pos.clone(), heading: 0, started: false, done: false };
+    message(`${spec.name}<small>Get ready: everyone starts together</small>`, 3);
+    return;
+  }
   const v = ownKind(m.options?.vehicle);
   if (settings.vehicle !== v) await applySettings({ vehicle: v });
   $('menu').hidden = true;
@@ -2496,6 +2566,14 @@ function rgGo() {
     rgRun.best = 0;
     tossSpawnCar();
     message('🚗 CAR TOSS! Grab the car and throw it as far as you can (3 throws)', 3.5);
+  } else if (rgRun.game === 'squid') {
+    squid.boss = rgGame?.options?.boss ?? 0;
+    game?.dispose();
+    game = new SquidHunt(squid, { toast, sound: (k) => sound.blip(k), room: true, onEnd: () => {} });
+    game.start();
+    document.body.classList.add('beer');
+    $('beerHud').hidden = false;
+    message('🦑 SQUID HUNT! Hit it with everything you have', 3);
   } else if (rgRun.game === 'potty') {
     game?.dispose();
     game = new PottyTime({
@@ -2539,7 +2617,7 @@ function postRoomScore(key, score, note) {
 
 function rgShowResults(m) {
   const fmt = (r) => {
-    if (m.game === 'rampage' || m.game === 'landing') return `${(r.score || 0).toLocaleString()} pts`;
+    if (m.game === 'rampage' || m.game === 'landing' || m.game === 'squid') return `${(r.score || 0).toLocaleString()} pts`;
     if (m.game === 'keg') return `${r.score || 0} 🍺`;
     if (m.game === 'toss') return `${r.score || 0} m`;
     if (m.game === 'tag') return r.caughtAt ? `caught at ${fmtClock(r.caughtAt / 1000)}` : r.it && !r.caughtAt ? 'started IT' : 'never caught!';
@@ -2588,13 +2666,24 @@ mp.onEvent = (m) => {
     onCarry(m);
   } else if (m.t === 'car-gone') {
     if (m.city === settings.city && !google) traffic.removeIndex(Number(m.i));
-  } else if (['emote', 'honk', 'ping', 'hi5', 'hi5ok', 'hit', 'room-opts'].includes(m.t)) {
+  } else if (['emote', 'honk', 'ping', 'hit', 'room-opts'].includes(m.t)) {
     onFriendEvent(m);
   } else if (m.t === 'catchup') {
     // Joined late: everything already moved, resized or smashed in this room.
     // (It can arrive before the city has loaded: then it waits.)
     if (building || !props || m.city !== settings.city) pendingCatchup.push(m);
     else applyCatchup(m);
+  } else if (m.t === 'melon') {
+    // A friend's watermelon, flying the same way here (their game decides what it hit).
+    if (m.city === settings.city && melons && Array.isArray(m.p)) {
+      const p = new THREE.Vector3(+m.p[0], +m.p[1], +m.p[2]);
+      if (m.at != null && squid?.squids[m.at]) melons.launch(p, new THREE.Vector3(), { mine: false, at: squid.squids[m.at] });
+      else if (Array.isArray(m.v)) melons.launch(p, new THREE.Vector3(+m.v[0], +m.v[1], +m.v[2]), { mine: false });
+    }
+  } else if (m.t === 'squid') {
+    // (Before the city has loaded, it waits with the rest of the catch-up.)
+    if (building || !squid || m.city !== settings.city) pendingCatchup.push(m);
+    else squid.onMessage(m);
   } else if (m.t === 'game') {
     onRoomGame(m);
   } else if (m.t === 'game-scores') {
@@ -2663,6 +2752,7 @@ function updateRoomGames() {
   // Rampage Battle: report my score every second. Infection Tag: catch friends in range.
   if (rgRun?.started && g?.phase === 'live') {
     const nowMs = performance.now();
+    if (rgRun.game === 'squid' && game instanceof SquidHunt) game.total = rgScores?.[mp.myId]?.score || 0; // the relay keeps the score
     if (rgRun.game === 'rampage' && game?.total !== undefined && nowMs - (rgRun.sentAt || 0) > 1000) {
       rgRun.sentAt = nowMs;
       mp.send({ t: 'game-score', score: Math.round(game.total) });
@@ -2691,7 +2781,7 @@ function updateRoomGames() {
       const it = ids.filter((id) => rgScores[id].it);
       chip.push(rgScores[mp.myId]?.it ? `🧟 You're IT · ${ids.length - it.length} still free` : rgIn() ? `🏃 Run! ${it.length} IT · ${ids.length - it.length} free` : `🧟 ${it.length} IT · ${ids.length - it.length} free`);
     } else {
-      const byScore = ['rampage', 'keg', 'landing', 'toss'].includes(g.game);
+      const byScore = ['rampage', 'keg', 'landing', 'toss', 'squid'].includes(g.game);
       const key = (id) => (byScore ? -rgScores[id].score : fin.includes(id) ? -1000 + fin.indexOf(id) : -rgScores[id].progress);
       const order = ids.sort((a, b) => key(a) - key(b));
       chip.push(order.slice(0, 4).map((id, i) => `${i + 1}. ${id === mp.myId ? 'You' : nameOf(id)}${byScore ? ` ${rgScores[id].score}${g.game === 'toss' ? ' m' : g.game === 'keg' ? '🍺' : ''}` : ''}${fin.includes(id) ? ' 🏁' : ''}`).join('  '));
@@ -2713,7 +2803,6 @@ const EMOTES = ['👋', '👍', '😂', '😮', '❤️', '🔥'];
 const PHRASES = ['Race you!', 'Follow me', 'Nice!', 'Oops', 'Again!', 'Wait for me'];
 let roomOpts = { shove: true };
 let pings = []; // { x, y, z, name, color, until, label }
-let hi5 = { mine: 0, theirs: new Map() };
 for (const [i, t] of [...EMOTES, ...PHRASES].entries()) {
   const b = document.createElement('button');
   b.textContent = t;
@@ -2731,7 +2820,7 @@ input.on('select', () => (mp.room && running ? openEmotes() : toggleMap()));
 for (const b of document.querySelectorAll('.emote-acts button')) {
   b.onclick = () => {
     openEmotes(false);
-    ({ horn: honk, goto: () => goToFriend(), ping: sendPing, hi5: highFive, games: () => openRoomGames(true), map: toggleMap, close: () => {} })[b.dataset.do]();
+    ({ horn: honk, goto: () => goToFriend(), ping: sendPing, games: () => openRoomGames(true), map: toggleMap, close: () => {} })[b.dataset.do]();
   };
 }
 function sendEmote(t) {
@@ -2743,7 +2832,8 @@ function sendEmote(t) {
 function honk() {
   if (!running) return;
   sound.blip('horn');
-  if (isBot && rampage.driving) rampage.honk(flight);
+  if (isBot && rampage.driving && squid?.holding) squid.press('smash');
+  else if (isBot && rampage.driving) rampage.honk(flight);
   mp.send({ t: 'honk' });
 }
 input.on('horn', honk);
@@ -2818,28 +2908,7 @@ const nearFriend = () => {
     return d < range;
   });
 };
-function highFive() {
-  // Answering a friend who just asked works for 10 seconds, wherever they are now.
-  const asked = [...hi5.theirs].filter(([, t]) => performance.now() - t < 10000).map(([id]) => mp.players.get(id)).find(Boolean);
-  if (asked) return celebrateHi5(asked, true);
-  const pl = nearFriend();
-  if (!pl) return message('Get close to a friend first!', 2);
-  hi5.mine = performance.now();
-  mp.send({ t: 'hi5', to: pl.id });
-  if (performance.now() - (hi5.theirs.get(pl.id) || -1e9) < 6000) celebrateHi5(pl, true);
-  else message(`🙌 Waiting for ${pl.name} to high-five back…`, 2.5);
-}
-function celebrateHi5(pl, tell) {
-  hi5.mine = 0;
-  hi5.theirs.delete(pl.id);
-  if (tell) mp.send({ t: 'hi5ok', to: pl.id });
-  const p = flight.pos;
-  rampage.burst((p.x + pl.pos.x) / 2, (p.y + pl.pos.y) / 2 + 8, (p.z + pl.pos.z) / 2, 10, 0xffd21f, 24);
-  sound.blip('hi5');
-  message(`🙌 High five with ${pl.name}!`, 2.5);
-}
-input.on('hi5', highFive);
-$('hi5Btn').onclick = highFive;
+// (High-fives were removed on the owner's request, 2026-11-15: the prompt got in the way.)
 /** Robots shoving: my punch landed near a friend's robot. */
 function shoveCheck() {
   if (!mp.room || !roomOpts.shove || !isBot) return;
@@ -2868,12 +2937,6 @@ function onFriendEvent(m) {
     addPing({ x: +m.x, y: world.heightAt(+m.x, +m.z), z: +m.z, name: pl.name, color: pl.color });
     toast(`📍 ${pl.name} pinged a spot: look for the marker`, pl.color);
     sound.blip('ring');
-  } else if (m.t === 'hi5' && pl && m.to === mp.myId) {
-    hi5.theirs.set(pl.id, performance.now());
-    if (performance.now() - hi5.mine < 6000) celebrateHi5(pl, true);
-    else message(`🙌 ${pl.name} wants a high-five!<small>Press 🙌 (J) back</small>`, 3);
-  } else if (m.t === 'hi5ok' && pl && m.to === mp.myId) {
-    celebrateHi5(pl, false);
   } else if (m.t === 'toilet' && m.city === settings.city && world?.toilets[m.i]) {
     world.resizeToilet(world.toilets[m.i], THREE.MathUtils.clamp(+m.scale || 1, 1, 8));
   } else if (m.t === 'hit' && pl && m.to === mp.myId && roomOpts.shove && isBot && !rampage.driving && potty.sitting <= 0 && !rgFrozen()) {
@@ -2894,15 +2957,49 @@ function onFriendEvent(m) {
   }
 }
 $('rgShove').onchange = () => mp.isHost && mp.send({ t: 'room-opts', opts: { shove: $('rgShove').checked } });
-/** Each frame: the emote chip, the high-five prompt, old pings. */
+/**
+ * Multiplayer: cars, trucks and boats crash into each other instead of driving
+ * through. Each player's game bounces its own car off friends' cars (both see
+ * the overlap, so both bounce), with a bang and a shake.
+ */
+let carBumpAt = 0;
+function carCollisions() {
+  const dr = isBot && rampage?.driving;
+  if (!dr || !mp.room || !running) return;
+  const me = flight.pos;
+  const myR = props.radius(dr.item);
+  for (const pl of friendsHere()) {
+    if (!pl.ride || !props.kinds[pl.ride.kind] || !pl.pos) continue;
+    const theirR = props.kinds[pl.ride.kind].r * (pl.ride.scale || 1);
+    const dx = me.x - pl.pos.x;
+    const dz = me.z - pl.pos.z;
+    const d = Math.hypot(dx, dz) || 0.01;
+    const touch = (myR + theirR) * 0.85;
+    if (d >= touch || Math.abs(me.y - pl.pos.y) > 4 * Math.max(1, dr.item.scale || 1)) continue;
+    // Push apart, and bounce away (harder the faster we were going).
+    const nx = dx / d;
+    const nz = dz / d;
+    me.x += nx * (touch - d);
+    me.z += nz * (touch - d);
+    const speed = Math.hypot(flight.vel.x, flight.vel.z) + (pl.speed || 0);
+    flight.vel.x = nx * Math.max(4, speed * 0.45);
+    flight.vel.z = nz * Math.max(4, speed * 0.45);
+    if (performance.now() - carBumpAt > 600) {
+      carBumpAt = performance.now();
+      const k = Math.min(1, speed / 30);
+      rampage.burst((me.x + pl.pos.x) / 2, me.y + 2, (me.z + pl.pos.z) / 2, 3 + 4 * k, 0xd8d8d8, 6 + Math.round(10 * k));
+      if (speed > 12) rampage.explode((me.x + pl.pos.x) / 2, me.y + 2, (me.z + pl.pos.z) / 2, 3 + 3 * k);
+      sound.noiseHit('crash', 0.3 + 0.7 * k);
+      shake = Math.min(1.6, shake + 0.3 + 0.7 * k);
+      message(`💥 Crashed into ${pl.name}!`, 1.2);
+    }
+  }
+}
+/** Each frame: the emote chip, old pings. */
 function updateFriends() {
   $('emoteChip').hidden = !(mp.room && running);
   $('rgChip').hidden = !(mp.room && running && mp.status === 'on');
   if (!running || !mp.room) $('rgPanel').hidden = true;
-  const asked = [...hi5.theirs].filter(([, t]) => performance.now() - t < 10000).map(([id]) => mp.players.get(id)).find(Boolean);
-  const pl = mp.room && running && !rgRun ? asked || nearFriend() : null;
-  $('hi5Btn').hidden = !pl || !!play();
-  if (pl) $('hi5Name').textContent = pl.name;
   const now = performance.now();
   for (const pg of pings.filter((x) => x.until < now)) pg.label.remove();
   pings = pings.filter((x) => x.until >= now);
@@ -3160,7 +3257,7 @@ input.on('navCity', (step) => {
   applySetting('city', keys[(keys.indexOf(settings.city) + step + keys.length) % keys.length]);
 });
 // PSG1-only buttons while playing (see Input.pollButtons for the full layout).
-input.on('l1', () => (isBot ? setTurbo((flight.turbo % 3) + 1) : running && startAutoLand()));
+input.on('l1', () => (melonPrompt() ? throwMelon() : isBot ? setTurbo((flight.turbo % 3) + 1) : running && startAutoLand()));
 input.on('dUp', () => (isBot ? running && rampage.resize(flight, 2) && updateBotHud() : toggleMap()));
 input.on('dDown', () => (isBot ? running && rampage.resize(flight, 0.5) && updateBotHud() : goPotty()));
 // D-pad left/right: potty and "not now"; in a police car, ambulance or fire truck, lights and siren.
@@ -3489,6 +3586,16 @@ function updateBotHud() {
 }
 function botSmash() {
   if (!running || !isBot) return;
+  if (squid?.holding) {
+    // In the squid's grip: punch the tentacle (or mash the boat's horn boost).
+    if (rampage.driving) sound.blip('horn');
+    else {
+      bot.model.punch?.();
+      mpAct('punch');
+    }
+    squid.press('smash');
+    return;
+  }
   if (game instanceof PottyTime && potty.sitting > 0) return game.mash(); // mash to go faster
   if (!rampage.driving && !rampage.held) {
     mpAct('punch');
@@ -3655,6 +3762,7 @@ function usePsg1Prefs() {
     saved = JSON.parse(localStorage.getItem(PREFS_KEY) || 'null');
   } catch {}
   Object.assign(prefs, saved || { low: true });
+  if (!saved?.pottyOffOnce) Object.assign(prefs, { potty: 'off', pottyOffOnce: 1 }); // no potty pop-up (see above)
   savePrefs();
   applyPrefs();
 }
@@ -3670,6 +3778,15 @@ function applyPrefs() {
   $('setMusic').checked = prefs.music;
   $('setLow').checked = prefs.low;
   for (const b of $('setPotty').querySelectorAll('button')) b.classList.toggle('on', b.dataset.v === prefs.potty);
+  for (const b of $('setMonster').querySelectorAll('button')) b.classList.toggle('on', b.dataset.v === prefs.monster);
+  squid?.setOn(prefs.monster !== 'off');
+}
+for (const b of $('setMonster').querySelectorAll('button')) {
+  b.onclick = () => {
+    prefs.monster = b.dataset.v;
+    savePrefs();
+    applyPrefs();
+  };
 }
 for (const b of $('setPotty').querySelectorAll('button')) {
   b.onclick = () => {
@@ -4377,6 +4494,233 @@ function snapToGoogleGround() {
   if (g !== null) flight.pos.y = g + plane.gearHeight;
 }
 
+// ------------------------------------------------------------------ giant squid (plan 07)
+// Squids hide in each city's deep water (squid.js, squidplay.js). This part
+// tells them who the player is and what happens when one wins or lets go.
+let squid = null;
+function makeSquid() {
+  squid?.dispose();
+  squid = new SquidPlay(scene, world, {
+    light: isPsg1() || prefs.low, city: settings.city,
+    hooks: {
+      player: squidPlayer,
+      room: () => !!mp.room && mp.status === 'on',
+      send: (m) => mp.send(m), serverNow: () => mp.serverNow(), myId: () => mp.myId,
+      friendPos: (id) => {
+        const pl = mp.players.get(id);
+        return pl && pl.city === settings.city ? pl.pos : null;
+      },
+      camera: () => camera,
+      message, toast, sound: (k) => sound.blip(k), noise: (k, s) => sound.noiseHit(k, s),
+      shake: (k) => (shake = Math.min(1.6, shake + k)),
+      burst: (x, y, z, s, hex, n) => rampage.burst(x, y, z, s, hex, n),
+      lose: squidLose, freed: squidFreed, beaten: squidBeaten, splat: squidSplat,
+      zap: (sq) => melons?.zap(sq),
+      onHit: (o, mine) => game instanceof SquidHunt && game.onHit(o, mine, isBot ? bot.walk.size : 1),
+      bossBeaten: (o) => game instanceof SquidHunt && game.onBeaten(o, o.by === (mp.room && mp.status === 'on' ? mp.myId : 'me')),
+    },
+  });
+  squid.setOn(prefs.monster !== 'off');
+  melons?.dispose();
+  melons = new Melons(scene, world, {
+    squid: () => squid, burst: (x, y, z, s, hex, n) => rampage.burst(x, y, z, s, hex, n),
+    noise: (k, s) => sound.noiseHit(k, s), sound: (k) => sound.blip(k), message,
+  });
+}
+// ---- giant watermelons (melon.js): Z, the 🍉 chip, the phone's 🍉, or L1 when the prompt shows.
+let melons = null;
+let melonCool = 0;
+/** Throw one: the robot overhand where it faces, aircraft lob it forward and down from the nose. */
+function throwMelon() {
+  if (!running || flight.crashed || !melons || melonCool > 0) return false;
+  if (isBot && rampage.driving) {
+    message('Get out to throw a 🍉 (or use the horn)', 2);
+    return false;
+  }
+  melonCool = MELON_COOLDOWN;
+  const f = flight.forward;
+  const p = flight.pos;
+  const holder = squid?.holder;
+  if (holder && !(isBot && bot.walk.size < 1)) {
+    // From the squid's own grip it always hits.
+    const from = new THREE.Vector3(p.x, p.y + (isBot ? 10 * bot.walk.size : 0), p.z);
+    melons.launch(from, new THREE.Vector3(), { at: holder });
+    mp.room && mp.send({ t: 'melon', city: settings.city, p: [from.x, from.y, from.z].map(Math.round), at: holder.spot.i });
+    return true;
+  }
+  let from;
+  let v;
+  if (isBot) {
+    const k = bot.walk.size;
+    from = new THREE.Vector3(p.x + f.x * 2 * k, p.y + (13 + 2) * k, p.z + f.z * 2 * k);
+    v = new THREE.Vector3(f.x * 46 + flight.vel.x, 16 + Math.max(0, flight.vel.y), f.z * 46 + flight.vel.z);
+  } else {
+    from = new THREE.Vector3(p.x + f.x * 5, p.y - 1, p.z + f.z * 5);
+    v = flight.vel.clone().addScaledVector(f, 15);
+    v.y -= 6;
+  }
+  melons.launch(from, v);
+  mp.room && mp.send({ t: 'melon', city: settings.city, p: [from.x, from.y, from.z].map((n) => Math.round(n * 10) / 10), v: [v.x, v.y, v.z].map((n) => Math.round(n * 10) / 10) });
+  return true;
+}
+input.on('melon', throwMelon);
+$('melonBtn').onclick = () => throwMelon();
+/** Controllers and the PSG1 have no spare button: near an awake squid (or held by one) "🍉 Throw" shows and L1 throws. */
+const melonPrompt = () => running && !!squid && !flight.crashed && !(isBot && rampage.driving)
+  && (squid.holding || squid.awakeNear(flight.pos.x, flight.pos.z));
+function updateMelon(dt) {
+  melonCool = Math.max(0, melonCool - dt);
+  melons?.update(dt);
+  const show = melonPrompt();
+  $('melonBtn').hidden = !show;
+  if (show) {
+    $('autoLandBtn').hidden = true; // Auto-land gives way while it shows
+    const key = input.pad() ? pad(isPsg1() ? 'L1' : 'LB') : input.isTouch ? '' : '<kbd>Z</kbd>';
+    if ($('melonBtn').dataset.k !== key) {
+      $('melonBtn').dataset.k = key;
+      $('melonBtn').innerHTML = `🍉 Throw a watermelon ${key}`;
+    }
+  }
+}
+/** Who the squid sees: where you are, in what, and whether it may grab you. */
+function squidPlayer() {
+  if (!plane || !flight || !running) return { el: false, pos: flight?.pos };
+  const kind = isBot ? (rampage.driving ? (flight.boat ? 'boat' : 'car') : 'bot') : flight instanceof HeliFlight ? 'heli' : 'plane';
+  const p = flight.pos;
+  // Never during the flying lesson, auto-land, a potty break, being carried, or other room games.
+  let el = !flight.crashed && !autoLand && !coach && !morph && potty.sitting <= 0 && !carry.by && prefs.monster !== 'off'
+    && !(rgRun && rgRun.game !== 'squid') && !rgFrozen();
+  if (el) {
+    // Safe on a bridge deck.
+    const deck = world.deckAt(p.x, p.z, p.y);
+    if (deck != null && Math.abs(p.y - (isBot ? 0 : plane.gearHeight) - deck) < 6) el = false;
+  }
+  return { el, kind, pos: p, size: isBot ? bot.walk.size : 1, throttle: flight.throttle, turbo: flight.turbo || 1 };
+}
+/** Held by a tentacle: the squid moves you; the throttle still works (it's how a plane pulls free). */
+function squidHold(dt, ctl) {
+  squid.holdPos(flight.pos);
+  if (!isBot) {
+    if (ctl.throttleSet !== undefined) flight.throttle = ctl.throttleSet;
+    else flight.throttle = THREE.MathUtils.clamp(flight.throttle + (ctl.throttle || 0) * dt * 0.6, 0, 1);
+    flight.vel?.set(0, 0, 0);
+    if (flight instanceof HeliFlight) flight.onGround = false;
+  } else {
+    flight.vel.set(0, 0, 0);
+    flight.onGround = false;
+  }
+}
+/** Squid Hunt: in a ring `dist` out from the boss (slot of n): aircraft 120 m up facing it, robots on the nearest shore. */
+function huntPlace(i, slot = 0, n = 1, asBot = isBot, dist = 400) {
+  const sp = squid.squids[i]?.spot;
+  if (!sp) return;
+  const ang = (slot / Math.max(1, n)) * Math.PI * 2 + 0.6;
+  const x = sp.x + Math.cos(ang) * dist;
+  const z = sp.z + Math.sin(ang) * dist;
+  $('crashBox').hidden = true;
+  if (asBot) {
+    if (!isBot) {
+      transform();
+      finishMorph();
+    }
+    const s = nearestShore(world, x, z) || { x, z };
+    flight.place(new THREE.Vector3(s.x, world.groundAt(s.x, s.z), s.z), Math.atan2(-(sp.x - s.x), -(sp.z - s.z)), null);
+    flight.onGround = true;
+  } else {
+    flight.resetAirborne();
+    flight.pos.set(x, sp.y + 120, z);
+    const yaw = Math.atan2(-(sp.x - x), -(sp.z - z));
+    if (flight instanceof HeliFlight) {
+      flight.yaw = yaw;
+      flight._updateQuat();
+    } else flight.quat.setFromAxisAngle(Y_AXIS, yaw);
+  }
+  trail = [];
+  camInit = false;
+}
+let huntBack = 0; // Squid Hunt: seconds until you're back after being pulled under
+function huntTick(dt) {
+  if (huntBack <= 0) return;
+  huntBack -= dt;
+  if (huntBack > 0) return;
+  if (!(game instanceof SquidHunt) || !game.active) return;
+  huntPlace(squid.boss, Math.floor(Math.random() * 6), 6, isBot, 300);
+  message('🦑 Back in the hunt!', 1.5);
+}
+/** The struggle ran out: aircraft are pulled under; a boat capsizes; the robot is dunked and spat out ashore. */
+function squidLose(kind) {
+  const sp = squid.nearest(flight.pos.x, flight.pos.z)?.sq.spot;
+  if (game instanceof SquidHunt && game.active) {
+    game.onLost(); // −3, back in 5 seconds, 300 m out
+    huntBack = 5;
+  }
+  if (!isBot) {
+    if (sp) flight.pos.y = sp.y + 1;
+    flight.crash('Grabbed by the giant squid! 🦑');
+    showCrash();
+    return;
+  }
+  const boat = !!rampage.driving;
+  rampage.release(flight); // out of the boat or car, and whatever was carried is lost
+  const s = nearestShore(world, flight.pos.x, flight.pos.z);
+  if (s) flight.place(new THREE.Vector3(s.x, world.groundAt(s.x, s.z), s.z), flight.yaw, new THREE.Vector3(0, 10, 0));
+  camInit = false;
+  shake = 1.2;
+  updateBotHud();
+  message(boat ? '🌊 Capsized! The squid flipped you over and spat you out on the shore' : '🦑 Dunked! The squid pulled you under and spat you out on the shore', 3.5);
+}
+/** Broke free: a push up and away, so you don't drop straight back in. */
+function squidFreed() {
+  const sp = squid.nearest(flight.pos.x, flight.pos.z)?.sq.spot;
+  const water = sp ? sp.y : world.heightAt(flight.pos.x, flight.pos.z);
+  if (isBot) {
+    flight.vel.set(0, 16, 0);
+    flight.onGround = false;
+    return;
+  }
+  flight.pos.y = Math.max(flight.pos.y, water + 22);
+  if (flight instanceof HeliFlight) {
+    flight.vel.set(0, 8, 0);
+    flight.onGround = false;
+    return;
+  }
+  const yaw = -THREE.MathUtils.degToRad(flight.heading);
+  flight.quat.setFromEuler(new THREE.Euler(0.22, yaw, 0, 'YXZ'));
+  flight.speed = Math.max(flight.speed, 48);
+  flight.onGround = false;
+}
+function squidBeaten() {
+  logbook.squid = (logbook.squid || 0) + 1;
+  saveLogbook();
+  checkUnlocks();
+}
+let splatTimer = 0;
+/** Ink on the screen for two seconds. */
+function squidSplat() {
+  const el = squid.inkEl;
+  el.hidden = false;
+  el.style.transition = 'none';
+  el.style.opacity = '1';
+  clearTimeout(splatTimer);
+  splatTimer = setTimeout(() => {
+    el.style.transition = 'opacity 0.6s';
+    el.style.opacity = '0';
+    splatTimer = setTimeout(() => (el.hidden = true), 650);
+  }, 1400);
+}
+/** The crash screen (any crash: the city, the ground, the water, the squid). */
+function showCrash() {
+  explode();
+  sound.noiseHit(/Splash|squid/.test(flight.crashReason) ? 'splash' : 'crash');
+  shake = 1.2;
+  beerRun?.onCrash();
+  if (rgRun?.game === 'landing' && rgRun.started && !rgRun.done && !rgRun.landing) rgLandingDone(0, 'Crashed! 0 points');
+  crashTimer = 0;
+  $('crashReason').textContent = `💥 ${flight.crashReason}`;
+  $('crashBox').hidden = false;
+  message('', 0.01);
+}
+
 // ------------------------------------------------------------------ barrel roll
 // Tap left (or right) twice quickly, on the keys, a stick or the phone, and the
 // plane does a full roll that way.
@@ -4387,7 +4731,10 @@ function rollTap(dir) {
   const now = performance.now();
   if (dir === barrelTap.dir && now - barrelTap.at < 400) {
     barrelTap.dir = 0;
-    if (running && !isBot && !isHeli && flight.barrelRoll(dir)) {
+    if (running && squid?.holding && !isBot) {
+      // In the squid's grip: a barrel roll snaps the tentacle.
+      if (squid.press('roll')) message('🌀 Barrel roll! The tentacle snaps!', 1.5);
+    } else if (running && !isBot && !isHeli && flight.barrelRoll(dir)) {
       sound.blip('load', 0.6);
       message(dir > 0 ? '🌀 Barrel roll! ➡️' : '🌀 Barrel roll! ⬅️', 1.2);
     }
@@ -4460,23 +4807,20 @@ function frame() {
       // Busy. Nobody moves until the flush.
     } else if (rgFrozen() || updateCarried()) {
       // Held on the room game's start line until GO, or carried by a friend's giant robot.
+    } else if (squid?.holding) {
+      if (!isBot && !isHeli) checkBarrelRoll(ctl.roll);
+      squidHold(dt, ctl); // in the giant squid's tentacle
     } else if (!flight.crashed) {
       if (!isBot && !isHeli) checkBarrelRoll(ctl.roll);
       flight.update(dt, ctl);
-      if (flight.crashed) {
-        explode();
-        sound.noiseHit(/Splash/.test(flight.crashReason) ? 'splash' : 'crash');
-        shake = 1.2;
-        beerRun?.onCrash();
-        if (rgRun?.game === 'landing' && rgRun.started && !rgRun.done && !rgRun.landing) rgLandingDone(0, 'Crashed! 0 points');
-        crashTimer = 0;
-        $('crashReason').textContent = `💥 ${flight.crashReason}`;
-        $('crashBox').hidden = false;
-        message('', 0.01);
-      }
+      if (flight.crashed) showCrash();
     } else {
       crashTimer += dt;
     }
+    squid?.update(dt, ctl);
+    updateMelon(dt);
+    huntTick(dt);
+    carCollisions();
     if (game?.active) {
       game.update(dt, { pos: flight.pos });
       updateBeerHud();
@@ -4567,6 +4911,23 @@ if (new URLSearchParams(location.search).has('debug')) {
     cam: (m) => (m != null && (camMode = CAMS.indexOf(m)), CAMS[camMode]), dashboard, get grownLights() { return grownLights; }, get emergencyProps() { return emergencyProps; }, get leftBehind() { return leftBehind; },
     roomGame: () => ({ g: rgGame, run: rgRun, game, scores: rgScores, keg: rgKeg, landed: rgLanded }),
     friendState: () => ({ formationWith: formation.with, trails: formation.partnerTrail.size, carriedBy: carry.by, carrying: carry.who }),
+    get squid() { return squid; },
+    // One frame of what moves you, for the squid tests: held, or flying/walking; then the squids.
+    simStep: (dt, ctl) => {
+      if (squid?.holding) squidHold(dt, ctl);
+      else if (!flight.crashed) {
+        flight.update(dt, ctl);
+        if (flight.crashed) showCrash();
+      }
+      rampage.update(dt, isBot ? flight : null);
+      squid?.update(dt, ctl);
+      updateMelon(dt);
+      huntTick(dt);
+      if (game?.active) game.update(dt, { pos: flight.pos });
+    },
+    get game() { return game; }, huntPlace, carCollisions,
+    throwMelon, get melons() { return melons; }, melonPrompt,
+    respawnHere, rollTap,
   };
   window.__tilt = input.tilt;
   window.__traffic = traffic;

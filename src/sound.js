@@ -61,6 +61,8 @@ export class EngineSound {
     const P = {
       boom: { f0: 900, f1: 60, len: 0.9, vol: 0.5 }, crash: { f0: 2400, f1: 90, len: 1.3, vol: 0.6 },
       splash: { f0: 3000, f1: 700, len: 0.7, vol: 0.3, type: 'bandpass' }, step: { f0: 160, f1: 50, len: 0.14, vol: 0.35 },
+      rumble: { f0: 220, f1: 40, len: 1.8, vol: 0.55 }, // the giant squid waking under the water
+      crackle: { f0: 6000, f1: 1800, len: 0.5, vol: 0.25, type: 'bandpass' }, // a watermelon's lightning
     }[kind];
     const src = ctx.createBufferSource();
     src.buffer = this.noise;
@@ -185,6 +187,8 @@ export class EngineSound {
       horn: [[415, 0], [523, 0], [415, 0.2], [523, 0.2]],
       hi5: [[1047, 0], [1319, 0.05], [1568, 0.1], [2093, 0.16]],
       emote: [[660, 0], [880, 0.07]],
+      rise: [[110, 0], [147, 0.15], [196, 0.3], [262, 0.45], [349, 0.6], [466, 0.75]], // the squid winding up to strike
+      melon: [[300, 0], [520, 0.05]],
     }[kind] || [];
     const t0 = this.ctx.currentTime;
     for (const [f, at] of notes) {

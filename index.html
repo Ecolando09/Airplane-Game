@@ -30,7 +30,6 @@
         <button class="small-btn" id="rgBannerGo" hidden>Start now</button>
       </div>
       <div id="rgGo" hidden></div>
-      <button id="hi5Btn" class="big go" hidden>🙌 High-five <span id="hi5Name"></span><kbd>J</kbd></button>
       <div id="emoteWheel" class="overlay" hidden>
         <div class="emote-card">
           <div class="emote-grid" id="emoteGrid"></div>
@@ -38,7 +37,6 @@
             <button data-do="horn">📯 Horn</button>
             <button data-do="goto">🧲 Go to friend</button>
             <button data-do="ping">📍 Ping here</button>
-            <button data-do="hi5">🙌 High-five</button>
             <button data-do="games">🎮 Room games</button>
             <button data-do="map">🗺️ Big map</button>
             <button data-do="close">✕ Close</button>
@@ -65,6 +63,7 @@
       </div>
       <div id="beerDwell" hidden><svg viewBox="0 0 44 44"><circle cx="22" cy="22" r="19" /><circle id="beerDwellArc" cx="22" cy="22" r="19" /></svg><span id="beerDwellText"></span></div>
       <button id="autoLandBtn" class="big go" hidden>🛬 Auto-land at <span id="autoLandName"></span><kbd>L</kbd></button>
+      <button id="melonBtn" class="big go" hidden>🍉 Throw a watermelon <kbd>Z</kbd></button>
       <div id="emBtns" hidden>
         <button id="emLightsBtn" class="small-btn">🚨 Lights<kbd>O</kbd></button>
         <button id="emSirenBtn" class="small-btn">📢 Siren<kbd>U</kbd></button>
@@ -103,6 +102,7 @@
         <button class="chip" data-act="brake">BRAKE</button>
         <button class="chip" data-act="floats">FLOATS</button>
         <button class="chip" data-act="turbo" id="turboChip">TURBO</button>
+        <button class="chip" data-act="melon" id="melonChip" title="Throw a giant watermelon">🍉</button>
         <button class="chip bot-only" data-act="botTurbo" id="botTurboChip">TURBO</button>
         <button class="chip bot-only" data-act="bigger">BIG</button>
         <button class="chip bot-only" data-act="smaller">SMALL</button>
@@ -171,6 +171,7 @@
             <button data-v="rings"><b>⭕ Ring Race</b><span>Thread the rings, beat the clock</span></button>
             <button data-v="rampage"><b>🤖 Rampage</b><span>2 minutes of robot smashing</span></button>
             <button data-v="beer"><b>🍺 Beer Run</b><span>Deliver kegs, beat the clock</span></button>
+            <button data-v="squid"><b>🦑 Squid Hunt</b><span>4 minutes against the giant squid boss</span></button>
           </div>
           <div class="beer-intro" id="beerIntro" hidden>
             <p id="modeIntro"></p>
@@ -238,6 +239,11 @@
             <div class="seg-row">Potty breaks
               <div class="seg-mini" id="setPotty" role="group" aria-label="Potty breaks">
                 <button data-v="off">Off</button><button data-v="some">Sometimes</button><button data-v="often">Often</button>
+              </div>
+            </div>
+            <div class="seg-row">Sea monster 🦑
+              <div class="seg-mini" id="setMonster" role="group" aria-label="Sea monster">
+                <button data-v="on">On</button><button data-v="off">Off</button>
               </div>
             </div>
             <button class="small-btn" id="tutorialBtn">Replay the flying lesson</button>

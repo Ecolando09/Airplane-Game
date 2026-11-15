@@ -4,9 +4,10 @@ import { spawn } from 'node:child_process';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { serve, launch, openGame, check, failed } from './helpers.mjs';
 
-const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), '../..');
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const relay = spawn('node', ['server/relay.js'], { cwd: root, stdio: 'ignore', env: { ...process.env, STATE_DIR: mkdtempSync(path.join(tmpdir(), 'relay-')) } });
 const stop = await serve();
 // Separate browsers: a background tab pauses its game, so each player gets its own window.
@@ -48,20 +49,8 @@ try {
   });
   check('tapping a friend chip teleports next to them', tp.d > 5 && tp.d < 80 && !tp.inside, `${Math.round(tp.d)} m away`);
 
-  // High-five: both press within 3 seconds.
-  // Each presses the moment their 🙌 prompt shows (they've seen the other close by).
-  const pressWhenPrompted = (p) => p.waitForFunction(() => {
-    if (document.getElementById('hi5Btn').hidden) return false;
-    window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyJ' }));
-    window.dispatchEvent(new KeyboardEvent('keyup', { code: 'KeyJ' }));
-    return true;
-  }, null, W);
-  await pressWhenPrompted(a);
-  await pressWhenPrompted(b);
-  await a.waitForFunction(() => /High five with Bob/.test(document.getElementById('message').textContent), null, W).catch(() => {});
-  const hiA = await a.evaluate(() => document.getElementById('message').textContent);
-  const hiB = await b.evaluate(() => document.getElementById('message').textContent);
-  check('high-five happens on both screens', /High five/.test(hiA) && /High five/.test(hiB), `${hiA} | ${hiB}`);
+  // High-fives were removed (the owner's request, 2026-11-15): no prompt, no button, no J key.
+  check('no high-five button or emote-wheel entry', await a.evaluate(() => !document.getElementById('hi5Btn') && !document.querySelector('.emote-acts [data-do=hi5]')));
 
   // Shoving: both robots; Alice punches Bob, Bob gets knocked back.
   for (const p of [a, b]) await p.evaluate(() => { const g = window.__game; g.transform(); g.finishMorph(); });

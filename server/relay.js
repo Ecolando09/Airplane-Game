@@ -30,10 +30,16 @@
 //   now and whenever it changes. Send {t:'score', name, score, deliveries, vehicle}
 //   after a shift to get {t:'placed', week, all} (your ranks) back.
 //   Kept in STATE_DIR/beer-run.json.
+// Giant squid (plan 07): the relay runs the squid's rules (src/squidbrain.js,
+//   the same file solo play uses) for each room, so everyone sees the same
+//   attack. Players send squid-near (where they are, about 5 a second, while
+//   close), squid-hit, squid-fed, and squid-free / squid-lost (the held player
+//   judges their own struggle). Everyone gets {t:'squid', city, i, s, out, now}.
 // Run: node server/relay.js   (PORT env, default 8787; STATE_DIR, default server/data)
 import { WebSocketServer } from 'ws';
 import fs from 'node:fs';
 import path from 'node:path';
+import { newSquid, step as squidStep, publicSquid, bossHealth } from '../src/squidbrain.js';
 
 const PORT = Number(process.env.PORT) || 8787;
 const rooms = new Map(); // code -> { game, pads: Set }
@@ -136,6 +142,7 @@ const GAMES = {
   keg: { kind: 'score', duration: 600, target: 5 },
   landing: { kind: 'score', limit: 300 },
   toss: { kind: 'score', limit: 240 },
+  squid: { kind: 'score', duration: 240 }, // Squid Hunt: the relay runs the boss and awards the points
 };
 const COUNTDOWN = 30; // seconds (host can start now)
 const GO_DELAY = 4.5; // seconds from "everyone to the start line" to GO (3, 2, 1)
@@ -179,6 +186,14 @@ function goLive(code) {
   g.scores = Object.fromEntries(g.players.map((id) => [id, { score: 0, progress: 0, done: false }]));
   g.finished = [];
   if (g.game === 'potty') g.seats = {}; // toilet index -> { holder, until, queue }
+  if (g.game === 'squid') {
+    // The boss: more health with more players (a longer fight, not a shorter one).
+    const city = roomSettings.get(code)?.city || '';
+    const m = meta.get(code);
+    const sq = { city, i: g.options.boss, s: newSquid({ boss: true, health: bossHealth(g.players.length) }) };
+    m.squids.set(`${city}:${g.options.boss}`, sq);
+    roomBroadcast(code, squidMsg(sq));
+  }
   if (g.game === 'keg') kegNew(g, null);
   if (g.game === 'tag') {
     // One player starts "it", picked by the server.
@@ -188,9 +203,21 @@ function goLive(code) {
   setGameTimer(code, g.endsAt, () => finishGame(code));
   sendGame(code);
 }
+/** After Squid Hunt: the boss goes back to being a normal squid. */
+function endBoss(code, g) {
+  if (g?.game !== 'squid') return;
+  const m = meta.get(code);
+  const city = roomSettings.get(code)?.city || '';
+  const key = `${city}:${g.options.boss}`;
+  if (!m?.squids.has(key)) return;
+  const sq = { city, i: g.options.boss, s: newSquid() };
+  m.squids.set(key, sq);
+  roomBroadcast(code, squidMsg(sq));
+}
 function cancelGame(code) {
   const m = meta.get(code);
   if (!m?.game) return;
+  endBoss(code, m.game);
   clearTimeout(m.game.timer);
   for (const seat of Object.values(m.game.seats || {})) clearTimeout(seat.timer);
   m.game = null;
@@ -202,6 +229,7 @@ function finishGame(code) {
   if (!g || g.phase !== 'live') return;
   clearTimeout(g.timer);
   for (const seat of Object.values(g.seats || {})) clearTimeout(seat.timer);
+  endBoss(code, g);
   const spec = GAMES[g.game];
   const name = (id) => info.get(flights.get(code)?.get(id))?.name || g.names?.[id] || 'Pilot';
   let order;
@@ -300,6 +328,7 @@ function onGameMessage(code, id, m) {
       vehicle: options.vehicle === 'heli' ? 'heli' : options.vehicle === 'bot' ? 'bot' : 'plane',
       laps: Math.max(1, Math.min(5, Math.round(Number(options.laps) || 3))),
       spots: Math.max(2, Math.min(500, Math.round(Number(options.spots) || 2))),
+      boss: Math.max(0, Math.min(7, Math.round(Number(options.boss) || 0))),
     };
     const room = flights.get(code);
     meta_.game = g = {
@@ -403,12 +432,87 @@ function onGameMessage(code, id, m) {
     }
   }
 }
+// ------------------------------------------------------------------ giant squid
+// One brain per squid (keyed "city:index"), stepped on each report and ten
+// times a second; a change of state or anything that happened is broadcast.
+const SQUID_MSGS = new Set(['squid-near', 'squid-hit', 'squid-fed', 'squid-free', 'squid-lost']);
+const HIT_KINDS = new Set(['punch', 'stomp', 'car', 'melon']);
+function squidFor(rmeta, city, i, boss) {
+  const key = `${city}:${i}`;
+  let sq = rmeta.squids.get(key);
+  if (!sq && rmeta.squids.size < 40) rmeta.squids.set(key, (sq = { city, i, s: newSquid({ boss: !!boss }) }));
+  return sq;
+}
+function squidMsg(sq, out = []) {
+  return { t: 'squid', city: sq.city, i: sq.i, s: publicSquid(sq.s), out, now: Date.now() };
+}
+function squidRun(code, sq, events) {
+  const was = sq.s;
+  const res = squidStep(sq.s, Date.now() / 1000, events);
+  sq.s = res.state;
+  if (res.out.length || res.state.phase !== was.phase || res.state.seq !== was.seq) roomBroadcast(code, squidMsg(sq, res.out));
+  return res.out;
+}
+function onSquidMessage(code, id, m, rmeta) {
+  const city = String(m.city || '').slice(0, 32);
+  const i = Math.round(Number(m.i));
+  if (!city || !(i >= 0 && i < 8)) return;
+  const g = rmeta.game;
+  const hunt = g?.game === 'squid' && g.phase === 'live';
+  const sq = squidFor(rmeta, city, i, hunt && m.boss);
+  if (!sq) return;
+  if (m.t === 'squid-near') {
+    const num = (v) => (Number.isFinite(+v) ? +v : 0);
+    // While another room game runs, the squids leave everyone alone.
+    const busy = g?.phase === 'live' && g.game !== 'squid';
+    squidRun(code, sq, [{ type: 'near', id, d: num(m.d), alt: num(m.alt), kind: String(m.kind || '').slice(0, 8), x: num(m.x), y: num(m.y), z: num(m.z), el: !!m.el && !busy }]);
+  } else if (m.t === 'squid-hit') {
+    const kind = HIT_KINDS.has(m.kind) ? m.kind : 'punch';
+    const out = squidRun(code, sq, [{ type: 'hit', id, dmg: Number(m.dmg) || 0, kind }]);
+    if (hunt) huntScore(code, rmeta, sq, id, out, m);
+  } else if (m.t === 'squid-fed') squidRun(code, sq, [{ type: 'fed', id }]);
+  else if (m.t === 'squid-free') squidRun(code, sq, [{ type: 'free', id }]);
+  else if (m.t === 'squid-lost') {
+    const out = squidRun(code, sq, [{ type: 'lost', id }]);
+    if (hunt && out.some((o) => o.type === 'drag')) huntScore(code, rmeta, sq, id, out, m);
+  }
+}
+/** Squid Hunt in a room: the relay awards the points, so every screen agrees. */
+function huntScore(code, rmeta, sq, id, out, m) {
+  const g = rmeta.game;
+  if (!g?.scores || Date.now() < g.goAt) return;
+  const add = (pid, n) => {
+    if (g.scores[pid]) g.scores[pid].score = Math.max(0, (g.scores[pid].score || 0) + n);
+  };
+  const size = [0.25, 0.5, 1, 2, 4, 8].includes(+m.size) ? +m.size : 1;
+  for (const o of out) {
+    if (o.type === 'hit') {
+      add(o.id, o.kind === 'melon' ? 2 : o.kind === 'car' ? 3 : o.kind === 'stomp' ? 4 : size >= 4 ? 3 : size >= 2 ? 2 : 1);
+      if (o.freed && o.freed !== o.id) add(o.id, 5);
+    } else if (o.type === 'beaten') {
+      add(o.by, 10);
+      for (const pid of g.players) if (flights.get(code)?.has(pid)) add(pid, 10);
+    } else if (o.type === 'drag') add(o.id, -3);
+  }
+  roomBroadcast(code, { t: 'game-scores', scores: g.scores, finished: g.finished });
+  if (out.some((o) => o.type === 'beaten')) finishGame(code);
+}
+// Ten times a second: timers run out (wind-ups, struggles, rests) even when nobody reports.
+setInterval(() => {
+  for (const [code, rmeta] of meta) {
+    for (const sq of rmeta.squids?.values() || []) {
+      if (sq.s.phase === 'asleep' && !Object.keys(sq.s.near).length) continue;
+      squidRun(code, sq, []);
+    }
+  }
+}, 100);
+
 function joinFlight(ws, code, wanted) {
   let room = flights.get(code);
   if (!room) {
     flights.set(code, (room = new Map()));
     roomSettings.set(code, wanted);
-    meta.set(code, { order: [], host: null, game: null, trophies: {}, props: new Map(), smashed: new Set(), opts: { shove: true } });
+    meta.set(code, { order: [], host: null, game: null, trophies: {}, props: new Map(), smashed: new Set(), opts: { shove: true }, squids: new Map() });
   }
   const rmeta = meta.get(code);
   if (room.size >= 8) {
@@ -433,6 +537,8 @@ function joinFlight(ws, code, wanted) {
     ws.send(JSON.stringify({ t: 'catchup', city, props: ps.slice(k * 150, k * 150 + 150), smashed: sm.slice(k * 600, k * 600 + 600) }));
   }
   if (rmeta.cars?.size) ws.send(JSON.stringify({ t: 'catchup', city, cars: [...rmeta.cars].slice(0, 3000) }));
+  // The squids as they are now (a fleeing or resting one shows as asleep).
+  for (const sq of rmeta.squids.values()) ws.send(JSON.stringify(squidMsg(sq)));
   if (rmeta.game?.phase === 'countdown') {
     rmeta.game.players.push(id); // joined during the countdown: you're in
     sendGame(code);
@@ -447,6 +553,7 @@ function joinFlight(ws, code, wanted) {
     }
     if (typeof m !== 'object' || m === null) return;
     m.id = id; // players can't speak for each other
+    if (SQUID_MSGS.has(m.t)) return onSquidMessage(code, id, m, rmeta);
     if (typeof m.t === 'string' && m.t.startsWith('game-')) {
       const g = rmeta.game;
       if (g && m.name) g.names[id] = String(m.name).slice(0, 16);

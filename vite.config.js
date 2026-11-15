@@ -1,8 +1,9 @@
 import { defineConfig } from 'vite';
 
 // The phone-controller relay (server/relay.js) runs on :8787; in dev and preview
-// Vite forwards /ws to it, like the production web server does.
-const proxy = { '/ws': { target: 'ws://localhost:8787', ws: true } };
+// Vite forwards /ws to it, like the production web server does. (RELAY_PORT
+// picks another, for tests run beside a relay that's already going.)
+const proxy = { '/ws': { target: `ws://localhost:${process.env.RELAY_PORT || 8787}`, ws: true } };
 
 // Two builds of the same game:
 //   vite build                 the website (dist/, or play-dist/ via npm run build:play)
