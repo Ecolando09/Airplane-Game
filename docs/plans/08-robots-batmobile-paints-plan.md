@@ -98,7 +98,7 @@ A fourth vehicle in the menu. It starts as a car on the runway. The transform bu
 2. Should the car form smash buildings like a supersized car? [No: it bounces off; the robot smashes.]
 3. Rainbow: bands of colour that slowly drift. [Yes; still on the PSG1.]
 4. Should friends see your paint job in multiplayer? [Yes.]
-5. Should the Batmobile get a siren-style extra, such as a grappling hook or smoke screen? [Not in this plan.]
+5. Should the Batmobile get a gadget, such as a grappling hook or smoke screen? [Not in this plan.]
 
 ## Prompt to start the build session
 
