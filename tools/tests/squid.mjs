@@ -353,6 +353,8 @@ try {
   }
   // ---------------------------------------------------------------- 6. watermelons and the prize
   if (want('melon')) {
+    // A fresh logbook, so beating the squid here unlocks Squid Ink again (the fight part may have already).
+    await page.evaluate(() => localStorage.removeItem('legosky.log'));
     await open('sanfrancisco');
     const r = await page.evaluate(() => {
       const S = window.__sq;
