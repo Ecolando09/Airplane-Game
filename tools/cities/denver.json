@@ -3,16 +3,16 @@
   "bbox": [
     -105.24,
     39.655,
-    -104.87,
-    39.79
+    -104.64,
+    39.87
   ],
-  "airport": "Lowry Field",
+  "airport": "Denver International (DIA)",
   "runway": {
-    "lat": 39.71746,
-    "lon": -104.88483,
-    "heading": 80,
-    "length": 1600,
-    "width": 40,
+    "lat": 39.8408,
+    "lon": -104.70531,
+    "heading": 90,
+    "length": 3649,
+    "width": 46,
     "names": [
       "8",
       "26"
@@ -118,6 +118,11 @@
       "Cherry Creek Shopping Center",
       39.71767,
       -104.95216
+    ],
+    [
+      "Denver International Airport",
+      39.8491,
+      -104.6737
     ]
   ],
   "trees": [
@@ -137,5 +142,6 @@
     "sentinel-s2-l2a-cogs/13/S/ED/2026/6/S2C_13SED_20260611_0_L2A",
     "sentinel-s2-l2a-cogs/13/T/DE/2026/6/S2B_13TDE_20260619_0_L2A",
     "sentinel-s2-l2a-cogs/13/T/EE/2026/6/S2A_13TEE_20260613_0_L2A"
-  ]
+  ],
+  "elevGrid": 401
 }
