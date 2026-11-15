@@ -1,6 +1,6 @@
 # 07 · Giant squid plan: a sea monster in the deep water of every city
 
-Written 2026-11-15 for the session that builds it. Read `docs/plans/README.md` first for the repo rules (branch, Google key check, deploy command, how to test). The owner is not a programmer: explain results in plain language, say what was and wasn't tested, and end with the deploy command.
+Written 2026-11-15, updated the same day with the owner's answers (watermelons, the paint job and Squid Hunt added), for the session that builds it. Read `docs/plans/README.md` first for the repo rules (branch, Google key check, deploy command, how to test). The owner is not a programmer: explain results in plain language, say what was and wasn't tested, and end with the deploy command.
 
 ## What the owner asked for
 
@@ -23,7 +23,10 @@ The owner's six points, kept as the core:
 - **Feeding it.** A car thrown into the water near an awake squid is grabbed instead of you. It buys about 20 seconds.
 - **Ink.** When it lets go or is hit hard it squirts ink: a dark cloud in the water and a two second splat on your screen.
 - **Finding it.** Within 400 m the minimap shows a ripple mark, and the robot's first-person radar shows a blip. At night its eyes and spots glow.
-- **A switch.** Settings gets "Sea monster: On / Off" (like the potty setting), for players who find it scary. It never attacks during the flying lesson, auto-land, or a room game.
+- **Giant watermelons.** The robot and every aircraft carry an endless supply. Throw one at the squid and it is electrocuted: stunned, hurt, and it drops whoever it holds. (The owner's idea; details below.)
+- **A prize.** Beating the squid once unlocks the "Squid Ink" paint job.
+- **Squid Hunt.** A game where you fight a tougher squid for points, alone for a high score or together in a room.
+- **A switch.** Settings gets "Sea monster: On / Off" (like the potty setting), for players who find it scary. It never attacks during the flying lesson, auto-land, or other room games.
 
 ## How it should play
 
@@ -39,11 +42,35 @@ The way out, per vehicle (the struggle meter fills when you do these):
 | Copter, shuttle in hover mode | Hold lift up; turbo helps. |
 | Boat or car | The horn's boost (SMASH), mashed. |
 | Robot | SMASH punches the tentacle holding you: a 1× robot needs three, 2× two, 4× and 8× one. A ¼× or ½× robot can't; it has to be rescued. |
-| A friend nearby | Can punch the tentacle or throw a car at the squid to free you. |
+| Anyone held (not a ¼× or ½× robot) | A watermelon thrown at the squid from its own grip always hits: it lets go at once. |
+| A friend nearby | Can punch the tentacle, or throw a car or a watermelon at the squid, to free you. |
 
 Losing: a plane, copter or shuttle is pulled under and crashes with the reason "Grabbed by the giant squid! 🦑" (the normal crash screen, with Respawn). A boat is capsized and the robot is thrown out. The robot itself doesn't crash in this game, so it is dunked, loses what it carries, and is spat out onto the nearest shore with a message.
 
-Fighting: 6 health. A punch does 1 (2× robot: 2; 4× and 8×: 3), a thrown car or bus 2, a stomp from high up 3. Each hit makes it flinch and squirt ink. At 0 it flees: "🦑 The squid has had enough!", three minutes asleep, `logbook.squid` goes up by one for everyone who hit it.
+Fighting: 6 health. A punch does 1 (2× robot: 2; 4× and 8×: 3), a thrown car or bus 2, a watermelon 2, a stomp from high up 3. Each hit makes it flinch and squirt ink. At 0 it flees: "🦑 The squid has had enough!", three minutes asleep, `logbook.squid` goes up by one for everyone who hit it.
+
+### Giant watermelons
+
+- **Who.** The robot at any size, the plane, the copter and the shuttle in either mode. Not while driving a car or boat (get out, or use the horn). The supply never runs out; one throw every 1.5 seconds.
+- **How it flies.** A beach-ball-sized striped melon. The robot throws it overhand where it faces; aircraft lob it forward and down from the nose, so you aim by flying at the squid. It arcs under gravity for at most 6 seconds.
+- **A hit on the squid** (anywhere within its body or raised arms): the melon bursts in red chunks and seeds, blue lightning arcs crawl over the squid for 3 seconds with a crackle, it is stunned for 4 seconds, takes 2 damage and drops anyone it holds. Being silly on purpose: nobody explains why a watermelon is electric.
+- **A miss.** A splash on water, a harmless splat on land. Watermelons never break buildings, cars or other players; that keeps them a squid tool, not a second smash button.
+- **Controls.** Keyboard: Z (it is free; E and Q are the rudder). Touch: a 🍉 chip. Phone controller page (`remote.html`): a 🍉 button. Controllers and the PSG1 have no spare button, so there the throw is a prompt, like Auto-land: whenever a squid within 600 m is awake, "🍉 Throw" shows and L1 throws (Auto-land and the robot's turbo cycle give way while it shows).
+
+### The prize
+
+Add a paint job to `PAINTS` in `main.js`: `{ id: 'ink', name: 'Squid Ink', color: 0x2a1a4a, need: (c) => c.squid >= 1, how: 'Beat the giant squid' }`, and add `squid` to what `logCount()` returns. The existing unlock announcement (`checkUnlocks`) then works as it is.
+
+### Squid Hunt (solo and in a room)
+
+One squid, the one nearest downtown, turned into a boss: it never rests, never flees, has far more health and two extra arms. Four minutes on the clock.
+
+- **Scoring.** Watermelon hit 2 points, punch 1 to 3 by robot size, thrown car 3, stomp 4, freeing a held friend 5, the final blow 10. Pulled under: lose 3 points and come back after 5 seconds, 300 m out.
+- **Health.** Solo 30. In a room 14 plus 12 for each player who joined, so more players means a longer fight, not a shorter one.
+- **It ends** when the squid is beaten (everyone still in gets a 10 point bonus) or the time runs out. Most points wins.
+- **Solo.** A third game mode beside Ring Race and Rampage, with its own leaderboard per city (board name `squid:<city>`, like `rings:<city>`), stars for the logbook, and "play again".
+- **In a room.** A new entry in `ROOM_GAMES` (`main.js`) and `GAMES` (`server/relay.js`): `squid: { kind: 'score', duration: 240 }`. The host starts it from inside the game like the others; the countdown, joining, sitting out, results, trophies and rematch all come from the existing room-game code. Everyone comes as they are (plane, copter, shuttle or robot: no vehicle is forced), placed in a ring 400 m from the squid: aircraft 120 m up, robots on the nearest shore. The relay owns the boss's health and awards the points from the `squid-hit` messages, so the scores agree on every screen.
+- **Cities with no squid** don't offer the game.
 
 ## How to build it
 
@@ -65,7 +92,8 @@ Hooks in existing code:
 - **Inputs to the struggle.** Read what already exists: `flight.throttle`, `flight.turbo`, `flight.barrel` (a barrel roll in progress), `input.read().liftSet`, the `smash` action, `rampage.driving`, `bot.walk.size`.
 - **Damage.** `rampage.blast(x, y, z, r, from)` is the one place punches, stomps and thrown things land. Have it also ask the squid whether the blast touched it.
 - **Minimap and radar.** `drawMinimap()` in `main.js`; the robot display in `src/dashboard.js` (`nRadar`).
-- **Settings.** `prefs.monster` next to `prefs.potty`, same style of buttons.
+- **Settings.** `prefs.monster` next to `prefs.potty`, same style of buttons. On by default.
+- **Watermelons.** A small `src/melon.js`: the throw, the arc, the burst and the lightning. New input action `melon` in `src/input.js` (key Z); the L1 prompt goes where `input.on('l1', ...)` is in `main.js`. In a room, send a `melon` message (start point and velocity) through the relay's pass-through so friends see it fly; the thrower's own client decides whether it hit and sends `squid-hit`.
 
 **Multiplayer (`server/relay.js`).** Per-room state already lives in `meta` (`{order, host, game, props, smashed, cars, opts}`); add `squids`. Clients send `squid-near` (I am inside a squid's range, with my position and vehicle kind), `squid-hit` (damage), `squid-fed`, and `squid-free` / `squid-lost` from the player being held, who is the judge of their own struggle (the same trust the game already gives to tag hits and high-fives). The relay runs the brain, picks one target, and broadcasts `squid` messages carrying the state and a server timestamp; clients animate from `mp.serverNow()`, as the shared traffic does. Add the squid states to the late-joiner catch-up. With no room, or offline, the client runs the same brain itself.
 
@@ -76,9 +104,12 @@ Hooks in existing code:
 3. **The struggle and every vehicle.** The meter, the escapes in the table, the robot dunking, the boat capsizing. *Check:* one test case per row of the table, each for "escapes" and "doesn't".
 4. **Fighting and feeding.** Health, flinch, ink, fleeing, the logbook, a thrown car as bait. *Check:* three punches from a 2× robot make it flee; a car thrown in the water is taken instead of the player.
 5. **Multiplayer.** *Check:* two browsers in one room (separate browsers, as in `tools/tests/friends.mjs`): both see the same squid wake at the same server time, the second player frees the first with a punch, a late joiner sees a fleeing squid as asleep.
-6. **Setting, polish, speed.** The On / Off setting, glow at night, sounds. *Check:* `tools/tests/perf.mjs` for Hong Kong and San Francisco shows no more than about 3% extra frame time with a squid awake; the PSG1 build (`npx vite build --mode psg1`) builds, and on PSG1 or Low graphics the squid uses fewer arm segments.
+6. **Watermelons and the prize.** Throwing from the robot and each aircraft, the electrocution, the controls on every device, the paint job. *Check:* a melon from a plane flying at the squid hits and stuns it; a held player's melon frees them; a melon on land breaks nothing; Z, the touch chip and the L1 prompt each throw; beating the squid unlocks Squid Ink.
+7. **Squid Hunt, solo.** The boss, scoring, the timer, the leaderboard. *Check:* a scripted fight ends with the right score and posts to `squid:<city>`.
+8. **Squid Hunt in a room.** *Check:* two browsers: the host starts it, both are placed around the squid, both scores match on both screens, health scales with two players, the winner gets the trophy, rematch works.
+9. **Setting, polish, speed.** The On / Off setting, glow at night, sounds. *Check:* `tools/tests/perf.mjs` for Hong Kong and San Francisco shows no more than about 3% extra frame time with a squid awake; the PSG1 build (`npx vite build --mode psg1`) builds, and on PSG1 or Low graphics the squid uses fewer arm segments.
 
-Then run the existing tests that touch what changed (robot, barrel, hover, bridges, friends, sharedworld, roomgames3, psg1), commit, push, and give the deploy command.
+Then run the existing tests that touch what changed (robot, barrel, hover, bridges, friends, sharedworld, roomgame, roomgames2, roomgames3, gamepad, psg1), commit, push, and give the deploy command.
 
 ## Things that will trip you up
 
@@ -86,18 +117,26 @@ Then run the existing tests that touch what changed (robot, barrel, hover, bridg
 - **Respawn puts you back where you were a few seconds earlier**, which is still inside the squid's range. The 45 second rest is what stops an endless grab loop; test it.
 - **The robot has no crash state.** Don't try to give it one; dunk it and put it ashore.
 - **Hover mode swaps the flight object** (`toggleHover` in `main.js`): read the vehicle through `flight` and `plane` each frame, don't keep references.
-- **Room games.** While a room game runs (`rgRun`), squids stay asleep, so they can't wreck a Sky Race or a Landing Contest.
+- **Room games.** While any room game other than Squid Hunt runs (`rgRun`), squids stay asleep, so they can't wreck a Sky Race or a Landing Contest.
 - **Don't let it grab from bridges.** Cars and the robot on a deck are safe; check with `world.deckAt`.
 
-## Questions for the owner (defaults in brackets, so the build doesn't wait)
+## The owner's answers
 
-1. Should the sea monster be on for everyone to start with? [On, with the setting to turn it off.]
-2. Up to three squids in a big city, one in a small one? [Yes.]
-3. Should beating it unlock something, such as a squid-ink paint job? [Logbook count only for now.]
-4. A room game later, "Squid Hunt", where the room fights it together? [Not in this plan.]
+Answered on 2026-11-15:
+
+1. On for everyone to start with, with a setting to turn it off.
+2. Up to three squids in a big city, one in a small one.
+3. Beating it unlocks something: the Squid Ink paint job.
+4. Squid Hunt is in this plan, as a solo game and a multiplayer room game.
+5. Giant watermelons that electrocute the squid, thrown by the robot or any aircraft, never running out.
+
+Still open (defaults in brackets, so the build doesn't wait):
+
+1. Watermelons work anywhere but only affect the squid. Should they also knock over small things, for fun? [No.]
+2. Squid Hunt lasts four minutes. [Yes.]
 
 ## Prompt to start the build session
 
 ```txt
-Read docs/plans/README.md and docs/plans/07-giant-squid-plan.md. Build the giant squid in the order the plan gives, checking each step as it says, on branch claude/lego-airplane-game-ttd82x. Use the defaults for the owner questions unless I answer them. Show me a screenshot of the squid attacking before you finish, tell me what was and wasn't tested, and give me the deploy command.
+Read docs/plans/README.md and docs/plans/07-giant-squid-plan.md. Build the giant squid in the order the plan gives, checking each step as it says, on branch claude/lego-airplane-game-ttd82x. The owner's answers are in the plan; use the defaults for the two open questions unless I answer them. Show me a screenshot of the squid attacking before you finish, tell me what was and wasn't tested, and give me the deploy command.
 ```
