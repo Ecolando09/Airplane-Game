@@ -615,7 +615,9 @@ export class Rampage {
             o.v.multiplyScalar(0.55);
           }
         }
-        const g = w.heightAt(p.x, p.z);
+        // Lands on a bridge deck if it comes down onto one (not if it's already below it).
+        const deck = w.deckAt?.(p.x, p.z);
+        const g = deck !== null && deck !== undefined && p.y >= deck - 1.5 ? deck : w.heightAt(p.x, p.z);
         if (p.y <= g) {
           p.y = g;
           if (o.thrown) {

@@ -221,6 +221,8 @@ export class Traffic {
         nearList.push(i);
         gy = this.world.groundAt(x, z) + Math.max(-4, Math.min(car.gy || 0, 6)); // (not up on trees or roofs over the road)
       } else gy = this.google ? this.world.groundAt(x, z) : this.world.heightAt(x, z);
+      const deck = this.world.deckAt(x, z); // on a bridge: on its deck, not in the river
+      if (deck !== null) gy = deck;
       p.set(x, gy + 0.2, z);
       car.x = x;
       car.z = z;

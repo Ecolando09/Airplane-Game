@@ -390,7 +390,9 @@ export class RobotWalk {
       }
     }
     this.pos.y += this.vel.y * dt;
-    const ground = walking ? w.groundAt(this.pos.x, this.pos.z)
+    // Walking up a bridge ramp follows the deck (a deck far overhead doesn't count).
+    const deck = walking ? w.deckAt?.(this.pos.x, this.pos.z, this.pos.y) : null;
+    const ground = walking ? Math.max(w.groundAt(this.pos.x, this.pos.z), deck ?? -Infinity)
       : w.standHeight(this.pos.x, this.pos.z, this.onGround ? this.pos.y : this.pos.y - this.vel.y * dt);
     if (this.pos.y <= ground) {
       if (!this.onGround && this.vel.y < -32) this.onSlam?.(-this.vel.y);
@@ -435,7 +437,9 @@ export class RobotWalk {
       const nz = this.pos.z + (f.z * along * dt) / steps;
       // Boats stay on the water: on land they grind to a crawl.
       if (this.boat && !w.isWater(nx, nz)) along = THREE.MathUtils.clamp(along, -2, 2);
-      const hit = this.boat ? null : w.blockedAt(nx, nz, this.pos.y, rad, 4 * this.driving);
+      // On a bridge deck the road is clear (map buildings sometimes overlap a bridge's end).
+      const onDeck = !this.boat && w.deckAt?.(nx, nz, this.pos.y) != null;
+      const hit = this.boat || onDeck ? null : w.blockedAt(nx, nz, this.pos.y, rad, 4 * this.driving);
       // A normal-size car can't knock buildings down (a supersized one can).
       if (hit && (this.driving < 2 || !this.onRam?.(hit))) {
         along *= -0.3; // bounce off
@@ -451,7 +455,9 @@ export class RobotWalk {
     this.pos.x = THREE.MathUtils.clamp(this.pos.x, -ex, ex);
     this.pos.z = THREE.MathUtils.clamp(this.pos.z, -ez, ez);
     this.vel.set(f.x * along, 0, f.z * along);
-    this.pos.y = w.groundAt(this.pos.x, this.pos.z);
+    // Cars and trucks drive across bridges (a boat goes underneath).
+    const deck = this.boat ? null : w.deckAt?.(this.pos.x, this.pos.z, this.pos.y);
+    this.pos.y = deck ?? w.groundAt(this.pos.x, this.pos.z);
     this.onGround = true;
     this.onWater = !!this.boat && w.isWater(this.pos.x, this.pos.z);
     this.speed = Math.abs(along);

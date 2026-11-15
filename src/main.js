@@ -257,7 +257,7 @@ async function buildWorld() {
   setLook(settings.look);
   data = cityData;
   const before = new Set(scene.children);
-  world = new World(scene, data, { satImage });
+  world = new World(scene, data, { satImage, light: isPsg1() || prefs.low }); // light: simpler bridges
   traffic = new Traffic(scene, world, prefs.low ? 350 : IS_TOUCH || isPsg1() ? 900 : 2500, { city: settings.city, detail: prefs.low || isPsg1() ? 40 : IS_TOUCH ? 80 : 150, lightCap: prefs.low || isPsg1() ? 300 : 1200 });
   props = new Props(scene, world);
   grownLights?.dispose();

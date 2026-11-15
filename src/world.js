@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { LEGO, legoMaterial, isLego } from './lego.js';
 import { buildLandmark } from './landmarks.js';
+import { Bridges } from './bridges.js';
 
 const CHUNK = 1600; // meters per culling chunk
 const GRID = 200; // meters per collision cell
@@ -40,7 +41,8 @@ export class World {
   /**
    * @param {object} opts.satImage  satellite photo of the map area (realistic look)
    */
-  constructor(scene, data, { satImage = null } = {}) {
+  constructor(scene, data, { satImage = null, light = false } = {}) {
+    this.light = light; // PSG1 / Low graphics: simpler extras (bridges)
     this.scene = scene;
     this.data = data;
     this.satImage = satImage;
@@ -62,6 +64,9 @@ export class World {
     this._buildBuildings();
     this._buildTrees();
     this._buildCustom();
+    // Roads over water become bridges cars can drive across.
+    this.bridges = new Bridges(this);
+    this.bridges.build(this.scene, this.meshes);
     this._buildHelipad();
     this._buildToilets();
     this._buildClouds();
@@ -1005,8 +1010,20 @@ export class World {
   }
 
   /** For walking: the height to stand at, counting roofs that are at or below step height. */
+  /** A road bridge's deck height at (x, z), or null (see bridges.js). nearY: only a deck within reach of it. */
+  deckAt(x, z, nearY = null) {
+    return this.bridges ? this.bridges.deckAt(x, z, nearY) : null;
+  }
+
+  /** Where something resting on the ground sits: a bridge deck over the water, else the ground. */
+  surfaceAt(x, z) {
+    return this.deckAt(x, z) ?? this.heightAt(x, z);
+  }
+
   standHeight(x, z, feetY) {
     let y = this.groundAt(x, z);
+    const deck = this.deckAt(x, z);
+    if (deck !== null && deck > y && deck <= feetY + 2.5) y = deck; // walking up onto a bridge
     if (this.ghost) return y;
     for (const c of this.colliders.get(Math.floor((x + this.halfX) / GRID) * 100000 + Math.floor((z + this.halfZ) / GRID)) || []) {
       if (c.dead || c.t === 'tree') continue; // bridge decks and arches can be landed on too

@@ -252,7 +252,7 @@ export class Props {
     // Objects the map places get numbers in placement order (the same everywhere);
     // ones added later (a car taken off the road) get an id from whoever added them.
     id ??= this.placing ? this.items.length : `${this.localTag}${++this.localN}`;
-    const it = { id, kind, x, z, y: this.world.heightAt(x, z), yaw, tint, idx: k.im.count++, held: false, scale: 1 };
+    const it = { id, kind, x, z, y: this.world.surfaceAt(x, z), yaw, tint, idx: k.im.count++, held: false, scale: 1 }; // (a car taken off a bridge stays on it)
     this.byId.set(String(id), it);
     k.im.setColorAt(it.idx, new THREE.Color(k.tint ? tint : 0xffffff));
     k.im.instanceColor.needsUpdate = true;
@@ -359,7 +359,7 @@ export class Props {
 
   /** Put a carried or thrown object back on the ground where it ended up. */
   drop(it, x, z, yaw) {
-    Object.assign(it, { x, z, yaw, y: this.world.heightAt(x, z), held: false });
+    Object.assign(it, { x, z, yaw, y: this.world.surfaceAt(x, z), held: false });
     this._write(it);
   }
 
@@ -372,7 +372,7 @@ export class Props {
       this._settleI = ((this._settleI || 0) + 1) % n;
       const it = this.items[this._settleI];
       if (it.held || Math.abs(it.x - x) > r || Math.abs(it.z - z) > r) continue;
-      const y = this.world.heightAt(it.x, it.z);
+      const y = this.world.surfaceAt(it.x, it.z);
       if (Math.abs(y - it.y) > 0.3) {
         it.y = y;
         this._write(it);
