@@ -39,7 +39,7 @@ const CITIES = {
   denver: 'Denver, CO', stlouis: 'St. Louis, MO',
   sanfrancisco: 'San Francisco, CA', hongkong: 'Hong Kong & Shenzhen', tokyo: 'Tokyo, Japan', singapore: 'Singapore',
 };
-const VEHICLE_NAMES = { plane: 'Bush Plane', heli: 'Ghost-Spider Copter', jet: 'Passenger Jet' };
+const VEHICLE_NAMES = { plane: 'Bush Plane', heli: 'Ghost-Spider Copter', jet: 'Passenger Shuttle' };
 /** A fresh model of one of your own vehicles: 'plane', 'heli' or 'jet'. */
 const createOwnModel = (kind) => (kind === 'heli' ? createGhostSpiderHeli() : kind === 'jet' ? createPassengerJet() : createLegoPlane());
 const ownKind = (v) => (v === 'heli' || v === 'jet' ? v : 'plane');
@@ -408,6 +408,7 @@ function buildVehicle() {
 let floatsAnim = 0;
 function toggleFloats() {
   if (!running || flight.crashed) return;
+  if (!isBot && plane.hovercraft) return toggleHover(); // the shuttle's button switches hover mode instead
   if (flight.onGround && flight.floats && flight.onWater) {
     message("Can't raise the floats while on the water!", 2);
     return;
@@ -421,6 +422,77 @@ function updateFloats(dt) {
   plane.floats.visible = floatsAnim > 0.02;
   plane.floats.scale.setScalar(Math.max(0.001, floatsAnim));
   for (const w of plane.wheels) w.visible = floatsAnim < 0.6;
+  // The shuttle's hover thrusters: flames grow with lift and speed, idle low on the ground.
+  if (plane.updateThrust && plane.floats.visible) {
+    const power = flight.crashed ? 0 : flight.onGround ? 0.12 + 0.15 * flight.throttle
+      : THREE.MathUtils.clamp(0.42 + 0.5 * (flight.vel.y / 11) + 0.25 * flight.throttle, 0.08, 1);
+    plane.updateThrust(power, timer.getElapsed());
+  }
+}
+
+// ------------------------------------------------------------------ shuttle hover mode
+// The passenger shuttle switches between flying like a plane (wings, speed to
+// stay up) and hovering like a hovercraft: it then flies with the copter's
+// controls (rise and sink in place, stick steers, throttle sets speed) on four
+// thrusters that fold out underneath, over land or water.
+function toggleHover() {
+  if (!running || flight.crashed || isBot || !plane.hovercraft) return;
+  const from = flight;
+  const hover = !(from instanceof HeliFlight);
+  if (!hover && from.onGround && from.onWater) return message('Lift off the water before switching to flight mode', 2);
+  const yaw = hover ? -THREE.MathUtils.degToRad(from.heading) : from.yaw;
+  plane.flights ||= {};
+  let to;
+  if (hover) {
+    plane.flights.fly = from;
+    to = plane.flights.hover ||= new HeliFlight(world, plane);
+    to.pos.copy(from.pos);
+    to.vel.copy(from.vel);
+    to.yaw = yaw;
+    to.tilt = { pitch: 0, roll: 0 };
+    to.throttle = Math.min(1, from.speed / 38);
+    to.speed = from.speed;
+    to.floats = true; // rides on its thrusters: water is fine
+  } else {
+    to = plane.flights.fly;
+    to.pos.copy(from.pos);
+    to.quat.setFromAxisAngle(Y_AXIS, yaw);
+    to.barrel = null;
+    // In the air the jets kick in at once, so it doesn't just drop out of the sky.
+    to.speed = from.onGround ? Math.hypot(from.vel.x, from.vel.z) : Math.max(Math.hypot(from.vel.x, from.vel.z), 36);
+    to.vel.copy(to.forward).multiplyScalar(to.speed);
+    to.throttle = from.onGround ? from.throttle : Math.max(0.7, from.throttle);
+    to.floats = false;
+  }
+  to.onGround = from.onGround;
+  to.onWater = false;
+  to.crashed = false;
+  to.turbo = from.turbo;
+  to.turboNow = from.turboNow || 1;
+  to.ctrl = { pitch: 0, roll: 0, yaw: 0 };
+  if (to._updateQuat) to._updateQuat();
+  flight = to;
+  isHeli = hover;
+  input.heliMode = hover;
+  document.body.classList.toggle('heli', hover);
+  $('throttleLabel').textContent = hover ? 'SPEED' : 'THROTTLE';
+  input.syncThrottle(flight.throttle);
+  input.resetLift();
+  tilt = 0;
+  sound.blip('transform');
+  message(hover ? '🛸 Hover mode!<small>Rise and sink in place like the copter · throttle sets your speed · works over water</small>'
+    : '🛫 Flight mode!<small>Wings again: keep your speed up</small>', 3);
+  setBotUi();
+}
+/** Leave hover mode at once (restarts). */
+function endHover() {
+  if (isBot || !plane?.hovercraft || !(flight instanceof HeliFlight) || !plane.flights?.fly) return;
+  flight = plane.flights.fly;
+  flight.floats = false;
+  isHeli = false;
+  input.heliMode = false;
+  document.body.classList.remove('heli');
+  $('throttleLabel').textContent = 'THROTTLE';
 }
 
 // ------------------------------------------------------------------ turbo boosters
@@ -432,7 +504,7 @@ function updateBoosters(dt) {
   const jets = isBot && flight.jetting;
   const on = (flight.turbo > 1 || jets) && !flight.crashed;
   if (on) boosterColor = Math.max(flight.turbo, 2);
-  // The passenger jet's engines roar with the throttle; the robot's jets when burning.
+  // The passenger shuttle's engines roar with the throttle; the robot's jets when burning.
   const engines = !isBot && plane.jet && running && !flight.crashed ? 0.35 + 0.55 * flight.throttle : 0;
   sound.jet?.(jets && running ? 1 + 0.25 * (flight.turboNow - 1) : engines);
   boosterLevel += ((on ? 1 : 0) - boosterLevel) * (1 - Math.exp(-dt * 5));
@@ -558,7 +630,7 @@ function updateDashboard() {
   let type = null;
   if (running && CAMS[camMode] === 'cockpit' && !flight.crashed && !window.__game?.photo) {
     if (dr) type = driveInfo(dr.item)?.dash || 'car';
-    else type = isBot ? 'robot' : isHeli ? 'heli' : plane.jet ? 'jet' : 'plane';
+    else type = isBot ? 'robot' : plane.jet ? 'jet' : isHeli ? 'heli' : 'plane';
   }
   const tint = dr ? '#' + new THREE.Color(props.kinds[dr.item.kind]?.tint ? dr.item.tint : 0xf2c200).getHexString()
     : takenPlane?.it && !isHeli ? '#' + new THREE.Color(takenPlane.it.tint).getHexString() : isHeli ? '#5b6770' : plane.jet ? '#f2f2f2' : '#c62828';
@@ -586,6 +658,7 @@ function updateDashboard() {
     smashed: isBot ? (rampage.stats.buildings || 0) + (rampage.stats.trees || 0) + (rampage.stats.cars || 0) : 0,
     agl: isBot ? Math.max(0, flight.pos.y - world.groundAt(flight.pos.x, flight.pos.z)) * 3.281 : 0,
     jet: isBot ? (flight.jetting ? 1 : 0) * 0.6 + Math.min(0.4, Math.max(0, flight.vel.y) / 40) : 0,
+    hover: !isBot && !!plane.hovercraft && isHeli,
   });
 }
 const CAMS = ['chase', 'cockpit']; // behind and above, or the driver's seat
@@ -1281,6 +1354,7 @@ function start(airborne, { lesson = false, roomGame = false } = {}) {
   // Runs inside the tap, so the motion-sensor permission prompt is allowed here.
   if (input.isTouch) input.setTilt(phoneSteering === 'tilt').then((on) => on && !isBot && !coach && message('Tilt to steer — tap CENTER to re-center', 3));
   leaveBot();
+  endHover(); // the shuttle starts in flight mode
   potty.sitting = 0;
   rampage.reset(); // a fresh start puts the city back together
   if (takenPlane) {
@@ -3260,10 +3334,10 @@ setInterval(() => {
     menu: !running,
     spd: Math.round(flight.speed * 1.944),
     alt: Math.round((p.y - plane.gearHeight + world.baseElevation) * 3.281),
-    gear: isBot ? 'ROBOT' : flight.floats ? 'FLOATS' : isHeli ? 'LEGS' : 'WHEELS',
+    gear: isBot ? 'ROBOT' : plane.hovercraft && isHeli ? 'HOVER' : flight.floats ? 'FLOATS' : isHeli ? 'LEGS' : 'WHEELS',
     bot: isBot,
     turbo: flight.turbo,
-    vehicle: ownKind(settings.vehicle),
+    vehicle: isHeli ? 'heli' : ownKind(settings.vehicle), // (hover mode: the phone shows the LIFT slider)
     crashed: flight.crashed,
     thr: flight.throttle,
   });
@@ -3396,7 +3470,8 @@ function setBotUi() {
   input.botMode = isBot;
   // While driving a supersized car: JUMP and GRAB get out, SMASH honks (and boosts).
   const car = isBot && !!rampage?.driving;
-  for (const [act, label] of [['brake', ['BRAKE', 'JUMP', 'EXIT']], ['floats', ['FLOATS', 'GRAB', 'EXIT']]]) {
+  const hoverBtn = !isBot && plane?.hovercraft ? (isHeli ? 'FLY' : 'HOVER') : 'FLOATS'; // the shuttle: hover mode switch
+  for (const [act, label] of [['brake', ['BRAKE', 'JUMP', 'EXIT']], ['floats', [hoverBtn, 'GRAB', 'EXIT']]]) {
     document.querySelector(`#touchButtons [data-act=${act}]`).textContent = label[car ? 2 : +isBot];
   }
   $('turboChip').textContent = car ? 'HORN' : isBot ? 'SMASH' : flight.turbo > 1 ? turboName(flight.turbo) : 'TURBO';
@@ -3823,7 +3898,7 @@ function poseAirplane(dt) {
   if (isHeli) {
     plane.group.position.copy(flight.pos);
     plane.group.quaternion.copy(flight.quat);
-    plane.animate(flight, dt);
+    plane.animate?.(flight, dt); // (the shuttle hovering has no rotor to spin)
     return;
   }
   const want = flight.onGround && !flight.floats && !plane.level ? GROUND_TILT * THREE.MathUtils.clamp(1 - flight.speed / 24, 0, 1) : 0;
@@ -4047,7 +4122,7 @@ function updateDriveButton() {
     if (it && !driveTargetNow) sound.blip('ring');
     driveTargetNow = it;
     if (it === leftBehind) {
-      $('driveName').textContent = { heli: 'your copter', jet: 'your jet', plane: 'your plane' }[leftBehind.vehicle];
+      $('driveName').textContent = { heli: 'your copter', jet: 'your shuttle', plane: 'your plane' }[leftBehind.vehicle];
       $('driveVerb').textContent = leftBehind.vehicle === 'heli' ? '🚁 FLY' : leftBehind.vehicle === 'jet' ? '🛫 FLY' : '✈️ FLY';
     } else if (it) {
       const info = props.info(it.kind);
@@ -4207,7 +4282,7 @@ function getBackIn() {
   flight.onGround = true;
   transform(); // (clears the parked copy)
   finishMorph();
-  message(`${lb.vehicle === 'heli' ? '🚁' : lb.vehicle === 'jet' ? '🛫' : '✈️'} Back in your ${{ heli: 'copter', jet: 'jet', plane: 'plane' }[lb.vehicle]}!`, 2.5);
+  message(`${lb.vehicle === 'heli' ? '🚁' : lb.vehicle === 'jet' ? '🛫' : '✈️'} Back in your ${{ heli: 'copter', jet: 'shuttle', plane: 'plane' }[lb.vehicle]}!`, 2.5);
   return true;
 }
 /** Climb into a parked plane: it becomes your plane, in its colour, where it was parked. */

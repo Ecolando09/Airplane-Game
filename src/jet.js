@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { LEGO, legoMaterial } from './lego.js';
 import { createBoosters } from './boosters.js';
 
-// The passenger jet: built after a real Lego model. A light grey delta wing
+// The passenger shuttle: built after a real Lego model. A light grey delta wing
 // (arrowhead plate, wide at the back) under a red fuselage; along the top two
 // white stripes either side of a dark grey studded strip, with a yellow "21"
 // tile at the front; red bricks and red curved slopes along the sides; a blue
@@ -164,16 +164,45 @@ export function createPassengerJet() {
     wheels.push(leg, w);
   }
 
-  // ---- floats for landing on water (B), like the bush plane's
+  // ---- hover thrusters (hovercraft mode): four nozzles fold out under the wing,
+  // flames pointing down that grow with the thrust. They take the place of the
+  // other planes' floats (shown and hidden the same way, also for friends).
   const floats = new THREE.Group();
-  for (const sx of [-1, 1]) {
-    const pont = new THREE.Mesh(new THREE.CapsuleGeometry(0.45, 7, 6, 12).rotateX(Math.PI / 2), mat(LEGO.white));
-    pont.position.set(sx * 2.4, -GEAR + 0.45, 0.6);
-    floats.add(pont);
+  const flames = [];
+  const flameGeo = new THREE.ConeGeometry(1, 1, 14, 1, true).rotateX(Math.PI).translate(0, -0.5, 0); // tip down
+  const outer = new THREE.MeshBasicMaterial({ color: 0x4fc3ff, transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending, depthWrite: false });
+  const inner = new THREE.MeshBasicMaterial({ color: 0xe8fbff, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false });
+  for (const [x, z] of [[-3.2, 0], [3.2, 0], [-3.6, 4.4], [3.6, 4.4]]) {
+    const pod = new THREE.Group();
+    pod.position.set(x * U, 0, z * U);
+    const nozzle = new THREE.Mesh(new THREE.CylinderGeometry(0.42 * U, 0.55 * U, 0.6 * U, 16), mat(LEGO.darkGray));
+    nozzle.position.y = -0.3 * U;
+    pod.add(nozzle);
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.5 * U, 0.08 * U, 6, 16).rotateX(Math.PI / 2), mat(LEGO.lightGray));
+    ring.position.y = -0.6 * U;
+    pod.add(ring);
+    const flame = new THREE.Group();
+    flame.position.y = -0.62 * U;
+    const fo = new THREE.Mesh(flameGeo, outer);
+    fo.scale.set(0.42, 1, 0.42);
+    const fi = new THREE.Mesh(flameGeo, inner);
+    fi.scale.set(0.2, 0.6, 0.2);
+    flame.add(fo, fi);
+    pod.add(flame);
+    floats.add(pod);
+    flames.push(flame);
   }
   floats.scale.setScalar(0.001);
   floats.visible = false;
   jet.add(floats);
+  /** Each frame in hover mode: power 0..1 sets the flames' length; t (seconds) makes them flicker. */
+  const updateThrust = (power, t) => {
+    flames.forEach((f, i) => {
+      const flicker = 1 + 0.12 * Math.sin(t * 37 + i * 1.7) + 0.06 * Math.sin(t * 91 + i);
+      f.scale.set(0.7 + 0.5 * power, (0.6 + 4.2 * power) * flicker, 0.7 + 0.5 * power);
+    });
+  };
+  updateThrust(0.5, 0);
 
   // ---- turbo boosters come out of the two engine exhausts
   const updateBoosters = createBoosters(jet, mat, { x: 1.1 * U, y: -0.1 * U, z: 7.4 * U, scale: 1.0 });
@@ -182,6 +211,8 @@ export function createPassengerJet() {
     group: jet,
     kind: 'jet',
     jet: true, // jet engines: no propeller, more thrust, sits level on its nose wheel
+    hovercraft: true, // can switch to hover mode (flies like the copter on its thrusters)
+    updateThrust,
     level: true,
     thrustMul: 2.2, // top speed about 1.5x the bush plane's
     noProp: true,

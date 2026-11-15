@@ -155,7 +155,7 @@ const BUILD = {
     <rect id="nJet" x="672" y="256" width="18" height="0" rx="4" fill="#ff7a1a"/>
     <text class="small" x="681" y="280" style="fill:#7df0ff">JET</text>
     <path d="M380 300 L410 262 L470 262 L500 300 Z" fill="#14191e" stroke="#1fd1ff" stroke-width="2"/>`,
-  // The passenger jet: an airliner's glass cockpit. A flight display (attitude,
+  // The passenger shuttle: an airliner's glass cockpit (with a FLIGHT / HOVER mode light). A flight display (attitude,
   // speed, altitude), a navigation display (heading), two engine gauges, the
   // thrust levers and a side-stick.
   jet: () => `
@@ -172,6 +172,7 @@ const BUILD = {
     <rect x="326" y="128" width="170" height="140" rx="8" fill="#0b0f13" stroke="#4a525a" stroke-width="4"/>
     ${dial(411, 205, 52, 'HDG', null, { a0: -180, a1: 180, ticks: 13, face: '#0b0f13' })}
     <g id="nCompass"><text x="411" y="168" style="fill:#7df0a0">N</text></g>
+    <text id="tMode" x="411" y="148" style="fill:#7df0a0;font-size:12px">FLIGHT</text>
     <path d="M411 150 L404 162 L418 162 Z" fill="#ffb300"/>
     ${dial(540, 180, 32, 'N1 L', 'nRpm', { ticks: 6, face: '#0b0f13' })}
     ${dial(620, 180, 32, 'N1 R', 'nRpm2', { ticks: 6, face: '#0b0f13' })}
@@ -239,7 +240,7 @@ export class Dashboard {
     const top = m ? Math.round((+m[1] + +m[2]) / 2) - 6 : 60;
     this.el.innerHTML = `<svg xmlns="${NS}" viewBox="0 ${top} 1000 ${300 - top}" preserveAspectRatio="xMidYMax meet">${body}</svg>`;
     this.n = {};
-    for (const id of ['nSpeed', 'nRpm', 'nAlt', 'nVs', 'nAtt', 'nCompass', 'nWheel', 'nThrottle', 'tGear', 'nAir', 'nWater', 'iLights', 'iSiren', 'iFlash', 'iFlashA', 'iFlashB', 'tEcg', 'tBpm', 'tPlate', 'nRadar', 'tSize', 'tSmash', 'tAlt', 'nJet', 'nRpm2', 'tSpd', 'tAltJ']) this.n[id] = this.el.querySelector(`#${id}`);
+    for (const id of ['nSpeed', 'nRpm', 'nAlt', 'nVs', 'nAtt', 'nCompass', 'nWheel', 'nThrottle', 'tGear', 'nAir', 'nWater', 'iLights', 'iSiren', 'iFlash', 'iFlashA', 'iFlashB', 'tEcg', 'tBpm', 'tPlate', 'nRadar', 'tSize', 'tSmash', 'tAlt', 'nJet', 'nRpm2', 'tSpd', 'tAltJ', 'tMode']) this.n[id] = this.el.querySelector(`#${id}`);
   }
 
   /** How much of the screen's height the dashboard covers, in pixels (0 when hidden). */
@@ -282,6 +283,10 @@ export class Dashboard {
     if (n.nRpm2) rot(n.nRpm2, sweep(s.throttle), 620, 180);
     if (n.tSpd) n.tSpd.textContent = String(Math.round(s.mph * 0.869));
     if (n.tAltJ) n.tAltJ.textContent = String(Math.round(s.altFt / 10) * 10);
+    if (n.tMode) {
+      n.tMode.textContent = s.hover ? 'HOVER' : 'FLIGHT';
+      n.tMode.style.fill = s.hover ? '#4fc3ff' : '#7df0a0';
+    }
     // The robot's display: radar sweep, size, smash count, height above ground, jet power.
     if (n.nRadar) rot(n.nRadar, (performance.now() / 1000) * 140 % 360, 160, 215);
     if (n.tSize) n.tSize.textContent = `SIZE ${s.size}×`;
