@@ -54,7 +54,7 @@ Fighting: 6 health. A punch does 1 (2× robot: 2; 4× and 8×: 3), a thrown car 
 - **Who.** The robot at any size, the plane, the copter and the shuttle in either mode. Not while driving a car or boat (get out, or use the horn). The supply never runs out; one throw every 1.5 seconds.
 - **How it flies.** A beach-ball-sized striped melon. The robot throws it overhand where it faces; aircraft lob it forward and down from the nose, so you aim by flying at the squid. It arcs under gravity for at most 6 seconds.
 - **A hit on the squid** (anywhere within its body or raised arms): the melon bursts in red chunks and seeds, blue lightning arcs crawl over the squid for 3 seconds with a crackle, it is stunned for 4 seconds, takes 2 damage and drops anyone it holds. Being silly on purpose: nobody explains why a watermelon is electric.
-- **A miss.** A splash on water, a harmless splat on land. Watermelons never break buildings, cars or other players; that keeps them a squid tool, not a second smash button.
+- **A miss.** A splash on water, a splat on land. For fun (the owner said yes) a melon knocks over small things where it lands: it topples a tree and shoves loose props and traffic cars like a light kick. It never breaks buildings or hurts players.
 - **Controls.** Keyboard: Z (it is free; E and Q are the rudder). Touch: a 🍉 chip. Phone controller page (`remote.html`): a 🍉 button. Controllers and the PSG1 have no spare button, so there the throw is a prompt, like Auto-land: whenever a squid within 600 m is awake, "🍉 Throw" shows and L1 throws (Auto-land and the robot's turbo cycle give way while it shows).
 
 ### The prize
@@ -104,7 +104,7 @@ Hooks in existing code:
 3. **The struggle and every vehicle.** The meter, the escapes in the table, the robot dunking, the boat capsizing. *Check:* one test case per row of the table, each for "escapes" and "doesn't".
 4. **Fighting and feeding.** Health, flinch, ink, fleeing, the logbook, a thrown car as bait. *Check:* three punches from a 2× robot make it flee; a car thrown in the water is taken instead of the player.
 5. **Multiplayer.** *Check:* two browsers in one room (separate browsers, as in `tools/tests/friends.mjs`): both see the same squid wake at the same server time, the second player frees the first with a punch, a late joiner sees a fleeing squid as asleep.
-6. **Watermelons and the prize.** Throwing from the robot and each aircraft, the electrocution, the controls on every device, the paint job. *Check:* a melon from a plane flying at the squid hits and stuns it; a held player's melon frees them; a melon on land breaks nothing; Z, the touch chip and the L1 prompt each throw; beating the squid unlocks Squid Ink.
+6. **Watermelons and the prize.** Throwing from the robot and each aircraft, the electrocution, the controls on every device, the paint job. *Check:* a melon from a plane flying at the squid hits and stuns it; a held player's melon frees them; a melon on land topples a tree and shoves a car but breaks no building; Z, the touch chip and the L1 prompt each throw; beating the squid unlocks Squid Ink.
 7. **Squid Hunt, solo.** The boss, scoring, the timer, the leaderboard. *Check:* a scripted fight ends with the right score and posts to `squid:<city>`.
 8. **Squid Hunt in a room.** *Check:* two browsers: the host starts it, both are placed around the squid, both scores match on both screens, health scales with two players, the winner gets the trophy, rematch works.
 9. **Setting, polish, speed.** The On / Off setting, glow at night, sounds. *Check:* `tools/tests/perf.mjs` for Hong Kong and San Francisco shows no more than about 3% extra frame time with a squid awake; the PSG1 build (`npx vite build --mode psg1`) builds, and on PSG1 or Low graphics the squid uses fewer arm segments.
@@ -130,13 +130,11 @@ Answered on 2026-11-15:
 4. Squid Hunt is in this plan, as a solo game and a multiplayer room game.
 5. Giant watermelons that electrocute the squid, thrown by the robot or any aircraft, never running out.
 
-Still open (defaults in brackets, so the build doesn't wait):
-
-1. Watermelons work anywhere but only affect the squid. Should they also knock over small things, for fun? [No.]
-2. Squid Hunt lasts four minutes. [Yes.]
+6. Watermelons also knock over small things for fun: yes. They topple trees and shove loose props and traffic cars like a light kick (reuse `rampage._launch` and the tree-toppling in `rampage.wreck`), but never break buildings or hurt players.
+7. Squid Hunt lasts four minutes: yes.
 
 ## Prompt to start the build session
 
 ```txt
-Read docs/plans/README.md and docs/plans/07-giant-squid-plan.md. Build the giant squid in the order the plan gives, checking each step as it says, on branch claude/lego-airplane-game-ttd82x. The owner's answers are in the plan; use the defaults for the two open questions unless I answer them. Show me a screenshot of the squid attacking before you finish, tell me what was and wasn't tested, and give me the deploy command.
+Read docs/plans/README.md and docs/plans/07-giant-squid-plan.md. Build the giant squid in the order the plan gives, checking each step as it says, on branch claude/lego-airplane-game-ttd82x. The owner's answers are in the plan. Show me a screenshot of the squid attacking before you finish, tell me what was and wasn't tested, and give me the deploy command.
 ```

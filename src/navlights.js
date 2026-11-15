@@ -13,11 +13,11 @@ const SPECS = {
     beacons: [[0, 2.15, 0.6], [0, -0.95, 0.4]], strobes: [[-6.95, 1.62, -1.6], [6.95, 1.62, -1.6]],
     landing: [[-2.1, 1.34, -3.6], [2.1, 1.34, -3.6]],
   },
-  // The passenger shuttle: delta wing corners (U = 0.9 m per stud), top of the tail, nose.
+  // The passenger shuttle: the half-round wing's tips, the rear window's top, the nose (metres).
   jet: {
-    left: [-5.6, 0.45, 5.4], right: [5.6, 0.45, 5.4], tail: [0, 2.3, 4.9],
-    beacons: [[0, 2.4, 0.5], [0, -0.6, 2.0]], strobes: [[-5.6, 0.45, 5.9], [5.6, 0.45, 5.9]],
-    landing: [[0, 0.7, -5.6]],
+    left: [-5.7, 0.35, 1.5], right: [5.7, 0.35, 1.5], tail: [0, 2.0, 6.3],
+    beacons: [[0, 2.45, -2.2], [0, -0.5, 2.0]], strobes: [[-5.7, 0.35, 2.2], [5.7, 0.35, 2.2]],
+    landing: [[0, 0.1, -7.9]],
   },
   // The helicopter: lights on the body sides, the tail and under the belly.
   heli: {
