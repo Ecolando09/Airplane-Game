@@ -21,7 +21,7 @@ import { PottyTime } from './pottytime.js';
 import { ColliderView } from './colliderview.js';
 import { NightLights } from './nightlights.js';
 import { addNavLights, updateNavLights, parkedPlaneSpec } from './navlights.js';
-import { vehicleLights, addRideLights, setVehicleLightsNight, GrownLights, emergencyLights, updateEmergencyLights, EmergencyProps } from './vehlights.js';
+import { vehicleLights, addRideLights, setVehicleLightsNight, GrownLights, emergencyLights, updateEmergencyLights, EmergencyProps, lightsOn } from './vehlights.js';
 import { vehicleInfo } from './vehicles.js';
 import { Dashboard } from './dashboard.js';
 import { PadNav, pad as padGlyph, isPsg1, isPsg1Pad, enablePsg1 } from './psg1.js';
@@ -302,7 +302,7 @@ async function buildWorld() {
         const l = vehicleLights(dr.item.kind, props.kinds[dr.item.kind]?.model);
         if (l) dr.mesh.add(l);
         // Police car, ambulance, fire truck: its flashing lights (on unless switched off).
-        dr.em = emergencyLights(dr.item.kind, dr.item.lights !== false);
+        dr.em = emergencyLights(dr.item.kind, lightsOn(dr.item, props.kinds[dr.item.kind]));
         if (dr.em) dr.mesh.add(dr.em);
       }
       updateEmButtons();
@@ -671,7 +671,7 @@ function updateDashboard() {
     steer: THREE.MathUtils.clamp(c.roll || 0, -1, 1),
     stick: THREE.MathUtils.clamp(c.pitch || 0, -1, 1),
     gear: mph < 1 ? 'P' : (c.pitch || 0) < -0.1 ? 'R' : 'D',
-    lights: !!dr && dr.item.lights !== false, siren: !!dr && !!dr.item.siren,
+    lights: !!dr && lightsOn(dr.item, props.kinds[dr.item.kind]), siren: !!dr && !!dr.item.siren,
     // The robot's display
     size: isBot ? sizeName(bot.walk.size) : '',
     smashed: isBot ? (rampage.stats.buildings || 0) + (rampage.stats.trees || 0) + (rampage.stats.cars || 0) : 0,
@@ -3319,7 +3319,8 @@ input.on('navCity', (step) => {
 input.on('l1', () => (melonPrompt() ? throwMelon() : isBot ? setTurbo((flight.turbo % 3) + 1) : running && startAutoLand()));
 input.on('dUp', () => (isBot ? running && rampage.resize(flight, 2) && updateBotHud() : toggleMap()));
 input.on('dDown', () => (isBot ? running && rampage.resize(flight, 0.5) && updateBotHud() : goPotty()));
-// D-pad left/right: potty and "not now"; in a police car, ambulance or fire truck, lights and siren.
+// D-pad left/right: potty and "not now"; in a police car, ambulance or fire truck, lights and siren
+// (in the ice cream truck, lights and music).
 input.on('dLeft', () => (emVehicle() ? toggleEmLights() : goPotty()));
 input.on('dRight', () => (emVehicle() ? toggleSiren() : potty.need ? skipPotty() : coach && nextCoach()));
 // A controller plugged into a phone (like a GameSir) or a computer: once it's
@@ -4323,35 +4324,45 @@ $('driveBtn').onclick = enterVehicle;
 // ------------------------------------------------------------------ emergency vehicles
 // A police car, ambulance or fire truck: flashing lights (on unless switched off,
 // by day too) and a siren, each switched with a button, a key (O, U) or the D-pad.
-/** The emergency vehicle being driven, or null. */
-const emVehicle = () => (isBot && running && rampage?.driving && props.kinds[rampage.driving.item.kind]?.emergency ? rampage.driving : null);
+// The ice cream truck works the same way: its roof bulbs (off until switched on)
+// and its music in place of a siren. (`item.siren` is the music for the truck.)
+/** The emergency vehicle (or ice cream truck) being driven, or null. */
+const emVehicle = () => {
+  const k = isBot && running && rampage?.driving && props.kinds[rampage.driving.item.kind];
+  return k && (k.emergency || k.chime) ? rampage.driving : null;
+};
+const emLit = (dr) => lightsOn(dr.item, props.kinds[dr.item.kind]);
 const emState = () => {
   const dr = emVehicle();
-  return dr ? (dr.item.lights !== false ? 1 : 0) | (dr.item.siren ? 2 : 0) : 0;
+  return dr ? (emLit(dr) ? 1 : 0) | (dr.item.siren ? 2 : 0) : 0;
 };
+const isTruck = (dr) => !!props.kinds[dr.item.kind]?.chime;
 function toggleEmLights() {
   const dr = emVehicle();
   if (!dr) return;
-  dr.item.lights = dr.item.lights === false;
+  dr.item.lights = !emLit(dr);
   if (dr.em) dr.em.userData.on = dr.item.lights;
   sound.blip('ring', 0.5);
-  message(dr.item.lights ? '🚨 Lights on' : 'Lights off', 1.2);
+  message(dr.item.lights ? (isTruck(dr) ? '💡 Lights on' : '🚨 Lights on') : 'Lights off', 1.2);
   updateEmButtons();
 }
 function toggleSiren() {
   const dr = emVehicle();
   if (!dr) return;
   dr.item.siren = !dr.item.siren;
-  message(dr.item.siren ? '📢 Siren on' : 'Siren off', 1.2);
+  message(isTruck(dr) ? (dr.item.siren ? '🎵 Ice cream music on' : 'Music off') : dr.item.siren ? '📢 Siren on' : 'Siren off', 1.2);
   updateEmButtons();
 }
 function updateEmButtons() {
   const dr = emVehicle();
   $('emBtns').hidden = !dr;
   if (!dr) return;
-  $('emLightsBtn').classList.toggle('on', dr.item.lights !== false);
+  const truck = isTruck(dr);
+  $('emLightsBtn').classList.toggle('on', emLit(dr));
   $('emSirenBtn').classList.toggle('on', !!dr.item.siren);
   const pad = isPsg1() || padPlay;
+  $('emLightsBtn').firstChild.textContent = truck ? '💡 Lights' : '🚨 Lights';
+  $('emSirenBtn').firstChild.textContent = truck ? '🎵 Music' : '📢 Siren';
   $('emLightsBtn').querySelector('kbd').textContent = pad ? '◀' : 'O';
   $('emSirenBtn').querySelector('kbd').textContent = pad ? '▶' : 'U';
 }

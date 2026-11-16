@@ -74,7 +74,7 @@ const KINDS = {
   plane: { drive: true, fly: true, name: 'parked plane', r: 5, tint: true, make: detailed('plane') },
   tanker: { drive: true, name: 'fuel truck', r: 4.5, make: detailed('tanker') },
   marble: { name: 'marble block', r: 2.4, make: () => [box(3.4, 2.6, 3.4, 0xf2f1ec, 0, 1.3, 0), box(3.45, 0.15, 3.45, 0xd9d6cc, 0, 1.6, 0)] },
-  truck: { drive: true, name: 'ice cream truck', r: 3.6, make: detailed('truck') },
+  truck: { drive: true, chime: true, name: 'ice cream truck', r: 3.6, make: detailed('truck') },
   // Emergency vehicles: flashing lights and a siren (switched on and off while driving).
   police: { drive: true, emergency: true, name: 'police car', r: 3.2, make: detailed('police') },
   ambulance: { drive: true, emergency: true, name: 'ambulance', r: 3.9, make: detailed('ambulance') },

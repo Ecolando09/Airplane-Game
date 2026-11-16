@@ -115,6 +115,15 @@ export const EMERGENCY = {
     [-1.3, 2.95, 4.95, RED, 1], [1.3, 2.95, 4.95, RED, 0], [-1.42, 1.6, -2.2, RED, 1], [1.42, 1.6, -2.2, RED, 0],
     [-1.0, 1.05, -5.05, RED, 0], [1.0, 1.05, -5.05, RED, 1]],
 };
+// The ice cream truck: a string of pastel bulbs along the roof edges that blink in turns.
+{
+  const cols = [0xff6fd0, 0xffe14a, 0x4fe3ff, 0x8dff6a];
+  const bulbs = [];
+  let i = 0;
+  for (const z of [-2.8, -1.7, -0.6, 0.5, 1.6, 2.7]) for (const x of [-1.38, 1.38]) bulbs.push([x, 3.78, z, cols[i % 4], i++ % 2]);
+  for (const x of [-0.7, 0, 0.7]) bulbs.push([x, 3.78, -2.85, cols[i % 4], i++ % 2]), bulbs.push([x, 3.78, 3.25, cols[i % 4], i++ % 2]);
+  EMERGENCY.truck = bulbs;
+}
 export function vehicleInfo(kind) {
   if (CARS[kind]) {
     const c = CARS[kind];

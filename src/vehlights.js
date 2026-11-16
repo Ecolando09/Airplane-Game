@@ -156,6 +156,7 @@ export function emergencyLights(kind, on = true) {
   g.name = 'emLights';
   g.userData.on = on;
   g.userData.phase = Math.random();
+  g.userData.soft = kind === 'truck'; // the ice cream truck's bulbs: a slow blink in turns, smaller
   for (const [x, y, z, color, phase] of spec) {
     const sp = new THREE.Sprite(emMat(color));
     sp.position.set(x, y, z);
@@ -181,6 +182,14 @@ export function updateEmergencyLights(t, night) {
       continue;
     }
     g.visible = true;
+    if (g.userData.soft) {
+      const half = Math.floor(t * 2 + g.userData.phase) % 2;
+      for (const sp of g.children) {
+        sp.visible = sp.userData.phase === half;
+        sp.scale.setScalar(size * 0.55);
+      }
+      continue;
+    }
     const p = (t * 1.6 + g.userData.phase) % 1; // one cycle: 0.62 s
     const half = p < 0.5 ? 0 : 1;
     const q = (p % 0.5) / 0.5;
@@ -191,6 +200,9 @@ export function updateEmergencyLights(t, night) {
     }
   }
 }
+
+/** Are a vehicle's flashing lights on? Emergency vehicles: unless switched off. The ice cream truck: once switched on. */
+export const lightsOn = (it, info) => (info?.emergency ? it.lights !== false : !!info?.chime && it.lights === true);
 
 /** Flashing lights on the emergency vehicles lying around (nearest few, any size). */
 export class EmergencyProps {
@@ -208,7 +220,7 @@ export class EmergencyProps {
     this.t = now + 400;
     const want = [];
     for (const it of this.props.items) {
-      if (it.held || it.lights === false || !this.props.kinds[it.kind].emergency) continue;
+      if (it.held || !lightsOn(it, this.props.kinds[it.kind])) continue;
       const d = Math.hypot(it.x - x, it.z - z);
       if (d < 1200) want.push([d, it]);
     }

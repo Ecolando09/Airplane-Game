@@ -139,6 +139,8 @@ export class EngineSound {
    */
   siren(kind, vol = 1) {
     if (!this.ctx) return;
+    this.chime(kind === 'truck' ? vol : 0); // the ice cream truck plays music instead
+    if (kind === 'truck') kind = null;
     const ctx = this.ctx;
     if (!this.sirenOsc) {
       this.sirenOsc = ctx.createOscillator();
@@ -166,6 +168,41 @@ export class EngineSound {
       this.sirenOsc2.frequency.setTargetAtTime(kind === 'firetruck' ? 147 : hz * 1.005, t, 0.02);
     }
     this.sirenGain.gain.setTargetAtTime(this.muted || !kind ? 0 : 0.055 * Math.min(1, vol), t, 0.05);
+  }
+
+  /**
+   * Each frame: the ice cream truck's music, a music-box tune on a loop. vol 0..1 (0: silent).
+   */
+  chime(vol) {
+    const ctx = this.ctx;
+    if (!this.chimeOsc) {
+      if (!vol) return;
+      this.chimeOsc = ctx.createOscillator();
+      this.chimeOsc.type = 'triangle';
+      this.chimeOsc2 = ctx.createOscillator();
+      this.chimeOsc2.type = 'sine';
+      this.chimeGain = ctx.createGain();
+      this.chimeGain.gain.value = 0;
+      const g2 = ctx.createGain();
+      g2.gain.value = 0.35; // the bell's ring, an octave up
+      this.chimeOsc.connect(this.chimeGain);
+      this.chimeOsc2.connect(g2).connect(this.chimeGain);
+      this.chimeGain.connect(ctx.destination);
+      this.chimeOsc.start();
+      this.chimeOsc2.start();
+    }
+    // An original little tune in C (0 = rest), one note every 0.22 s.
+    const E5 = 659, G5 = 784, C6 = 1047, A5 = 880, C5 = 523, D5 = 587, F5 = 698, B5 = 988;
+    const TUNE = [E5, G5, C6, G5, A5, G5, E5, C5, D5, E5, F5, D5, G5, 0, 0, 0, E5, G5, C6, G5, A5, C6, B5, A5, G5, E5, D5, E5, C5, 0, 0, 0];
+    const t = ctx.currentTime;
+    const step = t / 0.22;
+    const hz = TUNE[Math.floor(step) % TUNE.length];
+    if (hz) {
+      this.chimeOsc.frequency.setTargetAtTime(hz, t, 0.005);
+      this.chimeOsc2.frequency.setTargetAtTime(hz * 2, t, 0.005);
+    }
+    const ring = hz ? Math.exp(-(step % 1) * 2.5) : 0; // each note rings and fades, like a music box
+    this.chimeGain.gain.setTargetAtTime(this.muted || !vol ? 0 : 0.09 * Math.min(1, vol) * ring, t, 0.012);
   }
 
   /** Short game sounds: 'load' (rising), 'cash' (cha-ching), 'miss' (falling), 'break' (crunch). */
