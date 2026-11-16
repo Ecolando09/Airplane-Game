@@ -162,7 +162,7 @@ export class SquidPlay {
         break;
       case 'windup':
         if (me) {
-          h.message('⚠️ THE SQUID IS ABOUT TO STRIKE!<small>Climb, turbo or turn away, now!</small>', 1.6);
+          h.message(o.angry ? '😡 YOU MADE IT ANGRY! IT’S COMING FOR YOU!<small>Get away, now!</small>' : '⚠️ THE SQUID IS ABOUT TO STRIKE!<small>Climb, turbo or turn away, now!</small>', o.angry ? 1.2 : 1.6);
           h.sound('rise');
         }
         if (close) h.noise('rumble', 0.6);
@@ -205,6 +205,7 @@ export class SquidPlay {
         break;
       case 'flinch':
         h.noise('splash', 0.5);
+        if (o.resisted && me) h.message('🦑 It shook off the shock!<small>Melons can’t stun it again so soon</small>', 2);
         break;
       case 'stun':
         if (model) model.flash = SQUID.STUN;
@@ -316,7 +317,7 @@ export class SquidPlay {
     const dx = H.start.x - sp.x;
     const dz = H.start.z - sp.z;
     const d = Math.hypot(dx, dz) || 1;
-    const r = THREE.MathUtils.lerp(Math.min(d, 45), 18, a);
+    const r = THREE.MathUtils.lerp(Math.min(d, 80), 18, a);
     const t = this.clock;
     out.set(sp.x + (dx / d) * r + Math.sin(t * 7) * 0.8, 0, sp.z + (dz / d) * r + Math.cos(t * 6) * 0.8);
     const top = Math.min(H.start.y, sp.y + SQUID.REACH_ALT);
@@ -414,7 +415,7 @@ export class SquidPlay {
         if (this.held?.i === sp.i) target = this.hooks.player().pos;
         else target = this.hooks.friendPos?.(t.id) || this._v.set(t.x, t.y, t.z);
       }
-      m.update(dt, { phase: sq.s.phase, age: Math.max(0, now - sq.s.t), target, time: this.clock, near: d < 2200 });
+      m.update(dt, { phase: sq.s.phase, age: Math.max(0, now - sq.s.t), len: sq.s.until > sq.s.t ? sq.s.until - sq.s.t : 0, target, time: this.clock, near: d < 2200 });
     }
   }
 

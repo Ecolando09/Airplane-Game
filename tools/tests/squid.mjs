@@ -76,7 +76,7 @@ const HELPERS = () => {
       return [...seen];
     },
     reset() {
-      for (const s of g.squid.squids) s.s = { ...s.s, phase: 'asleep', t: 0, until: 0, target: null, near: {}, health: s.s.maxHealth, hitBy: [] };
+      for (const s of g.squid.squids) s.s = { ...s.s, phase: 'asleep', t: 0, until: 0, target: null, near: {}, health: s.s.maxHealth, hitBy: [], angry: false, stunOk: 0 };
       g.squid._release(false);
     },
   };
@@ -154,8 +154,8 @@ try {
       S.reset();
       const cruise = { pitch: 0, roll: 0, yaw: 0, throttle: 0, throttleSet: 0.7 };
       const out = {};
-      // High pass: 100 m above the water, straight over it.
-      S.placeAir(0, 400, 100);
+      // High pass: 130 m above the water, straight over it.
+      S.placeAir(0, 400, 130);
       out.high = S.watch(14, cruise);
       out.highCrashed = g.flight.crashed;
       // Low pass: 20 m up, straight at it, no escape.
@@ -171,19 +171,19 @@ try {
       out.again = S.watch(10, cruise);
       out.againCrashed = g.flight.crashed;
       out.restLeft = Math.round(S.sq().s.until - g.squid.now());
-      // A pass at 50 m: it winds up and strikes, but the tentacle can't reach that high.
+      // A pass at 90 m: it winds up and strikes, but the tentacle can't reach that high.
       S.reset();
-      S.placeAir(0, 300, 50);
+      S.placeAir(0, 300, 90);
       out.mid = S.watch(10, cruise);
       out.midCrashed = g.flight.crashed;
       return out;
     });
     console.log('  ', JSON.stringify(r));
-    check('a pass 100 m above the water is ignored', r.high.length === 1 && r.high[0] === 'asleep' && !r.highCrashed, r.high.join(','));
+    check('a pass 130 m above the water is ignored', r.high.length === 1 && r.high[0] === 'asleep' && !r.highCrashed, r.high.join(','));
     check('a low pass: wake, wind-up, strike, hold, pulled under', ['aware', 'windup', 'strike', 'hold', 'drag'].every((p) => r.low.includes(p)), r.low.join(','));
     check('... ends in the squid crash and the crash screen', /giant squid/.test(r.reason) && r.crashBox, r.reason);
     check('after a respawn the squid is resting and does not grab again at once', ['drag', 'rest'].includes(r.afterRespawn) && !r.againCrashed && !r.again.includes('hold'), `${r.again.join(',')} (rest ${r.restLeft} s left)`);
-    check('flying at 50 m: it strikes and misses', r.mid.includes('strike') && !r.mid.includes('hold') && !r.midCrashed, r.mid.join(','));
+    check('flying at 90 m: it strikes and misses', r.mid.includes('strike') && !r.mid.includes('hold') && !r.midCrashed, r.mid.join(','));
   }
 
   // ---------------------------------------------------------------- 3. the struggle, every vehicle
@@ -309,15 +309,23 @@ try {
       S.reset();
       g.logbook.squid = 0;
       const out = {};
-      // A 2x robot right beside it: three punches before it can strike.
+      // A 2x robot right beside it: each punch hurts it, but it fights back and grabs the robot.
       S.robotAt(0, 13, 2);
       S.run(0.2);
       out.woke = S.phase();
-      for (let k = 0; k < 3; k++) {
+      for (let k = 0; k < 2; k++) {
         g.botSmash();
         S.run(0.3);
         out[`hp${k}`] = S.sq().s.health;
       }
+      out.grabbed = g.squid.holding || S.untilHeld(4) >= 0;
+      // Nearly beaten (2 health left): one more punch and it flees.
+      S.reset();
+      S.robotAt(0, 13, 2);
+      S.run(0.2);
+      S.sq().s = { ...S.sq().s, health: 2 };
+      g.botSmash();
+      S.run(0.3);
       out.after = S.phase();
       S.run(4);
       out.later = S.phase();
@@ -345,8 +353,9 @@ try {
       return out;
     });
     console.log('  ', JSON.stringify(r));
-    check('a 2x robot: each punch hurts it (2 of 6 health)', r.hp0 === 4 && r.hp1 === 2, [r.hp0, r.hp1, r.hp2].join(', '));
-    check('three punches from a 2x robot make it flee', r.after === 'flee' || r.later === 'rest', [r.after, r.later, r.restLeft].join(' / '));
+    check('a 2x robot: each punch hurts it (2 of 20 health)', r.hp0 === 18 && r.hp1 === 16, [r.hp0, r.hp1].join(', '));
+    check('... but punching it from beside it gets the robot grabbed', r.grabbed);
+    check('the last punch makes it flee', r.after === 'flee' || r.later === 'rest', [r.after, r.later, r.restLeft].join(' / '));
     check('beaten, it rests three minutes', r.restLeft > 170, String(r.restLeft));
     check('the logbook counts it', r.logbook === 1, String(r.logbook));
     check('a car thrown in the water is taken instead of the player', r.holdingCar && (r.fedPhase === 'eat' || r.fedPhase === 'rest') && !r.grabbedAfterFeed && !r.afterFeed.includes('hold'), [r.feedWoke, r.fedPhase, r.afterFeed.join(',')].join(' / '));
@@ -418,13 +427,29 @@ try {
       g.input.emit('l1');
       out.l1 = g.melons.thrown - n1;
       out.turboAfterL1 = g.flight.turbo; // (L1 threw instead of cycling the robot's turbo)
-      // Beat it with watermelons (66 m out, beyond its strike): the Squid Ink paint job unlocks.
+      // Just after a stun, a melon still hurts but doesn't stun it again.
+      S.run(5);
+      S.reset();
+      S.robotAt(0, 66, 1);
+      S.run(0.3);
+      S.sq().s = { ...S.sq().s, stunOk: g.squid.now() + 100 };
+      const hp0 = S.sq().s.health;
+      let restunned = false;
+      for (let t = 0; t < 3; t += 1 / 30) {
+        if (t < 0.1) g.throwMelon();
+        g.simStep(1 / 30, S.still);
+        if (S.phase() === 'stunned') restunned = true;
+      }
+      out.guard = { hurt: hp0 - S.sq().s.health, restunned };
+      g.squid._release(false);
+      // Finish it with a watermelon (2 health left): the Squid Ink paint job unlocks.
       S.run(5);
       S.reset();
       g.logbook.squid = 0;
       S.robotAt(0, 66, 1);
       S.run(0.3);
-      for (let k = 0; k < 3; k++) {
+      S.sq().s = { ...S.sq().s, health: 2 };
+      for (let k = 0; k < 3 && S.sq().s.health > 0; k++) {
         g.throwMelon();
         S.run(1.6);
       }
@@ -437,13 +462,14 @@ try {
       return out;
     });
     console.log('  ', JSON.stringify(r));
-    check('a melon from a plane flying at the squid hits and stuns it (2 damage)', r.planeThrew && r.planeStun && r.planeHealth === 4 && !r.planeCrashed, JSON.stringify({ stun: r.planeStun, hp: r.planeHealth }));
+    check('a melon from a plane flying at the squid hits and stuns it (2 damage)', r.planeThrew && r.planeStun && r.planeHealth === 18 && !r.planeCrashed, JSON.stringify({ stun: r.planeStun, hp: r.planeHealth }));
     check("a held player's melon frees them", r.held && r.heldThrew && r.heldFree, `${r.heldPhase}`);
     check('melons on land break nothing', r.land.before.smashed === r.land.after.smashed && r.land.before.dead === r.land.after.dead, JSON.stringify(r.land));
     check('Z throws a melon', r.keyZ === 1);
     check('the 🍉 touch chip throws a melon', r.chip === 1);
     check('the L1 prompt shows only near an awake squid, and L1 throws', !r.promptFar && r.promptNear && r.promptShown && r.l1 === 1 && r.turboAfterL1 === 1, JSON.stringify({ far: r.promptFar, near: r.promptNear, l1: r.l1 }));
-    check('three melon hits beat it', ['flee', 'rest'].includes(r.beatPhase) && r.beatHealth === 0, `${r.beatPhase} ${r.beatHealth}`);
+    check('right after a stun, a melon still hurts (2) but does not stun it again', r.guard.hurt === 2 && !r.guard.restunned, JSON.stringify(r.guard));
+    check('a melon hit finishes a nearly beaten squid', ['flee', 'rest'].includes(r.beatPhase) && r.beatHealth === 0, `${r.beatPhase} ${r.beatHealth}`);
     check('beating the squid unlocks Squid Ink (announced, and in the paint list)', r.logbook === 1 && r.toast.length > 0, JSON.stringify(r.toast));
   }
   // ---------------------------------------------------------------- 7. Squid Hunt, solo
@@ -462,7 +488,9 @@ try {
       const b = g.squid.squids[i];
       out.boss = { i, boss: b.s.boss, health: b.s.health, arms: b.s.boss };
       out.start = { d: Math.round(Math.hypot(g.flight.pos.x - b.spot.x, g.flight.pos.z - b.spot.z)), alt: Math.round(g.flight.pos.y - b.spot.y) };
-      // Scripted fight: a 2x robot 89 m out (beyond its strike), a watermelon every 1.6 s.
+      // Scripted fight: a 2x robot 89 m out, a watermelon every 1.6 s (started nearly beaten:
+      // a robot that just throws melons gets grabbed now).
+      b.s = { ...b.s, health: 6 };
       S.robotAt(i, 89, 2);
       let throws = 0;
       for (let t = 0; t < 240 && hunt.active; t += 1.6) {
@@ -501,7 +529,7 @@ try {
     console.log('  ', JSON.stringify(r));
     const expected = r.hits * 2 + (r.beaten ? 20 : 0) - r.lost * 3;
     check('Squid Hunt is a game mode in a city with a squid', r.cardShown && r.isHunt);
-    check('the boss: the squid nearest downtown, 30 health', r.boss.boss && r.boss.health === 30, JSON.stringify(r.boss));
+    check('the boss: the squid nearest downtown, 45 health', r.boss.boss && r.boss.health === 45, JSON.stringify(r.boss));
     check('you start 400 m out, 120 m up', Math.abs(r.start.d - 400) < 5 && Math.abs(r.start.alt - 120) < 5, JSON.stringify(r.start));
     check('the scripted fight beats it and ends the game', r.beaten && r.endShown && r.bossAfter === -1, `${r.hits} hits of ${r.throws} throws`);
     check('the score is right (2 per melon hit + 10 final blow + 10 for beating it)', r.score === expected && r.endText === `${expected} pts`, `${r.score} vs ${expected}, card "${r.endText}"`);

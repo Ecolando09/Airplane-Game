@@ -22,10 +22,13 @@
 
 /** Every tuning number in one place. Distances in metres, times in seconds. */
 export const SQUID = {
-  AWARE_R: 150, // notices you within this (bubbles, rumble, warning)
-  STRIKE_R: 60, // winds up to strike within this
-  MAX_ALT: 80, // ignores anything higher above the water
-  REACH_ALT: 45, // at the end of the strike, the tentacle reaches this high
+  AWARE_R: 220, // notices you within this (bubbles, rumble, warning)
+  STRIKE_R: 95, // winds up to strike within this
+  MAX_ALT: 110, // ignores anything higher above the water
+  REACH_ALT: 75, // at the end of the strike, the tentacle reaches this high
+  ANGRY_R: 130, // hit it and it strikes back at you from this far
+  ANGRY_WINDUP: 0.8, // ... with a shorter warning
+  HURT_WINDUP: 0.85, // below half health it winds up faster (seconds)
   SHORE_R: 30, // ignores anyone on dry land farther than this from the water
   MAP_R: 400, // minimap ripple and robot radar blip
   MELON_R: 600, // the watermelon prompt shows within this of an awake squid
@@ -39,11 +42,12 @@ export const SQUID = {
   REST: 45, // before it can wake again (stops an endless grab loop after a respawn)
   FORGET: 4, // nobody near this long: back to sleep
   STUN: 4, // electrocuted by a watermelon
+  STUN_GUARD: 12, // after a stun wears off, melons still hurt but can't stun it again for this long
   EAT: 2.5,
   FED_REST: 20, // a thrown car buys this long
   FLEE: 3,
   FLEE_REST: 180, // beaten: three minutes asleep
-  HEALTH: 6,
+  HEALTH: 20,
   FEED_R: 90, // a car landing in the water this close is grabbed instead of you
   BODY_R: 16, // a hit within this of the mantle counts
   ARM_R: 42, // ... or within this while its arms are up
@@ -53,7 +57,7 @@ export const SQUID = {
   MELON: 2,
   STOMP: 3,
   // Squid Hunt: one boss squid, more health, two extra arms, no long rests.
-  BOSS: { AWARE_R: 520, STRIKE_R: 75, HEALTH_SOLO: 30, HEALTH_BASE: 14, HEALTH_PER: 12, REST: 4, ARMS: 12 },
+  BOSS: { AWARE_R: 600, STRIKE_R: 120, HEALTH_SOLO: 45, HEALTH_BASE: 20, HEALTH_PER: 14, REST: 4, ARMS: 12 },
   ARMS: 10, // eight arms and two long tentacles
 };
 
@@ -68,7 +72,7 @@ export const isOut = (phase) => ['strike', 'hold', 'recover', 'stunned', 'eat'].
 /** A fresh, sleeping squid. boss: the Squid Hunt one. */
 export function newSquid({ boss = false, health } = {}) {
   const h = health ?? (boss ? SQUID.BOSS.HEALTH_SOLO : SQUID.HEALTH);
-  return { phase: 'asleep', t: 0, until: 0, target: null, health: h, maxHealth: h, boss, quiet: 0, hitBy: [], near: {}, seq: 0 };
+  return { phase: 'asleep', t: 0, until: 0, target: null, health: h, maxHealth: h, boss, quiet: 0, hitBy: [], near: {}, seq: 0, angry: false, stunOk: 0 };
 }
 
 /** The ranges for this squid (the boss notices you from farther away). */
@@ -88,6 +92,7 @@ export function step(state, now, events = []) {
     s.t = now;
     s.until = len == null ? 0 : now + len;
     s.seq++;
+    s.angry = false;
     Object.assign(s, extra);
   };
   const rest = (len = s.boss ? SQUID.BOSS.REST : SQUID.REST) => {
@@ -95,6 +100,14 @@ export function step(state, now, events = []) {
     out.push({ type: 'rest', until: s.until });
   };
   const holding = () => s.phase === 'hold' && s.target;
+  // Hit while it isn't busy: it goes straight for whoever hit it, from farther than usual.
+  const strikeBack = (id) => {
+    if (!['aware', 'recover'].includes(s.phase)) return;
+    const n = s.near[id];
+    if (!n || !n.el || n.alt >= SQUID.MAX_ALT || n.d >= SQUID.ANGRY_R) return;
+    go('windup', SQUID.ANGRY_WINDUP, { target: { id, ...pick(n) }, angry: true });
+    out.push({ type: 'windup', id, kind: n.kind, angry: true });
+  };
   const drop = () => {
     if (!holding()) return;
     out.push({ type: 'drop', id: s.target.id });
@@ -123,10 +136,18 @@ export function step(state, now, events = []) {
         }
         continue;
       }
-      if (kind === 'melon') {
+      if (kind === 'melon' && now >= (s.stunOk || 0)) {
         drop();
-        go('stunned', SQUID.STUN, { target: null });
+        go('stunned', SQUID.STUN, { target: null, stunOk: now + SQUID.STUN + SQUID.STUN_GUARD });
         out.push({ type: 'stun', id: ev.id });
+      } else if (kind === 'melon') {
+        // Too soon after the last stun: it shrugs the shock off, and comes for the thrower.
+        out.push({ type: 'flinch', id: ev.id, resisted: true });
+        if (holding() && ev.id !== s.target.id) {
+          drop();
+          go('recover', SQUID.RECOVER, { target: null });
+        }
+        if (s.phase !== 'stunned') strikeBack(ev.id);
       } else {
         out.push({ type: 'flinch', id: ev.id });
         // A friend's hit (or a car) makes it let go of whoever it holds.
@@ -134,6 +155,7 @@ export function step(state, now, events = []) {
           drop();
           go('recover', SQUID.RECOVER, { target: null });
         }
+        strikeBack(ev.id);
       }
     } else if (ev.type === 'fed') {
       if (!['aware', 'windup', 'strike', 'hold'].includes(s.phase)) continue;
@@ -172,7 +194,7 @@ export function step(state, now, events = []) {
       }
       const close = candidates(s, r.strike).sort((a, b) => a.d - b.d)[0];
       if (close) {
-        go('windup', SQUID.WINDUP, { target: { id: close.id, kind: close.kind, x: close.x, y: close.y, z: close.z } });
+        go('windup', s.health * 2 < s.maxHealth ? SQUID.HURT_WINDUP : SQUID.WINDUP, { target: { id: close.id, kind: close.kind, x: close.x, y: close.y, z: close.z } });
         out.push({ type: 'windup', id: close.id, kind: close.kind });
       }
       break;
@@ -180,7 +202,7 @@ export function step(state, now, events = []) {
     case 'windup':
       if (s.target && s.near[s.target.id]) Object.assign(s.target, pick(s.near[s.target.id]));
       if (due) {
-        go('strike', SQUID.STRIKE);
+        go('strike', SQUID.STRIKE, { angry: s.angry });
         out.push({ type: 'strike', id: s.target?.id });
       }
       break;
@@ -188,7 +210,7 @@ export function step(state, now, events = []) {
       const n = s.target && s.near[s.target.id];
       if (n) Object.assign(s.target, pick(n));
       if (!due) break;
-      if (n && n.el && n.d < r.strike * 1.15 && n.alt < SQUID.REACH_ALT) {
+      if (n && n.el && n.d < (s.angry ? SQUID.ANGRY_R : r.strike) * 1.15 && n.alt < SQUID.REACH_ALT) {
         go('hold', SQUID.HOLD + SQUID.HOLD_GRACE);
         out.push({ type: 'grab', id: s.target.id, kind: n.kind });
       } else {

@@ -40,6 +40,8 @@ import { WebSocketServer } from 'ws';
 import fs from 'node:fs';
 import path from 'node:path';
 import { newSquid, step as squidStep, publicSquid, bossHealth } from '../src/squidbrain.js';
+// Tests only: start ordinary squids with this much health (so a two-punch fight can be scripted).
+const SQUID_TEST_HEALTH = +process.env.SQUID_TEST_HEALTH || undefined;
 
 const PORT = Number(process.env.PORT) || 8787;
 const rooms = new Map(); // code -> { game, pads: Set }
@@ -440,7 +442,7 @@ const HIT_KINDS = new Set(['punch', 'stomp', 'car', 'melon']);
 function squidFor(rmeta, city, i, boss) {
   const key = `${city}:${i}`;
   let sq = rmeta.squids.get(key);
-  if (!sq && rmeta.squids.size < 40) rmeta.squids.set(key, (sq = { city, i, s: newSquid({ boss: !!boss }) }));
+  if (!sq && rmeta.squids.size < 40) rmeta.squids.set(key, (sq = { city, i, s: newSquid({ boss: !!boss, health: boss ? undefined : SQUID_TEST_HEALTH }) }));
   return sq;
 }
 function squidMsg(sq, out = []) {

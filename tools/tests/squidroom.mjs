@@ -13,7 +13,7 @@ import { serve, launch, openGame, check, failed } from './helpers.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 // RELAY_PORT (with PORT for the site): run beside a relay that's already going.
-const relay = spawn('node', ['server/relay.js'], { cwd: root, stdio: 'ignore', env: { ...process.env, PORT: process.env.RELAY_PORT || '8787', STATE_DIR: mkdtempSync(path.join(tmpdir(), 'relay-')) } });
+const relay = spawn('node', ['server/relay.js'], { cwd: root, stdio: 'ignore', env: { ...process.env, PORT: process.env.RELAY_PORT || '8787', SQUID_TEST_HEALTH: '6', STATE_DIR: mkdtempSync(path.join(tmpdir(), 'relay-')) } });
 const stop = await serve();
 const { browser, page: a } = await launch({ width: 360, height: 240 });
 const { browser: browser2, page: b } = await launch({ width: 360, height: 240 });
@@ -71,7 +71,8 @@ try {
   // Bob stays far away on the shore; Alice wades out as a robot right beside it.
   // Bob waits as a giant 8x robot 70 m out (beyond the strike range, but his
   // fist reaches); Alice wades in as a normal robot 30 m out.
-  await b.evaluate(() => window.__r.robotAt(70, 8, 1));
+  // (He waits out of its reach, 300 m out, and steps in once Alice is held: at 70 m it would grab him first.)
+  await b.evaluate(() => window.__r.robotAt(300, 8, 1));
   await a.evaluate(() => window.__r.robotAt(30, 1));
   // Both step; the moment Bob sees Alice grabbed he punches, then punches again.
   const [, bob] = await Promise.all([
@@ -81,7 +82,7 @@ try {
         await window.__r.run(0.2);
         seen.push(window.__r.s().phase);
         window.__seenPhases = seen;
-        if (['flee', 'rest'].includes(window.__r.s().phase) && seen.includes('hold')) break;
+        if (['flee', 'rest'].includes(window.__r.s().phase) && window.__r.s().health === 0) break;
       }
       return seen;
     }),
@@ -91,6 +92,7 @@ try {
       const out = {};
       for (let k = 0; k < 60 && r.s().phase !== 'hold'; k++) await r.run(0.15);
       out.sawHold = { phase: r.s().phase, t: r.s().t, target: r.s().target?.id };
+      r.robotAt(70, 8, 1);
       // Two punches in quick succession (mashing SMASH).
       g.botSmash();
       for (let i = 0; i < 8; i++) g.simStep(1 / 30, { pitch: 0, roll: 0, yaw: 0, throttle: 0 });
@@ -146,7 +148,7 @@ try {
   })));
   console.log('   hunt start:', JSON.stringify(placed));
   check('the hostP starts Squid Hunt; both are placed around the boss (about 400 m out)', placed.every((p) => p.i >= 0 && p.d > 300 && p.d < 520), JSON.stringify(placed));
-  check('boss health scales with two players (14 + 12 × 2 = 38)', placed.every((p) => p.boss && p.max === 38), JSON.stringify(placed));
+  check('boss health scales with two players (20 + 14 × 2 = 48)', placed.every((p) => p.boss && p.max === 48), JSON.stringify(placed));
   // Both wade out as 2x robots, 89 m from the boss on opposite sides, and throw melons.
   await a.evaluate(() => { window.__r.robotAtI = null; });
   for (const [p, dir] of [[a, -1], [b, 1]]) {

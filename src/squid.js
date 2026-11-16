@@ -340,7 +340,7 @@ export class SquidModel {
     this.ripple2.scale.setScalar((0.6 + rr2 * 1.4) * k);
     this.ripple2.material.opacity = (1 - rr2) * (0.2 + 0.35 * up) * (phase === 'rest' ? 0.4 : 1);
     // Wind-up: the water bulges.
-    const bulge = phase === 'windup' ? Math.min(1, age / SQUID.WINDUP) : phase === 'strike' ? Math.max(0, 1 - age / 0.3) : 0;
+    const bulge = phase === 'windup' ? Math.min(1, age / (view.len || SQUID.WINDUP)) : phase === 'strike' ? Math.max(0, 1 - age / 0.3) : 0;
     this.bulge.visible = bulge > 0.01;
     this.bulge.scale.set(1, Math.max(0.01, bulge * 0.45), 1);
     // Ink cloud.
