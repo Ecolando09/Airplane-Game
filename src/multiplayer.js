@@ -115,6 +115,7 @@ export class Multiplayer {
       size: Math.min(8, Math.max(0.25, +m.size || 1)), // grown (or shrunk) robot
       ride: m.ride && typeof m.ride.kind === 'string' ? { kind: m.ride.kind.slice(0, 16), tint: +m.ride.tint || 0, scale: Math.min(4, Math.max(0.25, +m.ride.scale || 1)), lift: Math.min(10, Math.max(0, +m.ride.lift || 0)), em: (+m.ride.em || 0) & 3 } : null,
       sit: !!m.sit, // on the toilet
+      paint: typeof m.paint === 'string' ? m.paint.slice(0, 16) : 'classic', // their paint job
     });
     if (p.isNew) {
       p.isNew = false;
@@ -180,6 +181,7 @@ export class Multiplayer {
         ...(me.size > 1 ? { size: me.size } : {}),
         ...(me.ride ? { ride: me.ride } : {}),
         ...(me.sit ? { sit: true } : {}),
+        ...(me.paint && me.paint !== 'classic' ? { paint: me.paint } : {}),
         ...(Number.isFinite(me.cash) ? { cash: Math.round(me.cash) } : {}),
       }));
     }
@@ -189,10 +191,12 @@ export class Multiplayer {
       const show = p.city === me.city && performance.now() - p.seen < 5000 && !p.crashed;
       // Driving something (a car, a boat): show that instead of the robot.
       const shape = p.ride ? `ride:${p.ride.kind}:${p.ride.tint}` : p.bot ? `bot-${p.vehicle}` : p.vehicle;
-      if (show && (!p.model || p.model.vehicle !== shape)) {
+      const paint = p.ride ? 'classic' : p.paint || 'classic';
+      if (show && (!p.model || p.model.vehicle !== shape || p.model.paint !== paint)) {
         if (p.model) this.scene.remove(p.model.group);
-        p.model = this.makeVehicle(shape);
+        p.model = this.makeVehicle(shape, paint === 'classic' ? null : paint);
         p.model.vehicle = shape;
+        p.model.paint = paint;
         this.scene.add(p.model.group);
       }
       if (!p.model) continue;

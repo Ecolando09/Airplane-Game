@@ -168,7 +168,7 @@ if (__PSG1__) input.isTouch = false; // real buttons: no on-screen controls, gam
 const sound = new EngineSound();
 const mp = new Multiplayer({
   scene,
-  makeVehicle: (v) => {
+  makeVehicle: (v, paint) => {
     if (v.startsWith('ride:')) {
       // A friend driving a car, boat or truck they found.
       const [, kind, tint] = v.split(':');
@@ -178,9 +178,14 @@ const mp = new Multiplayer({
       addRideLights(model, kind, props?.kinds); // head/tail lights, or a flown parked plane's nav lights
       return model;
     }
-    if (v.startsWith('bot-')) return createRobot(v.slice(4));
+    if (v.startsWith('bot-')) {
+      const r = createRobot(v.slice(4));
+      if (paint) applyPaint(r, paint, v.slice(4)); // their paint job
+      return r;
+    }
     const m = createOwnModel(ownKind(v));
     addNavLights(m, ownKind(v)); // friends' aircraft blink too
+    if (paint) applyPaint(m, paint, v);
     return m;
   },
   onChange: () => updateMpUi(),
@@ -1637,6 +1642,7 @@ function updateMpUi() {
   if (data) updateMenu();
   $('mpOff').hidden = !!mp.room;
   $('mpOn').hidden = !mp.room;
+  $('roomWho').hidden = !mp.room;
   $('mpNote').hidden = MP_OK;
   $('mpErr').hidden = !MP_OK || (lobbyOk && mp.status !== 'error');
   const rooms = $('mpRooms');
@@ -1658,17 +1664,30 @@ function updateMpUi() {
   $('mpRoomCode').textContent = mp.room;
   $('mpStatus').textContent = { connecting: '· connecting…', on: '· connected', error: "· can't reach the server" }[mp.status] || '';
   $('mpStatus').classList.toggle('bad', mp.status === 'error');
+  // Who's in the room, near the top of the menu.
+  const count = 1 + mp.players.size;
+  $('roomWhoCode').textContent = mp.room;
+  $('roomWhoCount').textContent = mp.status === 'on' ? `· ${count} ${count === 1 ? 'player' : 'players'}` : $('mpStatus').textContent;
   const list = $('mpList');
   list.innerHTML = '';
-  const crown = (id) => (id === mp.host ? '👑 ' : '');
-  const cups = (id) => (mp.trophies?.[id] ? ` · ${mp.trophies[id]} 🏆` : '');
-  const me = document.createElement('li');
-  me.textContent = `${crown(mp.myId)}${mp.name} (you)${cups(mp.myId)}`;
-  list.appendChild(me);
-  for (const pl of mp.players.values()) {
+  const row = (id, name, color, bits, you) => {
     const li = document.createElement('li');
-    li.style.setProperty('--c', pl.color);
-    li.textContent = `${crown(pl.id)}${pl.name || 'Pilot'} · ${VEHICLE_NAMES[pl.vehicle] || ''} · ${CITIES[pl.city] || ''}${cups(pl.id)}`;
+    if (color) li.style.setProperty('--c', color);
+    li.innerHTML = '<b></b><span></span>';
+    const cups = mp.trophies?.[id] ? ` · ${mp.trophies[id]} 🏆` : '';
+    li.querySelector('b').textContent = `${id === mp.host ? '👑 ' : ''}${name}${you ? ' (you)' : ''}${cups}`;
+    li.querySelector('span').textContent = bits.filter(Boolean).join(' · ');
+    list.appendChild(li);
+  };
+  row(mp.myId, mp.name || 'Pilot', null, [VEHICLE_NAMES[settings.vehicle], CITIES[settings.city]], true);
+  for (const pl of mp.players.values()) {
+    const doing = pl.crashed ? 'crashed' : pl.ride ? 'driving' : pl.bot ? 'robot' : '';
+    row(pl.id, pl.name || 'Pilot', pl.color, [VEHICLE_NAMES[pl.vehicle], CITIES[pl.city], doing]);
+  }
+  if (mp.status === 'on' && !mp.players.size) {
+    const li = document.createElement('li');
+    li.className = 'empty';
+    li.textContent = 'No one else yet. Send them the invite link!';
     list.appendChild(li);
   }
   updateRoomGamesUi();
@@ -2048,18 +2067,58 @@ const PAINTS = [
   { id: 'purple', name: 'Royal Purple', color: 0x7a3fd0, need: (c) => c.landmarks >= 25, how: 'Find 25 landmarks' },
   { id: 'gold', name: 'Gold', color: 0xe8b923, need: (c) => c.stars >= 15, how: 'Earn 15 ★ in games' },
   { id: 'ink', name: 'Squid Ink', color: 0x2a1a4a, need: (c) => c.squid >= 1, how: 'Beat the giant squid' },
+  { id: 'redorange', name: 'Red-Orange', color: 0xff5a1f, need: () => true, how: '' },
+  { id: 'rainbow', name: 'Rainbow', rainbow: true, need: () => true, how: '' },
 ];
 const ACCENT = { plane: 0xf2cd37, heli: 0xf0368f, jet: JET_ACCENT }; // the part of each vehicle that takes the paint
-/** Repaint a model's accent-colored parts. */
-function applyPaint(model) {
+const RAINBOW = [0xff2a2a, 0xff8c1a, 0xffd21f, 0x2fc44a, 0x2f7fe0, 0x8a3fd0]; // red, orange, yellow, green, blue, purple
+const hex6 = (h) => `#${h.toString(16).padStart(6, '0')}`;
+/** The paint job you wear (unlocked, or classic). Friends see this one. */
+function ownPaint() {
   const paint = PAINTS.find((x) => x.id === prefs.paint);
-  if (!paint?.color || !paint.need(logCount())) return;
-  const from = new THREE.Color(ACCENT[settings.vehicle]);
+  return paint && paint.need(logCount()) ? paint.id : 'classic';
+}
+/**
+ * Repaint a model's accent-colored parts. Rainbow: each accent part gets its own
+ * colour, in bands from nose to tail (top to bottom on a robot), and the hues
+ * drift slowly (driftRainbow), except on the PSG1 and Low graphics.
+ */
+function applyPaint(model, paintId = ownPaint(), vehicle = settings.vehicle) {
+  const paint = PAINTS.find((x) => x.id === paintId);
+  if (!paint || (!paint.color && !paint.rainbow)) return;
+  const from = new THREE.Color(ACCENT[ownKind(vehicle)]);
+  const near = (m) => m.color && Math.abs(m.color.r - from.r) + Math.abs(m.color.g - from.g) + Math.abs(m.color.b - from.b) < 0.02;
+  if (!paint.rainbow) {
+    model.group.traverse((o) => {
+      for (const m of o.material ? (Array.isArray(o.material) ? o.material : [o.material]) : []) if (near(m)) m.color.setHex(paint.color);
+    });
+    return;
+  }
+  const meshes = [];
+  model.group.updateMatrixWorld(true);
+  const inv = model.group.matrixWorld.clone().invert();
+  const p = new THREE.Vector3();
   model.group.traverse((o) => {
-    for (const m of o.material ? (Array.isArray(o.material) ? o.material : [o.material]) : []) {
-      if (m.color && Math.abs(m.color.r - from.r) + Math.abs(m.color.g - from.g) + Math.abs(m.color.b - from.b) < 0.02) m.color.setHex(paint.color);
-    }
+    if (!o.isMesh || Array.isArray(o.material) || !near(o.material)) return;
+    p.setFromMatrixPosition(o.matrixWorld).applyMatrix4(inv);
+    meshes.push({ o, key: model.kind === 'robot' ? -p.y : p.z }); // nose (-Z) first; a robot head first
   });
+  meshes.sort((a, b) => a.key - b.key);
+  const c = new THREE.Color();
+  model.rainbow = meshes.map(({ o }, i) => {
+    const m = o.material.clone(); // materials are shared between parts: each band gets its own
+    m.onBeforeCompile = o.material.onBeforeCompile;
+    m.customProgramCacheKey = o.material.customProgramCacheKey;
+    m.color.setHex(RAINBOW[i % RAINBOW.length]);
+    o.material = m;
+    return { m, h: m.color.getHSL(c).h, s: c.s, l: c.l };
+  });
+}
+/** A rainbow paint job's colours drift: one full turn in about 20 seconds (still on the PSG1 and Low). */
+function driftRainbow(model, t) {
+  if (!model?.rainbow?.length || prefs.low || isPsg1()) return;
+  const turn = (t / 20) % 1;
+  for (const r of model.rainbow) r.m.color.setHSL((r.h + turn) % 1, r.s, r.l);
 }
 let unlockedBefore = null;
 /** Announce paint jobs that just unlocked, and refresh the menu's logbook. */
@@ -2097,7 +2156,7 @@ function renderLogbook() {
     b.disabled = !ok || building;
     b.title = ok ? x.name : `Locked: ${x.how}`;
     b.classList.toggle('on', prefs.paint === x.id);
-    b.style.setProperty('--c', x.color ? `#${x.color.toString(16).padStart(6, '0')}` : `#${ACCENT[settings.vehicle].toString(16)}`);
+    b.style.setProperty('--c', x.rainbow ? `linear-gradient(135deg, ${RAINBOW.map(hex6).join(', ')})` : hex6(x.color || ACCENT[ownKind(settings.vehicle)]));
     b.append(document.createElement('i'), ok ? x.name : `🔒 ${x.how}`);
     b.onclick = () => {
       prefs.paint = x.id;
@@ -4788,11 +4847,16 @@ function frame() {
     mp.update(dt, {
       group: plane.group, city: settings.city, vehicle: settings.vehicle, speed: flight.speed,
       turbo: flight.turbo || 1, floats: !!flight.floats, crashed: flight.crashed, bot: isBot,
-      size: isBot ? bot.walk.size : 1, sit: potty.sitting > 0,
+      size: isBot ? bot.walk.size : 1, sit: potty.sitting > 0, paint: ownPaint(),
       ride: isBot && rampage.driving ? { kind: rampage.driving.item.kind, tint: rampage.driving.item.tint, scale: rampage.driving.item.scale || 1, em: emState() }
         : !isBot && plane?.parked ? { kind: 'plane', tint: plane.parked.tint, scale: plane.parked.scale, lift: +plane.gearHeight.toFixed(2) } : null,
       cash: beerRun?.active ? beerRun.cash : game?.active ? Math.round(game.total ?? game.next * 100) : undefined,
     });
+  }
+  {
+    const t = timer.getElapsed(); // rainbow paint jobs drift (yours, your robot, a parked one, friends')
+    for (const m of [plane, bot?.model, vehicle?.model, leftBehind?.model]) driftRainbow(m, t);
+    for (const p of mp.players.values()) driftRainbow(p.model, t);
   }
   if (running) {
     const ctl = input.read();

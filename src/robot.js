@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { LEGO, legoMaterial } from './lego.js';
 import { createBoosters } from './boosters.js';
+import { JET_ACCENT } from './jet.js';
 
 // Robot mode: the vehicle unfolds into a 13 m robot that walks, jumps, smashes
 // buildings and throws things. The robot is built in the vehicle's colors and
@@ -9,7 +10,7 @@ import { createBoosters } from './boosters.js';
 const PALETTES = {
   plane: { main: LEGO.white, accent: LEGO.yellow, dark: LEGO.black, trim: LEGO.red, glass: LEGO.transBlue },
   heli: { main: LEGO.white, accent: 0xf0368f, dark: 0x6a2fc9, trim: 0x8ee3ef, glass: LEGO.transBlue },
-  jet: { main: LEGO.red, accent: LEGO.white, dark: LEGO.darkGray, trim: LEGO.lightGray, glass: LEGO.blue },
+  jet: { main: JET_ACCENT, accent: LEGO.white, dark: LEGO.darkGray, trim: LEGO.lightGray, glass: LEGO.blue },
 };
 export const ROBOT_HEIGHT = 13;
 
