@@ -386,6 +386,31 @@ async function buildWorld() {
   $('loadBar').style.width = '100%';
 }
 
+/** A robot model for a vehicle kind (tint: a parked plane you took, in its colour), hidden, in the scene, painted. */
+function makeBotModel(kind, tint = null) {
+  const model = createRobot(kind, { tint });
+  model.group.visible = false;
+  scene.add(model.group);
+  if (tint == null) applyPaint(model); // (a taken plane's robot wears that plane's colour, not your paint)
+  model.onStep = () => {
+    if (!running || !isBot) return;
+    sound.noiseHit('step', 0.5 + flight.speed / 40);
+    shake = Math.min(1, shake + 0.08);
+  };
+  return model;
+}
+/** Before changing into the robot: the right robot for what you are flying (your own vehicle or a parked plane you took). */
+function ensureBotFor(model) {
+  const kind = model.parked ? 'plane' : settings.vehicle;
+  const tint = model.parked ? model.parked.tint : null;
+  if (bot.model.robotKind === kind && bot.model.tint === tint) return;
+  disposeObjects([bot.model.group]);
+  const size = bot.walk.size;
+  bot.model = makeBotModel(kind, tint);
+  bot.walk.plane = bot.model;
+  bot.model.group.scale.setScalar(size);
+}
+let unfold = 1; // the robot's kit parts swinging out at the end of a change: -0.3 (waiting) .. 1 (done)
 function buildVehicle() {
   leaveBot();
   ownStale = false;
@@ -397,11 +422,8 @@ function buildVehicle() {
   scene.add(plane.group);
   addNavLights(plane, ownKind(settings.vehicle)); // wingtip, tail, beacon and strobe lights
   flight = isHeli ? new HeliFlight(world, plane) : new Flight(world, plane);
-  const model = createRobot(settings.vehicle);
-  model.group.visible = false;
-  scene.add(model.group);
   applyPaint(plane);
-  applyPaint(model);
+  const model = makeBotModel(settings.vehicle);
   bot = { model, walk: new RobotWalk(world, model) };
   bot.walk.onSlam = (speed) => {
     mpAct('stomp');
@@ -409,11 +431,6 @@ function buildVehicle() {
   };
   // Walking (or driving) into a building knocks it down.
   bot.walk.onRam = (c) => rampage.wreck(c, { x: bot.walk.vel.x || 1, z: bot.walk.vel.z });
-  model.onStep = () => {
-    if (!running || !isBot) return;
-    sound.noiseHit('step', 0.5 + flight.speed / 40);
-    shake = Math.min(1, shake + 0.08);
-  };
   input.heliMode = isHeli;
   document.body.classList.toggle('heli', isHeli);
   $('throttleLabel').textContent = isHeli ? 'SPEED' : 'THROTTLE';
@@ -3537,6 +3554,9 @@ function transform() {
   if (morph) finishMorph(); // changing again mid-change: skip to the end of the first
   const from = plane.group;
   if (!isBot) {
+    ensureBotFor(plane);
+    unfold = -0.3; // the kit parts swing out as it finishes growing
+    bot.model.setUnfold(0);
     const p = flight.pos;
     const yaw = -THREE.MathUtils.degToRad(flight.heading);
     bot.walk.place(new THREE.Vector3(p.x, p.y - plane.gearHeight, p.z), yaw, flight.vel);
@@ -3587,6 +3607,10 @@ function transform() {
 }
 
 function finishMorph() {
+  if (unfold < 1) {
+    unfold = 1;
+    bot.model.setUnfold(1);
+  }
   if (!morph) return;
   morph.from.visible = false;
   morph.from.scale.setScalar(morphSize(morph.from));
@@ -4872,6 +4896,10 @@ function frame() {
   if (running) {
     const ctl = input.read();
     if (morph) updateMorph(dt);
+    if (unfold < 1) {
+      unfold = Math.min(1, unfold + dt / 0.5);
+      bot.model.setUnfold(Math.max(0, unfold));
+    }
     updatePotty(dt);
     updateCoach();
     if (autoLand) {

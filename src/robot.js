@@ -4,22 +4,44 @@ import { createBoosters } from './boosters.js';
 import { JET_ACCENT } from './jet.js';
 
 // Robot mode: the vehicle unfolds into a 13 m robot that walks, jumps, smashes
-// buildings and throws things. The robot is built in the vehicle's colors and
-// wears its parts (the plane's wings and propeller, the copter's rotor).
+// buildings and throws things. Every robot shares one skeleton (hips, legs,
+// torso, arms, head: the walking, punching and carrying animation, and the
+// height the game's collision and camera rely on). On top of it each vehicle
+// has a kit (KITS below): the parts of that vehicle, placed where a
+// transforming toy would put them, and its own proportions. Kit parts start
+// folded flat against the body and swing out as the change finishes
+// (setUnfold, 0 to 1).
 
+export const BAT_ACCENT = 0xf5c518; // the Batmobile's yellow: the part that takes a paint job
 const PALETTES = {
   plane: { main: LEGO.white, accent: LEGO.yellow, dark: LEGO.black, trim: LEGO.red, glass: LEGO.transBlue },
   heli: { main: LEGO.white, accent: 0xf0368f, dark: 0x6a2fc9, trim: 0x8ee3ef, glass: LEGO.transBlue },
   jet: { main: JET_ACCENT, accent: LEGO.white, dark: LEGO.darkGray, trim: LEGO.lightGray, glass: LEGO.blue },
+  bat: { main: 0x1e2126, accent: BAT_ACCENT, dark: 0x111317, trim: 0x3b4048, glass: 0x22303e },
+};
+// Proportions inside the same height: torso width, shoulder spread, limb
+// thickness, hip spread, waist width, and the shoulder block's colour key.
+const SHAPES = {
+  plane: { torsoW: 5.4, shoulder: 3.6, limb: 1, hipX: 1.5, waistW: 2.4, shoulderKey: 'accent' },
+  heli: { torsoW: 4.6, shoulder: 3.15, limb: 0.74, hipX: 1.25, waistW: 1.9, shoulderKey: 'trim' }, // slim, light on its feet
+  jet: { torsoW: 6.4, shoulder: 4.25, limb: 1.3, hipX: 1.85, waistW: 3.6, shoulderKey: 'main' }, // broad and stocky
+  bat: { torsoW: 6.4, shoulder: 4.35, limb: 1.0, hipX: 1.45, waistW: 1.7, shoulderKey: 'main', taper: true }, // tall shoulders, narrow waist
 };
 export const ROBOT_HEIGHT = 13;
 
-/** Build the robot for a vehicle kind ('plane' or 'heli'). Origin at the feet, facing -Z. */
-export function createRobot(kind) {
-  const pal = PALETTES[kind] || PALETTES.plane;
+/**
+ * Build the robot for a vehicle kind ('plane', 'heli', 'jet' or 'bat'). Origin
+ * at the feet, facing -Z. opts.tint: a parked plane you took (the bush-plane
+ * kit in that plane's colour).
+ */
+export function createRobot(kind, opts = {}) {
+  if (!KITS[kind]) kind = 'plane';
+  const pal = { ...PALETTES[kind] };
+  if (opts.tint != null) pal.accent = opts.tint;
+  const P = SHAPES[kind];
   const group = new THREE.Group();
   const mats = {};
-  const mat = (hex, opts = {}) => (mats[hex] ||= legoMaterial({ color: hex, studs: 1.2, ...opts }));
+  const mat = (hex, o = {}) => (mats[`${hex}${o.transparent ? 't' : ''}`] ||= legoMaterial({ color: hex, studs: 1.2, ...o }));
   const box = (parent, w, h, d, hex, x, y, z) => {
     const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat(hex));
     m.position.set(x, y, z);
@@ -27,84 +49,85 @@ export function createRobot(kind) {
     parent.add(m);
     return m;
   };
+  /** A cylinder along an axis ('x', 'y' or 'z'). */
+  const cyl = (parent, r, h, hex, x, y, z, axis = 'y', seg = 14, o) => {
+    const g = new THREE.CylinderGeometry(r, r, h, seg);
+    if (axis === 'x') g.rotateZ(Math.PI / 2);
+    if (axis === 'z') g.rotateX(Math.PI / 2);
+    const m = new THREE.Mesh(g, mat(hex, o));
+    m.position.set(x, y, z);
+    m.castShadow = true;
+    parent.add(m);
+    return m;
+  };
+  const pivot = (parent, x, y, z) => {
+    const g = new THREE.Group();
+    g.position.set(x, y, z);
+    parent.add(g);
+    return g;
+  };
+  const glassMat = (hex, opacity = 0.7) => new THREE.MeshPhongMaterial({ color: hex, transparent: true, opacity, shininess: 90 });
   const body = new THREE.Group(); // everything above the feet, so it can bob and lean
   group.add(body);
+  const L = P.limb;
 
   // Legs, pivoting at the hips.
   const legs = [-1, 1].map((sx) => {
     const leg = new THREE.Group();
-    leg.position.set(sx * 1.5, 6.6, 0);
-    box(leg, 1.5, 2.8, 1.6, pal.dark, 0, -1.4, 0);
-    box(leg, 1.9, 3.0, 1.9, pal.main, 0, -4.2, 0);
-    box(leg, 2.0, 0.5, 2.0, pal.accent, 0, -2.8, 0); // knee band
-    box(leg, 2.2, 1.0, 3.4, pal.trim, 0, -6.1, -0.5); // foot
+    leg.position.set(sx * P.hipX, 6.6, 0);
+    box(leg, 1.5 * L, 2.8, 1.6 * L, pal.dark, 0, -1.4, 0);
+    box(leg, 1.9 * L, 3.0, 1.9 * L, pal.main, 0, -4.2, 0);
+    box(leg, 2.0 * L, 0.5, 2.0 * L, pal.accent, 0, -2.8, 0); // knee band
+    box(leg, 2.2 * Math.max(0.85, L), 1.0, 3.4, pal.trim, 0, -6.1, -0.5); // foot
     body.add(leg);
     return leg;
   });
-  box(body, 4.6, 1.2, 2.2, pal.dark, 0, 7.0, 0); // hips
-  box(body, 2.4, 1.0, 2.0, pal.accent, 0, 7.9, 0); // waist
+  box(body, P.hipX * 2 + 1.6 * L, 1.2, 2.2, pal.dark, 0, 7.0, 0); // hips
+  box(body, P.waistW, 1.0, 2.0, pal.accent, 0, 7.9, 0); // waist
 
   // Torso with the cockpit glass as a chest plate.
   const torso = new THREE.Group();
   torso.position.set(0, 8.4, 0);
   body.add(torso);
-  box(torso, 5.4, 3.4, 2.8, pal.main, 0, 1.7, 0);
-  box(torso, 5.6, 0.6, 3.0, pal.accent, 0, 3.1, 0);
-  const glass = new THREE.Mesh(new THREE.BoxGeometry(3.2, 1.6, 0.3),
-    new THREE.MeshPhongMaterial({ color: pal.glass, transparent: true, opacity: 0.7, shininess: 90 }));
+  if (P.taper) {
+    // Narrow at the waist, wide at the shoulders.
+    box(torso, P.waistW + 1.2, 1.4, 2.4, pal.main, 0, 0.7, 0);
+    box(torso, (P.waistW + P.torsoW) / 2 + 0.4, 1.0, 2.6, pal.main, 0, 1.9, 0);
+    box(torso, P.torsoW, 1.4, 2.8, pal.main, 0, 2.9, 0);
+  } else box(torso, P.torsoW, 3.4, 2.8, pal.main, 0, 1.7, 0);
+  const collar = box(torso, P.torsoW + 0.2, 0.6, 3.0, pal.accent, 0, 3.1, 0);
+  const glass = new THREE.Mesh(new THREE.BoxGeometry(3.2, 1.6, 0.3), glassMat(pal.glass));
   glass.position.set(0, 2.0, -1.5);
   torso.add(glass);
-  box(torso, 3.6, 0.9, 0.4, pal.trim, 0, 0.6, -1.45);
+  const chestTrim = box(torso, 3.6, 0.9, 0.4, pal.trim, 0, 0.6, -1.45);
 
-  // Head with a glowing visor.
+  // Head.
   const head = new THREE.Group();
   head.position.set(0, 3.7, 0);
   torso.add(head);
-  box(head, 1.9, 1.7, 1.9, pal.main, 0, 0.85, 0);
-  box(head, 2.1, 0.5, 2.1, pal.accent, 0, 1.75, 0);
-  const visor = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.4, 0.2), new THREE.MeshBasicMaterial({ color: 0x4fd8ff }));
-  visor.position.set(0, 1.0, -0.98);
-  head.add(visor);
-  for (const sx of [-1, 1]) box(head, 0.25, 1.3, 0.25, pal.trim, sx * 1.05, 1.5, 0);
 
   // Arms, pivoting at the shoulders.
   const arms = [-1, 1].map((sx) => {
     const arm = new THREE.Group();
-    arm.position.set(sx * 3.6, 2.7, 0);
-    box(arm, 1.9, 1.9, 2.2, pal.accent, 0, 0, 0); // shoulder
-    box(arm, 1.3, 2.4, 1.3, pal.dark, 0, -1.9, 0);
-    box(arm, 1.6, 2.4, 1.6, pal.main, 0, -4.1, 0);
-    box(arm, 1.8, 1.5, 1.8, pal.trim, 0, -5.9, 0); // fist
+    arm.position.set(sx * P.shoulder, 2.7, 0);
+    box(arm, 1.9 * Math.max(1, L), 1.9 * Math.max(1, L), 2.2 * Math.max(1, L), pal[P.shoulderKey], 0, 0, 0); // shoulder
+    box(arm, 1.3 * L, 2.4, 1.3 * L, pal.dark, 0, -1.9, 0);
+    box(arm, 1.6 * L, 2.4, 1.6 * L, pal.main, 0, -4.1, 0);
+    box(arm, 1.8 * Math.max(0.85, L), 1.5, 1.8 * Math.max(0.85, L), pal.trim, 0, -5.9, 0); // fist
     torso.add(arm);
     return arm;
   });
 
-  // The vehicle's parts, worn on the back and chest.
-  let spinner;
-  if (kind === 'heli') {
-    const boom = box(torso, 0.7, 0.7, 4.2, pal.accent, 0, 2.6, 3.2);
-    boom.rotation.x = 0.5;
-    spinner = new THREE.Group();
-    spinner.position.set(0, 5.2, 2.4);
-    box(spinner, 11, 0.15, 0.7, pal.accent, 0, 0, 0);
-    box(spinner, 0.7, 0.15, 11, pal.accent, 0, 0, 0);
-    box(torso, 0.4, 1.6, 0.4, pal.dark, 0, 4.3, 2.4);
-    torso.add(spinner);
-    spinner.userData.axis = 'y';
-  } else {
-    for (const sx of [-1, 1]) {
-      const wing = box(torso, 6.5, 0.3, 2.4, pal.accent, sx * 3.6, 3.0, 1.9);
-      wing.rotation.z = sx * 0.9;
-      wing.rotation.y = sx * -0.25;
-    }
-    box(torso, 0.3, 2.6, 1.6, pal.trim, 0, 3.6, 2.2); // tail fin
-    spinner = new THREE.Group();
-    spinner.position.set(0, 0.6, -1.75);
-    box(spinner, 0.3, 2.8, 0.15, pal.dark, 0, 0, 0);
-    box(spinner, 2.8, 0.3, 0.15, pal.dark, 0, 0, 0);
-    torso.add(spinner);
-    spinner.userData.axis = 'z';
-  }
+  // Kit parts that swing out at the end of the change: folded (rotated by
+  // `by` and shrunk) at 0, in place at 1.
+  const folds = [];
+  const fold = (obj, by = {}, from = 0.35) => {
+    folds.push({ obj, rot: obj.rotation.clone(), scale: obj.scale.clone(), by: { x: by.x || 0, y: by.y || 0, z: by.z || 0 }, from });
+    return obj;
+  };
+  const spinners = []; // [object, axis, speed]
+  const ctx = { pal, P, mat, box, cyl, pivot, glassMat, torso, head, arms, legs, body, glass, chestTrim, collar, fold, spinners, kind };
+  const kit = KITS[kind](ctx) || {};
 
   // Turbo: the same twin rockets the vehicles get, worn as a jetpack with the
   // flames pointing down and back.
@@ -118,6 +141,17 @@ export function createRobot(kind) {
   const hands = new THREE.Group();
   hands.position.set(0, ROBOT_HEIGHT + 2.2, -1.2);
   group.add(hands);
+
+  /** 0: kit parts folded flat against the body; 1: in place (with a little overshoot on the way). */
+  function setUnfold(u) {
+    u = THREE.MathUtils.clamp(u, 0, 1);
+    const c = 1.70158;
+    const e = u >= 1 ? 1 : 1 + (c + 1) * (u - 1) ** 3 + c * (u - 1) ** 2; // ease out, slightly past and back
+    for (const f of folds) {
+      f.obj.rotation.set(f.rot.x + f.by.x * (1 - e), f.rot.y + f.by.y * (1 - e), f.rot.z + f.by.z * (1 - e));
+      f.obj.scale.copy(f.scale).multiplyScalar(f.from + (1 - f.from) * Math.max(0, e));
+    }
+  }
 
   let phase = 0;
   let stepSide = 0;
@@ -152,7 +186,8 @@ export function createRobot(kind) {
     arms[1].rotation.x = swing * 0.8 * (1 - carry) - 3.0 * carry - (punch > 0 ? jab * 1.9 : 0) * (1 - carry);
     arms[0].rotation.z = -0.25 * carry;
     arms[1].rotation.z = 0.25 * carry;
-    spinner.rotation[spinner.userData.axis] += dt * 18;
+    for (const [o, axis, sp] of spinners) o.rotation[axis] += dt * sp;
+    kit.animate?.(s, dt, phase, amount);
   }
 
   const api = {
@@ -161,8 +196,11 @@ export function createRobot(kind) {
     onStep: null,
     updateBoosters,
     kind: 'robot',
+    robotKind: kind,
+    tint: opts.tint ?? null,
     hands,
     animate,
+    setUnfold,
     punch: () => (punch = 1),
     cockpitHidden: [head],
     cockpitEye: new THREE.Vector3(0, ROBOT_HEIGHT - 0.6, -1.4),
@@ -170,6 +208,351 @@ export function createRobot(kind) {
     radius: 2.4,
   };
   return api;
+}
+
+// ------------------------------------------------------------------ the kits
+// Each kit gets the skeleton (ctx) and adds the vehicle's parts. Colours and
+// shapes follow the vehicle models (airplane.js, heli.js, jet.js,
+// batmobile.js); parts in the accent colour take the paint job.
+
+/** The skeleton's standard boxy head with a glowing visor. */
+function boxHead({ head, box, pal }, band = true) {
+  box(head, 1.9, 1.7, 1.9, pal.main, 0, 0.85, 0);
+  if (band) box(head, 2.1, 0.5, 2.1, pal.accent, 0, 1.75, 0);
+  const visor = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.4, 0.2), new THREE.MeshBasicMaterial({ color: 0x4fd8ff }));
+  visor.position.set(0, 1.0, -0.98);
+  head.add(visor);
+  return visor;
+}
+
+/** A fat wheel (tyre and hub), axle along X. */
+function wheel({ cyl, pivot }, parent, r, w, tyre, hub, x, y, z) {
+  const g = pivot(parent, x, y, z);
+  cyl(g, r, w, tyre, 0, 0, 0, 'x', 18);
+  cyl(g, r * 0.55, w + 0.08, hub, 0, 0, 0, 'x', 14);
+  cyl(g, r * 0.18, w + 0.16, 0x6c6e68, 0, 0, 0, 'x', 8);
+  return g;
+}
+
+const KITS = {
+  // Bush plane: wings folded on the back with yellow ailerons, the propeller
+  // spinning on the chest, the main wheels on the shoulders, the tail as a
+  // back fin, the yellow intake pipe over a shoulder, the floats as forearm
+  // guards, the pilot's cap.
+  plane(c) {
+    const { pal, box, cyl, pivot, torso, head, arms, fold, spinners, mat } = c;
+    boxHead(c, false);
+    // Pilot's cap: crown and peak.
+    cyl(head, 1.05, 0.5, LEGO.darkTan, 0, 1.95, 0.05, 'y', 18);
+    box(head, 1.7, 0.14, 0.8, LEGO.darkTan, 0, 1.76, -1.15);
+    box(head, 2.12, 0.2, 2.12, LEGO.black, 0, 1.68, 0); // band
+    for (const sx of [-1, 1]) {
+      // Wing, hinged at the shoulder blade: white with a yellow aileron and tip.
+      const hinge = pivot(torso, sx * 1.4, 3.0, 1.6);
+      hinge.rotation.set(0, sx * -0.25, sx * 0.9);
+      box(hinge, 6.4, 0.3, 2.3, pal.main, sx * 3.3, 0, 0);
+      box(hinge, 2.6, 0.32, 0.7, pal.accent, sx * 4.4, 0, 1.15); // aileron
+      box(hinge, 0.7, 0.4, 2.4, pal.accent, sx * 6.5, 0, 0); // tip
+      fold(hinge, { z: -sx * 1.3, y: sx * 0.25 });
+      // Main wheel on the shoulder.
+      const w = wheel(c, arms[sx < 0 ? 0 : 1], 0.85, 0.7, LEGO.black, LEGO.lightGray, sx * 1.3, 0.9, 0.2);
+      fold(w, { z: -sx * 1.2 });
+      // Float as a forearm guard: a white pontoon with a pointed front.
+      const fl = pivot(arms[sx < 0 ? 0 : 1], sx * 0.95 * Math.max(1, c.P.limb), -4.4, 0);
+      box(fl, 0.75, 2.8, 1.2, pal.main, 0, 0, 0);
+      box(fl, 0.78, 0.25, 1.22, pal.accent, 0, 0.6, 0);
+      const nose = new THREE.Mesh(new THREE.ConeGeometry(0.55, 0.9, 10), mat(pal.main));
+      nose.position.set(0, -1.85, 0);
+      nose.rotation.x = Math.PI;
+      fl.add(nose);
+      fold(fl, { z: sx * 0.9 });
+    }
+    // Tail fin and tailplane as a back fin.
+    const tail = pivot(torso, 0, 3.2, 1.9);
+    box(tail, 0.3, 2.8, 1.7, pal.main, 0, 1.2, 0.5);
+    box(tail, 0.32, 0.6, 1.0, pal.trim, 0, 2.4, 0.9);
+    box(tail, 3.4, 0.22, 1.1, pal.main, 0, 0.1, 0.8);
+    fold(tail, { x: 1.2 });
+    // The yellow intake pipe over the left shoulder.
+    const pipe = new THREE.Mesh(new THREE.TorusGeometry(0.8, 0.2, 10, 20, Math.PI), mat(pal.accent));
+    pipe.position.set(-2.2, 3.3, 0.2);
+    pipe.rotation.y = Math.PI / 2;
+    torso.add(pipe);
+    fold(pipe, { y: 1.2 });
+    // Three-blade propeller with its yellow spinner cone, on the chest.
+    const prop = pivot(torso, 0, 0.9, -1.75);
+    for (let i = 0; i < 3; i++) {
+      const blade = box(prop, 0.42, 1.5, 0.08, LEGO.darkGray, 0, 0.8, 0);
+      const arm = new THREE.Group();
+      arm.rotation.z = (i * Math.PI * 2) / 3;
+      arm.add(blade);
+      prop.add(arm);
+    }
+    const cone = new THREE.Mesh(new THREE.ConeGeometry(0.38, 0.8, 16).rotateX(-Math.PI / 2), mat(pal.accent));
+    cone.position.z = -0.3;
+    prop.add(cone);
+    c.chestTrim.visible = false;
+    c.glass.position.y = 2.25;
+    spinners.push([prop, 'z', 18]);
+    fold(prop, { x: -1.4 }, 0.2);
+  },
+
+  // Ghost-Spider copter: the rotor on a back mast, pink web lines on the chest,
+  // four pink spider legs on the back that twitch as it walks, cyan intakes as
+  // shoulders, the tail boom and shrouded tail rotor as a tail, a round white
+  // head with big eyes like the copter's nose.
+  heli(c) {
+    const { pal, box, cyl, pivot, torso, head, arms, fold, spinners, mat } = c;
+    // Round head with big eyes.
+    const skull = new THREE.Mesh(new THREE.SphereGeometry(1.15, 20, 14), mat(pal.main));
+    skull.position.y = 0.95;
+    skull.scale.set(1, 0.92, 1);
+    skull.castShadow = true;
+    head.add(skull);
+    for (const sx of [-1, 1]) {
+      const eye = new THREE.Mesh(new THREE.SphereGeometry(0.42, 14, 10), new THREE.MeshBasicMaterial({ color: 0x1b1030 }));
+      eye.scale.set(1, 1.35, 0.4);
+      eye.position.set(sx * 0.45, 1.05, -1.02);
+      eye.rotation.y = sx * 0.35;
+      head.add(eye);
+      const glint = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 6), new THREE.MeshBasicMaterial({ color: 0x8ee3ef }));
+      glint.position.set(sx * 0.38, 1.25, -1.2);
+      head.add(glint);
+    }
+    box(head, 1.3, 0.12, 1.3, pal.accent, 0, 2.02, 0); // pink crown stripe
+    // Pink web lines across the chest: spokes and two rings.
+    const web = pivot(torso, 0, 1.9, -1.47);
+    for (let i = 0; i < 6; i++) {
+      const s = box(web, 0.09, 3.0, 0.06, pal.accent, 0, 0, 0);
+      s.rotation.z = (i * Math.PI) / 6;
+    }
+    for (const r of [0.7, 1.35]) {
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(r, 0.05, 4, 6), mat(pal.accent));
+      web.add(ring);
+    }
+    c.glass.visible = false;
+    c.chestTrim.visible = false;
+    // Cyan intakes as shoulders (the shoulder blocks are cyan): a dark grille in front.
+    for (const arm of arms) cyl(arm, 0.6, 0.3, pal.dark, 0, 0.1, -1.1, 'z', 12);
+    // Rotor on a back mast.
+    const mast = pivot(torso, 0, 3.4, 1.9);
+    box(mast, 0.4, 2.2, 0.4, pal.dark, 0, 0.9, 0);
+    cyl(mast, 0.45, 0.4, pal.trim, 0, 2.0, 0);
+    const rotor = pivot(mast, 0, 2.2, 0);
+    box(rotor, 11, 0.15, 0.7, pal.accent, 0, 0, 0);
+    box(rotor, 0.7, 0.15, 11, pal.accent, 0, 0, 0);
+    spinners.push([rotor, 'y', 18]);
+    fold(mast, { x: 1.4 });
+    // Tail boom and shrouded tail rotor, from the lower back.
+    const tail = pivot(torso, 0, 0.6, 1.4);
+    tail.rotation.x = 0.55;
+    box(tail, 0.6, 0.6, 3.6, pal.main, 0, 0, 1.8);
+    const shroud = new THREE.Mesh(new THREE.TorusGeometry(0.8, 0.22, 8, 18), mat(pal.accent));
+    shroud.rotation.y = Math.PI / 2;
+    shroud.position.set(0, 0, 3.9);
+    tail.add(shroud);
+    const tr = pivot(tail, 0, 0, 3.9);
+    box(tr, 0.06, 1.4, 0.18, pal.dark, 0, 0, 0);
+    box(tr, 0.06, 0.18, 1.4, pal.dark, 0, 0, 0);
+    spinners.push([tr, 'x', 30]);
+    fold(tail, { x: -0.9 });
+    // Four pink spider legs on the back: up and out at the knee, then down.
+    const spider = [];
+    for (const sx of [-1, 1]) {
+      for (const [y, a] of [[2.5, 0.35], [1.2, -0.25]]) {
+        const hip = pivot(torso, sx * 1.4, y, 1.3);
+        hip.rotation.set(0, sx * a, sx * 0.55);
+        box(hip, 2.4, 0.32, 0.32, pal.accent, sx * 1.2, 0, 0);
+        const knee = pivot(hip, sx * 2.4, 0, 0);
+        knee.rotation.z = sx * -1.5;
+        box(knee, 2.2, 0.26, 0.26, pal.accent, sx * 1.1, 0, 0);
+        fold(hip, { z: -sx * 0.5 });
+        spider.push({ hip, sx, base: hip.rotation.z, off: spider.length * 1.7 });
+      }
+    }
+    return {
+      // The spider legs twitch as it walks.
+      animate(s, dt, phase, amount) {
+        for (const l of spider) l.hip.rotation.z = l.base + l.sx * Math.sin(phase * 2 + l.off) * 0.18 * (0.3 + amount);
+      },
+    };
+  },
+
+  // Passenger shuttle: the clear-blue canopy with its white-and-red top as the
+  // chest, the red half-round wing split as shoulder shields, the grey spoiler
+  // as a head crest, the "21" tile on a shoulder, the rear window as a
+  // backpack, and hover thrusters in the feet and hands (blue flames when it
+  // jet-jumps).
+  jet(c) {
+    const { pal, box, cyl, pivot, torso, head, arms, legs, fold, mat, glassMat } = c;
+    boxHead(c, false);
+    box(head, 2.1, 0.4, 2.1, LEGO.white, 0, 1.75, 0);
+    // Grey spoiler as a crest, tilted up toward the back.
+    const crest = pivot(head, 0, 2.0, 0.2);
+    crest.rotation.x = 0.35;
+    box(crest, 2.6, 0.22, 1.8, LEGO.darkGray, 0, 0.1, 0.4);
+    box(crest, 0.3, 0.8, 0.3, LEGO.darkGray, -0.9, -0.3, 0);
+    box(crest, 0.3, 0.8, 0.3, LEGO.darkGray, 0.9, -0.3, 0);
+    fold(crest, { x: -0.6 });
+    // Chest: the clear-blue canopy with a white top and red stripes.
+    c.glass.visible = false;
+    c.chestTrim.visible = false;
+    const can = new THREE.Mesh(new THREE.BoxGeometry(4.4, 2.2, 0.7), glassMat(0x9fdcec, 0.8));
+    can.position.set(0, 1.6, -1.55);
+    torso.add(can);
+    box(torso, 4.6, 0.5, 1.0, LEGO.white, 0, 2.9, -1.4);
+    for (const x of [-1.3, 1.3]) box(torso, 0.45, 0.52, 1.02, pal.main, x, 2.9, -1.4);
+    box(torso, 4.0, 0.4, 0.5, LEGO.lightGray, 0, 0.35, -1.5); // grey nose plate
+    // The red half-round wing, split in two: a shield on each shoulder, straight edge up.
+    arms.forEach((arm, i) => {
+      const sx = i ? 1 : -1;
+      const sh = pivot(arm, sx * 1.35, 0.2, 0);
+      const disc = new THREE.Mesh(new THREE.CylinderGeometry(2.0, 2.0, 0.4, 20, 1, false, 0, Math.PI), mat(pal.main));
+      disc.rotation.set(0, 0, Math.PI / 2);
+      disc.rotation.x = Math.PI / 2;
+      disc.castShadow = true;
+      sh.add(disc);
+      box(sh, 0.42, 0.3, 3.9, LEGO.black, 0, 0.05, 0); // black frame along the straight edge
+      fold(sh, { z: -sx * 1.4 });
+      if (sx < 0) {
+        // The yellow "21" tile on the left shield.
+        const tag = new THREE.Mesh(new THREE.PlaneGeometry(1.3, 1.3).rotateY(-Math.PI / 2), new THREE.MeshLambertMaterial({ map: tileTexture() }));
+        tag.position.set(-0.22, -0.9, 0);
+        sh.add(tag);
+      }
+    });
+    // Rear window as a backpack: two red posts, the window, white tiles.
+    const pack = pivot(torso, 0, 1.7, 1.55);
+    for (const x of [-1.5, 1.5]) box(pack, 0.6, 2.8, 0.9, pal.main, x, 0, 0.3);
+    const win = new THREE.Mesh(new THREE.BoxGeometry(2.4, 1.8, 0.2), glassMat(0x9fdcec, 0.75));
+    win.position.set(0, 0.3, 0.6);
+    pack.add(win);
+    box(pack, 3.6, 0.3, 1.1, LEGO.white, 0, 1.5, 0.3);
+    box(pack, 2.4, 0.5, 0.7, 0x1f2d5c, 0, -1.0, 0.5); // dark blue curved piece
+    fold(pack, { x: 1.1 });
+    // Hover thrusters: under each heel and each fist, with blue flames.
+    const flames = [];
+    const flameMat = new THREE.MeshBasicMaterial({ color: 0x58b8ff, transparent: true, opacity: 0.85, depthWrite: false, blending: THREE.AdditiveBlending });
+    const thruster = (parent, x, y, z) => {
+      cyl(parent, 0.55, 0.5, LEGO.darkGray, x, y, z, 'y', 14);
+      cyl(parent, 0.38, 0.52, 0x2a2d31, x, y - 0.02, z, 'y', 12);
+      const f = new THREE.Mesh(new THREE.ConeGeometry(0.4, 1.6, 12).rotateX(Math.PI).translate(0, -0.8, 0), flameMat);
+      f.position.set(x, y - 0.25, z);
+      f.visible = false;
+      parent.add(f);
+      flames.push(f);
+    };
+    for (const leg of legs) thruster(leg, 0, -6.45, 0.9);
+    for (const arm of arms) thruster(arm, 0, -6.75, 0);
+    return {
+      animate(s) {
+        const on = !s.onGround && s.vy > -8;
+        for (const f of flames) {
+          f.visible = on;
+          if (on) f.scale.y = 0.7 + Math.min(1.2, Math.max(0, s.vy) / 15) + Math.random() * 0.25;
+        }
+      },
+    };
+  },
+
+  // Batmobile: the long hood as chest armour with the yellow emblem, the two
+  // tail fins as a cape-like pair on the back, the four fat wheels on the
+  // shoulders and hips, the dark canopy as a visor, pointed ears, and the jet
+  // exhaust on the back.
+  bat(c) {
+    const { pal, box, cyl, pivot, torso, head, arms, legs, fold, mat, glassMat } = c;
+    box(head, 1.9, 1.7, 1.9, pal.main, 0, 0.85, 0);
+    box(head, 1.6, 0.5, 0.4, pal.main, 0, 0.25, -1.05); // jaw
+    const visor = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.65, 0.5), glassMat(pal.glass, 0.9));
+    visor.position.set(0, 1.15, -0.95);
+    head.add(visor);
+    const eyes = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.16, 0.1), new THREE.MeshBasicMaterial({ color: 0xffffff }));
+    eyes.position.set(0, 1.18, -1.22);
+    head.add(eyes);
+    for (const sx of [-1, 1]) {
+      const ear = new THREE.Mesh(new THREE.ConeGeometry(0.32, 1.2, 4), mat(pal.main));
+      ear.position.set(sx * 0.62, 2.2, 0);
+      ear.castShadow = true;
+      head.add(ear);
+    }
+    c.glass.visible = false;
+    c.chestTrim.visible = false;
+    // The long hood as chest armour: a wedge plate from the collar to the waist.
+    const hood = pivot(torso, 0, 1.7, -1.55);
+    hood.rotation.x = -0.12;
+    box(hood, 4.2, 3.6, 0.5, pal.main, 0, 0, 0);
+    box(hood, 0.3, 3.4, 0.56, pal.trim, -1.2, 0, 0);
+    box(hood, 0.3, 3.4, 0.56, pal.trim, 1.2, 0, 0);
+    // The yellow emblem: an oval with a black bat shape.
+    const em = new THREE.Mesh(new THREE.CylinderGeometry(0.95, 0.95, 0.12, 24).rotateX(Math.PI / 2), mat(pal.accent));
+    em.scale.set(1.25, 0.75, 1);
+    em.position.set(0, 0.4, -0.3);
+    hood.add(em);
+    box(hood, 1.6, 0.28, 0.14, pal.dark, 0, 0.42, -0.38);
+    box(hood, 0.36, 0.5, 0.14, pal.dark, 0, 0.45, -0.38);
+    fold(hood, { x: -1.2 });
+    // Two tall tail fins as a cape-like pair on the back.
+    for (const sx of [-1, 1]) {
+      const s = new THREE.Shape();
+      s.moveTo(0, 0);
+      s.lineTo(0, -6.5);
+      s.lineTo(1.6, -5.2);
+      s.lineTo(1.1, 0.6);
+      s.closePath();
+      const g = new THREE.ExtrudeGeometry(s, { depth: 0.25, bevelEnabled: false });
+      g.rotateY(-Math.PI / 2); // in the Y-Z plane, sweeping back
+      const fin = new THREE.Mesh(g, mat(pal.main));
+      fin.castShadow = true;
+      const hinge = pivot(torso, sx * 1.9, 3.2, 1.5);
+      hinge.rotation.set(-0.12, 0, sx * 0.14);
+      fin.position.x = 0.12;
+      hinge.add(fin);
+      box(hinge, 0.3, 0.3, 1.2, pal.accent, 0, -0.3, 0.8); // yellow trim at the top
+      fold(hinge, { x: 0.9, z: -sx * 0.3 });
+    }
+    // Fat wheels with yellow hubs on the shoulders and hips.
+    arms.forEach((arm, i) => {
+      const sx = i ? 1 : -1;
+      box(arm, 2.0, 0.6, 2.3, pal.accent, 0, 1.15, 0); // tall shoulder pad with yellow trim
+      box(arm, 2.1, 1.0, 2.4, pal.main, 0, 1.75, 0);
+      fold(wheel(c, arm, 1.0, 0.9, 0x111214, pal.accent, sx * 1.45, 0.2, 0), { z: -sx * 1.3 });
+    });
+    legs.forEach((leg, i) => {
+      const sx = i ? 1 : -1;
+      fold(wheel(c, leg, 0.95, 0.85, 0x111214, pal.accent, sx * 1.35, -0.9, 0), { z: -sx * 1.2 });
+    });
+    // The jet exhaust on the back.
+    const ex = pivot(torso, 0, 1.4, 1.5);
+    ex.rotation.x = 0.5;
+    cyl(ex, 0.8, 1.4, pal.trim, 0, 0, 0.6, 'z', 16);
+    const glow = new THREE.Mesh(new THREE.CircleGeometry(0.58, 16), new THREE.MeshBasicMaterial({ color: 0xff8a2a }));
+    glow.position.set(0, 0, 1.32);
+    ex.add(glow);
+    fold(ex, { x: -0.6 });
+  },
+};
+
+/** The shuttle's yellow "21" tile (the same picture as on the shuttle). */
+let tileTex = null;
+function tileTexture() {
+  if (tileTex) return tileTex;
+  const c = document.createElement('canvas');
+  c.width = c.height = 128;
+  const g = c.getContext('2d');
+  g.fillStyle = '#f5b82e';
+  g.fillRect(0, 0, 128, 128);
+  g.fillStyle = '#1e2a5a';
+  g.beginPath();
+  g.arc(34, 64, 20, 0, Math.PI * 2);
+  g.fill();
+  g.fillStyle = '#ffffff';
+  g.beginPath();
+  g.arc(34, 64, 9, 0, Math.PI * 2);
+  g.fill();
+  g.font = 'bold 64px sans-serif';
+  g.fillStyle = '#c91a2f';
+  g.fillText('21', 56, 88);
+  return (tileTex = new THREE.CanvasTexture(c));
 }
 
 const Y = new THREE.Vector3(0, 1, 0);
