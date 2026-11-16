@@ -509,6 +509,25 @@ export class Rampage {
   }
 
   // ---------------------------------------------------------------- per frame
+  /**
+   * The Batmobile driving into loose things and traffic: they are knocked out
+   * of the way (like the robot's car does), but buildings are left alone.
+   */
+  bump(car) {
+    if (car.speed < 6) return;
+    for (const it of this.props.within(car.pos.x, car.pos.z, 3.2)) {
+      if (it.held || (it.scale || 1) >= 2 || Math.abs(it.y - car.pos.y) > 4) continue;
+      this._launch(it, new THREE.Vector3(car.vel.x, 0, car.vel.z).multiplyScalar(1.2).setY(8 + car.speed * 0.2));
+    }
+    for (const t of this.traffic.near(car.pos.x, car.pos.z, 4.5)) {
+      if (Math.abs(t.y - car.pos.y) > 4) continue;
+      this.traffic.remove(t);
+      const it = this.props.add(t.propKind || 'car', t.x, t.z, t.yaw, t.color);
+      if (it) this._launch(it, new THREE.Vector3(car.vel.x, 0, car.vel.z).multiplyScalar(1.1).setY(9));
+      this.hooks.sound?.('break');
+    }
+  }
+
   update(dt, bot) {
     this.time += dt;
     this._updateBricks(dt);

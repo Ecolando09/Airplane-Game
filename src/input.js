@@ -87,7 +87,7 @@ export class Input {
     let brake = k('Space') === 1;
 
     // Touch: tilt steering or the on-screen stick (the robot always walks by stick)
-    if (this.tilt.active && !this.botMode) {
+    if (this.tilt.active && !this.botMode && !this.carMode) {
       roll = this.tilt.roll;
       pitch = this.tilt.pitch;
     } else if (this.touchStick.x || this.touchStick.y) {
@@ -140,7 +140,7 @@ export class Input {
       if (gp.buttons[0]?.pressed) brake = true;
     }
 
-    if (this.invertPitch && !this.botMode) pitch = -pitch;
+    if (this.invertPitch && !this.botMode && !this.carMode) pitch = -pitch; // (driving: stick forward is always gas)
     // Robot: Shift, or the stick pushed all the way, runs.
     const run = throttle > 0 || Math.hypot(this.touchStick.x, this.touchStick.y) > 0.93
       || (gp && Math.hypot(gp.axes[0], gp.axes[1]) > 0.93);

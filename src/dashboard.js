@@ -182,6 +182,17 @@ const BUILD = {
       <rect x="50" y="210" width="20" height="120" rx="8" fill="#1b1f23"/>
       <rect x="40" y="190" width="40" height="44" rx="14" fill="#1b1f23"/><circle cx="60" cy="200" r="6" fill="#c91a09"/>
     </g>`,
+  // The Batmobile: a black dash with red-lit dials: a speedometer, a turbine gauge and a FORM light (CAR / FLIGHT).
+  bat: () => `
+    <path d="M-3000 300 L-3000 120 L0 120 Q500 50 1000 120 L4000 120 L4000 300 Z" fill="#0d0f12"/>
+    <path d="M-3000 120 L0 120 Q500 50 1000 120 L4000 120 L4000 128 L1000 128 Q500 58 0 128 L-3000 128 Z" fill="#f5c518"/>
+    ${dial(300, 200, 58, 'MPH', 'nSpeed', { face: '#1a0608' })}
+    ${dial(700, 200, 50, 'TURBINE', 'nRpm', { face: '#1a0608' })}
+    <rect x="430" y="150" width="140" height="52" rx="10" fill="#1a0608" stroke="#ff2a2a" stroke-width="3"/>
+    <text class="small" x="500" y="168" style="fill:#ff6a6a">FORM</text>
+    <text id="tMode" x="500" y="193" style="fill:#ff3b3b;font-size:20px">CAR</text>
+    <text id="tSpd" x="500" y="240" style="fill:#ff3b3b;font-size:26px">0</text>
+    <path d="M470 262 L500 250 L530 262 L515 262 L500 256 L485 262 Z" fill="#f5c518"/>`,
   plane: (tint) => `
     <path d="M-3000 300 L-3000 95 L0 95 Q500 30 1000 95 L4000 95 L4000 300 Z" fill="#2c3238"/>
     <path d="M-3000 95 L0 95 Q500 30 1000 95 L4000 95 L4000 110 L1000 110 Q500 46 0 110 L-3000 110 Z" fill="${tint}"/>
@@ -261,7 +272,7 @@ export class Dashboard {
     const rot = (el, deg, cx, cy) => el?.setAttribute('transform', `rotate(${deg.toFixed(1)} ${cx} ${cy})`);
     const sweep = (v, a0 = -135, a1 = 135) => a0 + (a1 - a0) * Math.max(0, Math.min(1, v));
     const t = this.type;
-    const c = { robot: { sp: [320, 205], comp: [440, 205] }, jet: { att: [212, 196], comp: [411, 205], rpm: [540, 180], wheel: [60, 330] }, car: { sp: [250, 190], rpm: [400, 190], wheel: [320, 300] }, police: { sp: [250, 190], rpm: [400, 190], wheel: [320, 300] },
+    const c = { bat: { sp: [300, 200], rpm: [700, 200] }, robot: { sp: [320, 205], comp: [440, 205] }, jet: { att: [212, 196], comp: [411, 205], rpm: [540, 180], wheel: [60, 330] }, car: { sp: [250, 190], rpm: [400, 190], wheel: [320, 300] }, police: { sp: [250, 190], rpm: [400, 190], wheel: [320, 300] },
       ambulance: { sp: [250, 192], rpm: [395, 195], wheel: [320, 300] }, fire: { sp: [225, 190], rpm: [575, 178], wheel: [300, 310] }, boat: { sp: [200, 210], wheel: [430, 330], comp: [635, 205] },
       plane: { sp: [120, 170], rpm: [680, 175], alt: [350, 170], vs: [580, 170], att: [235, 170], comp: [465, 170], wheel: [400, 330] },
       heli: { sp: [220, 205], rpm: [670, 210], alt: [450, 205], att: [335, 205], comp: [565, 205], wheel: [100, 330] } }[t];
@@ -281,11 +292,11 @@ export class Dashboard {
     if (n.tGear) n.tGear.textContent = s.gear;
     // The jet's glass cockpit: the second engine, speed and altitude readouts.
     if (n.nRpm2) rot(n.nRpm2, sweep(s.throttle), 620, 180);
-    if (n.tSpd) n.tSpd.textContent = String(Math.round(s.mph * 0.869));
+    if (n.tSpd) n.tSpd.textContent = String(Math.round(t === 'bat' ? s.mph : s.mph * 0.869));
     if (n.tAltJ) n.tAltJ.textContent = String(Math.round(s.altFt / 10) * 10);
     if (n.tMode) {
-      n.tMode.textContent = s.hover ? 'HOVER' : 'FLIGHT';
-      n.tMode.style.fill = s.hover ? '#4fc3ff' : '#7df0a0';
+      n.tMode.textContent = s.form || (s.hover ? 'HOVER' : 'FLIGHT');
+      n.tMode.style.fill = t === 'bat' ? (s.form === 'CAR' ? '#ff3b3b' : '#ffb300') : s.hover ? '#4fc3ff' : '#7df0a0';
     }
     // The robot's display: radar sweep, size, smash count, height above ground, jet power.
     if (n.nRadar) rot(n.nRadar, (performance.now() / 1000) * 140 % 360, 160, 215);

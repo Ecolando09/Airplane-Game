@@ -96,6 +96,7 @@ const OTHER = {
   police: { L: 5.6, W: 2.3, eye: [-0.5, 1.55, -0.1], lampY: 1.0, dash: 'police' },
   ambulance: { L: 7.0, W: 2.6, eye: [-0.6, 2.05, -2.2], lampY: 1.0, dash: 'ambulance' },
   firetruck: { L: 10.0, W: 2.8, eye: [-0.65, 2.5, -3.7], lampY: 1.1, dash: 'fire' },
+  bat: { L: 9.4, W: 3.0, eye: [0, 1.35, -0.2], lampY: 0.45, dash: 'bat' }, // the Batmobile (your own vehicle, not a prop)
 };
 
 /**

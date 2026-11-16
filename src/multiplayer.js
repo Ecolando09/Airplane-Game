@@ -108,7 +108,7 @@ export class Multiplayer {
     }
     const changed = p.name !== m.name || p.city !== m.city;
     Object.assign(p, {
-      name: String(m.name || 'Pilot').slice(0, 16), city: m.city, vehicle: m.vehicle === 'heli' || m.vehicle === 'jet' ? m.vehicle : 'plane',
+      name: String(m.name || 'Pilot').slice(0, 16), city: m.city, vehicle: ['heli', 'jet', 'bat'].includes(m.vehicle) ? m.vehicle : 'plane', form: m.form === 'fly' ? 'fly' : 'car', // (the Batmobile: car or flying car)
       speed: +m.speed || 0, turbo: +m.turbo || 1, floats: !!m.floats, crashed: !!m.crashed, seen: performance.now(),
       cash: Number.isFinite(m.cash) ? m.cash : null, // Beer Run money, while they're on a shift
       bot: !!m.bot, // walking around as a robot
@@ -181,6 +181,7 @@ export class Multiplayer {
         ...(me.size > 1 ? { size: me.size } : {}),
         ...(me.ride ? { ride: me.ride } : {}),
         ...(me.sit ? { sit: true } : {}),
+        ...(me.form ? { form: me.form } : {}),
         ...(me.paint && me.paint !== 'classic' ? { paint: me.paint } : {}),
         ...(Number.isFinite(me.cash) ? { cash: Math.round(me.cash) } : {}),
       }));
@@ -220,6 +221,7 @@ export class Multiplayer {
         if (p.vehicle === 'heli') p.model.propeller.rotation.y += 30 * dt;
         else p.model.propeller.rotation.z += (10 + p.speed) * dt;
       }
+      p.model.setFlight?.(p.form === 'fly' ? 1 : 0); // a friend's Batmobile: car or flying car
       if (p.model.floats) {
         p.model.floats.visible = p.floats;
         p.model.floats.scale.setScalar(p.floats ? 1 : 0.001);

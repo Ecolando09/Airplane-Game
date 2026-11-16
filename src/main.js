@@ -3,6 +3,8 @@ import { World } from './world.js';
 import { createLegoPlane, GROUND_TILT, MAIN_CONTACT } from './airplane.js';
 import { createGhostSpiderHeli, HeliFlight } from './heli.js';
 import { createPassengerJet, JET_ACCENT } from './jet.js';
+import { createBatmobile, BAT_ACCENT } from './batmobile.js';
+import { CarDrive } from './cardrive.js';
 import { GoogleWorld } from './google3d.js';
 import { setLook, NIGHT } from './lego.js';
 import { Flight } from './flight.js';
@@ -42,10 +44,24 @@ const CITIES = {
   denver: 'Denver, CO', stlouis: 'St. Louis, MO',
   sanfrancisco: 'San Francisco, CA', hongkong: 'Hong Kong & Shenzhen', tokyo: 'Tokyo, Japan', singapore: 'Singapore',
 };
-const VEHICLE_NAMES = { plane: 'Bush Plane', heli: 'Ghost-Spider Copter', jet: 'Passenger Shuttle' };
-/** A fresh model of one of your own vehicles: 'plane', 'heli' or 'jet'. */
-const createOwnModel = (kind) => (kind === 'heli' ? createGhostSpiderHeli() : kind === 'jet' ? createPassengerJet() : createLegoPlane());
-const ownKind = (v) => (v === 'heli' || v === 'jet' ? v : 'plane');
+// (The Batmobile's name is someone else's brand, like LEGO and Ghost-Spider: it lives only here, to be easy to change.)
+const VEHICLE_NAMES = { plane: 'Bush Plane', heli: 'Ghost-Spider Copter', jet: 'Passenger Shuttle', bat: 'Batmobile' };
+const VEHICLE_SHORT = { plane: 'plane', heli: 'copter', jet: 'shuttle', bat: 'Batmobile' }; // "your ..."
+const VEHICLE_ICON = { plane: '✈️', heli: '🕷️', jet: '🛫', bat: '🦇' };
+/** A fresh model of one of your own vehicles: 'plane', 'heli', 'jet' or 'bat'. */
+const createOwnModel = (kind) => (kind === 'heli' ? createGhostSpiderHeli() : kind === 'jet' ? createPassengerJet() : kind === 'bat' ? createBatmobile() : createLegoPlane());
+const ownKind = (v) => (v === 'heli' || v === 'jet' || v === 'bat' ? v : 'plane');
+/**
+ * The flight model for a fresh vehicle model. The Batmobile has two (model.flights):
+ * the car (CarDrive) and the flying car (Flight); it starts as the car.
+ */
+function newFlight(model, kind) {
+  if (kind === 'heli') return new HeliFlight(world, model);
+  const fly = new Flight(world, model);
+  if (kind !== 'bat') return fly;
+  model.flights = { fly, car: new CarDrive(world, model) };
+  return model.flights.car;
+}
 const LOOK_NAMES = { lego: 'Lego', real: 'Realistic', google: 'Google 3D' };
 const MODES = { free: 'Free flight', rings: 'Ring Race', rampage: 'Rampage', beer: 'Beer Run', squid: 'Squid Hunt' }; // Beer Run: only in Fort Collins; Squid Hunt: cities with a squid
 // Preferences that stay on this device (not shared with a room). The PSG1 keeps
@@ -421,7 +437,8 @@ function buildVehicle() {
   plane = createOwnModel(ownKind(settings.vehicle));
   scene.add(plane.group);
   addNavLights(plane, ownKind(settings.vehicle)); // wingtip, tail, beacon and strobe lights
-  flight = isHeli ? new HeliFlight(world, plane) : new Flight(world, plane);
+  flight = newFlight(plane, ownKind(settings.vehicle));
+  batAnim = 0;
   applyPaint(plane);
   const model = makeBotModel(settings.vehicle);
   bot = { model, walk: new RobotWalk(world, model) };
@@ -445,6 +462,7 @@ let floatsAnim = 0;
 function toggleFloats() {
   if (!running || flight.crashed) return;
   if (!isBot && plane.hovercraft) return toggleHover(); // the shuttle's button switches hover mode instead
+  if (!isBot && plane.batmobile) return message(flight.isCar ? "No floats: the Batmobile can't swim. Stay off the water!" : 'No floats on the Batmobile: land on the ground', 2);
   if (flight.onGround && flight.floats && flight.onWater) {
     message("Can't raise the floats while on the water!", 2);
     return;
@@ -463,6 +481,81 @@ function updateFloats(dt) {
     const power = flight.crashed ? 0 : flight.onGround ? 0.12 + 0.15 * flight.throttle
       : THREE.MathUtils.clamp(0.42 + 0.5 * (flight.vel.y / 11) + 0.25 * flight.throttle, 0.08, 1);
     plane.updateThrust(power, timer.getElapsed());
+  }
+}
+
+// ------------------------------------------------------------------ the Batmobile's three forms
+// Car (CarDrive) -> flying car (Flight, wings out) -> robot -> car. The model
+// keeps both flight models in model.flights; `flight` is swapped in place.
+let batAnim = 0; // the model's car (0) to flying car (1) look, easing toward the form
+/**
+ * Use the car (true) or the flying car (false). quiet: at once, no animation
+ * (restarts); otherwise the wings swing out over half a second (updateBat).
+ */
+function setBatForm(car, quiet = true) {
+  const m = plane.flights;
+  if (!m) return;
+  const to = car ? m.car : m.fly;
+  if (quiet) {
+    batAnim = car ? 0 : 1;
+    plane.setFlight(batAnim);
+  }
+  if (to === flight) return setBotUi();
+  const from = flight;
+  to.turbo = from?.turbo || 1;
+  to.turboNow = from?.turboNow || 1;
+  flight = to;
+  if (from && running && !car) {
+    // Taking off from the road: same spot, heading and speed, rolling on its wheels.
+    to.reset();
+    to.pos.copy(from.pos);
+    to.quat.setFromAxisAngle(Y_AXIS, from.yaw ?? -THREE.MathUtils.degToRad(from.heading));
+    to.speed = Math.max(0, from.along ?? from.speed);
+    to.vel.copy(to.forward).multiplyScalar(to.speed);
+    to.onGround = from.onGround;
+    to.throttle = from.speed > 3 ? Math.min(1, 0.4 + from.speed / 60) : 0;
+  }
+  input.syncThrottle(flight.throttle);
+  tilt = 0;
+  setBotUi();
+}
+/** In a room race or contest the Batmobile stays the flying car (or the robot) until the game ends. */
+function batCarLocked() {
+  return !!(rgRun && !rgRun.done && (ROOM_GAMES[rgRun.game]?.vehicle || ROOM_GAMES[rgRun.game]?.plane));
+}
+/** The car takes off: the wings swing out; give it throttle and pull up. */
+function batCarToFly() {
+  setBatForm(false, false);
+  sound.blip('transform');
+  mpAct('morph');
+  message('🛫 Flying car!<small>Throttle up and pull up to take off · change again for the robot</small>', 3);
+}
+/** What the transform button turns you into next. */
+function nextForm() {
+  const bat = (isBot ? vehicle?.model : plane)?.batmobile && !takenPlane;
+  if (!bat) return { icon: '🤖', name: isBot ? 'Change back' : 'Robot' };
+  if (isBot) return flight.onGround && !batCarLocked() ? { icon: '🚗', name: 'Car' } : { icon: '🛫', name: 'Fly' };
+  return flight.isCar ? { icon: '🛫', name: 'Fly' } : { icon: '🤖', name: 'Robot' };
+}
+/** Each frame: car controls on the stick, the wings and wheels easing between forms, wheels rolling. */
+function updateBat(dt) {
+  input.carMode = !isBot && !!flight?.isCar;
+  document.body.classList.toggle('car', input.carMode);
+  const m = !isBot ? plane : vehicle?.model;
+  if (!m?.batmobile) return;
+  const want = !isBot && flight.isCar ? 0 : 1;
+  if (batAnim !== want) {
+    batAnim = want > batAnim ? Math.min(1, batAnim + dt / 0.5) : Math.max(0, batAnim - dt / 0.5);
+    m.setFlight(batAnim);
+  }
+  if (!isBot && flight.isCar) m.roll(flight.along || 0, -(flight.ctrl.roll || 0) * 0.45, dt);
+  if (running) {
+    const next = nextForm(); // (the robot: Car on the ground, Fly in the air)
+    const chip = $('botChip');
+    if (chip.textContent !== next.icon) {
+      chip.textContent = next.icon;
+      chip.title = next.name;
+    }
   }
 }
 
@@ -666,7 +759,7 @@ function updateDashboard() {
   let type = null;
   if (running && CAMS[camMode] === 'cockpit' && !flight.crashed && !window.__game?.photo) {
     if (dr) type = driveInfo(dr.item)?.dash || 'car';
-    else type = isBot ? 'robot' : plane.jet ? 'jet' : isHeli ? 'heli' : 'plane';
+    else type = isBot ? 'robot' : plane.batmobile ? 'bat' : plane.jet ? 'jet' : isHeli ? 'heli' : 'plane';
   }
   const tint = dr ? '#' + new THREE.Color(props.kinds[dr.item.kind]?.tint ? dr.item.tint : 0xf2c200).getHexString()
     : takenPlane?.it && !isHeli ? '#' + new THREE.Color(takenPlane.it.tint).getHexString() : isHeli ? '#5b6770' : plane.jet ? '#f2f2f2' : '#c62828';
@@ -678,7 +771,7 @@ function updateDashboard() {
   const fw = flight.forward;
   dashboard.update({
     mph: type === 'boat' || type === 'heli' ? mph * 0.869 : mph, // knots on the water and in the copter
-    maxMph: type === 'car' || type === 'police' || type === 'ambulance' || type === 'fire' || type === 'robot' ? 140 : type === 'boat' ? 60 : type === 'heli' ? 160 : type === 'jet' ? 320 : 200,
+    maxMph: type === 'car' || type === 'police' || type === 'ambulance' || type === 'fire' || type === 'robot' ? 140 : type === 'boat' ? 60 : type === 'heli' ? 160 : type === 'jet' ? 320 : type === 'bat' ? 240 : 200,
     throttle: dr ? Math.min(1, Math.abs(c.pitch || 0)) : flight.throttle ?? 0.5,
     altFt: (flight.pos.y - (plane.gearHeight || 0) + world.baseElevation) * 3.281,
     vs: (flight.vel?.y || 0) * 196.9,
@@ -695,6 +788,7 @@ function updateDashboard() {
     agl: isBot ? Math.max(0, flight.pos.y - world.groundAt(flight.pos.x, flight.pos.z)) * 3.281 : 0,
     jet: isBot ? (flight.jetting ? 1 : 0) * 0.6 + Math.min(0.4, Math.max(0, flight.vel.y) / 40) : 0,
     hover: !isBot && !!plane.hovercraft && isHeli,
+    form: !isBot && plane.batmobile ? (flight.isCar ? 'CAR' : 'FLIGHT') : '',
   });
 }
 const CAMS = ['chase', 'cockpit']; // behind and above, or the driver's seat
@@ -1398,6 +1492,7 @@ if (input.isTouch && !__PSG1__) {
 /** Reset the flight to an airborne state (used by respawn); keeps the session running. */
 function airborneRestart() {
   autoLand = null;
+  if (plane.batmobile) setBatForm(false); // a car never drops from the sky: the flying car
   flight.resetAirborne();
   tilt = 0;
   boosterLevel = 0;
@@ -1432,6 +1527,7 @@ function start(airborne, { lesson = false, roomGame = false } = {}) {
   clearDebris();
   autoLand = null;
   trail = [];
+  if (plane.batmobile) setBatForm(!airborne); // "Take off": the car at the runway; "Start in the air": the flying car
   airborne ? flight.resetAirborne() : flight.reset();
   snapToGoogleGround();
   input.syncThrottle(flight.throttle);
@@ -1471,9 +1567,10 @@ function start(airborne, { lesson = false, roomGame = false } = {}) {
   try {
     seen = !!localStorage.getItem('legosky.lesson');
   } catch {}
-  if (lesson || (!seen && !airborne && !new URLSearchParams(location.search).has('debug'))) return startCoach();
+  if (lesson || (!seen && !airborne && !flight.isCar && !new URLSearchParams(location.search).has('debug'))) return startCoach(); // (the flying lesson is for flying)
   if (coach) endCoach(false);
   message(airborne ? `Welcome to ${data.name.split(',')[0]}!`
+    : flight.isCar ? `🦇 ${VEHICLE_NAMES.bat}!<small>${isPsg1() || padPlay ? 'Left stick: gas and steering' : input.isTouch ? 'Stick: gas and steering' : 'W/S: gas and reverse · A/D steer · Space handbrake'} · change once to fly, twice for the robot</small>`
     : isHeli ? (input.isTouch ? 'Push LIFT up to take off!' : isPsg1() || padPlay ? 'Right stick up to lift off, left stick up for speed!' : 'Hold W to lift off, Shift for speed!')
       : `Runway ${world.runway.names?.[0] ?? ''} — full throttle to take off!`, 3);
 }
@@ -2024,7 +2121,7 @@ function renderBoard() {
     const sc = document.createElement('span');
     sc.className = 'sc';
     sc.textContent = fmt(e.score);
-    li.append(`${e.name} ${e.vehicle === 'heli' ? '🕷️' : e.vehicle === 'jet' ? '🛫' : '✈️'}${e.note ? ` · ${e.note}` : e.deliveries ? ` · ${e.deliveries} deliveries` : ''}`, sc);
+    li.append(`${e.name} ${VEHICLE_ICON[e.vehicle] || '✈️'}${e.note ? ` · ${e.note}` : e.deliveries ? ` · ${e.deliveries} deliveries` : ''}`, sc);
     if (me && e.name === me.postedName && e.score === me.cash) li.className = 'me';
     return li;
   }) : [Object.assign(document.createElement('li'), { className: 'muted', textContent: board ? 'No scores yet. Be the first!' : 'Leaderboard needs the game server.' })]));
@@ -2087,7 +2184,7 @@ const PAINTS = [
   { id: 'redorange', name: 'Red-Orange', color: 0xff5a1f, need: () => true, how: '' },
   { id: 'rainbow', name: 'Rainbow', rainbow: true, need: () => true, how: '' },
 ];
-const ACCENT = { plane: 0xf2cd37, heli: 0xf0368f, jet: JET_ACCENT }; // the part of each vehicle that takes the paint
+const ACCENT = { plane: 0xf2cd37, heli: 0xf0368f, jet: JET_ACCENT, bat: BAT_ACCENT }; // the part of each vehicle that takes the paint
 const RAINBOW = [0xff2a2a, 0xff8c1a, 0xffd21f, 0x2fc44a, 0x2f7fe0, 0x8a3fd0]; // red, orange, yellow, green, blue, purple
 const hex6 = (h) => `#${h.toString(16).padStart(6, '0')}`;
 /** The paint job you wear (unlocked, or classic). Friends see this one. */
@@ -2167,6 +2264,11 @@ function renderLogbook() {
     d.append(Object.assign(document.createElement('span'), { textContent: k }), Object.assign(document.createElement('b'), { textContent: String(v) }));
     return d;
   }));
+  // The paint buttons are rebuilt only when something about them changed (the menu
+  // refreshes every few seconds, and a rebuild would throw the PSG1's highlight off them).
+  const paintKey = `${PAINTS.map((x) => +x.need(c)).join('')}:${prefs.paint}:${building}:${settings.vehicle}`;
+  if ($('paints').dataset.key === paintKey) return;
+  $('paints').dataset.key = paintKey;
   $('paints').replaceChildren(...PAINTS.map((x) => {
     const b = document.createElement('button');
     const ok = x.need(c);
@@ -2552,6 +2654,7 @@ async function rgPrepare(m) {
   if (settings.vehicle !== v) await applySettings({ vehicle: v });
   $('menu').hidden = true;
   start(false, { roomGame: true });
+  if (plane.batmobile && !spec.robot) setBatForm(false); // races and contests: the flying car (the car is locked until the end)
   const base = flight.pos.clone();
   const heading = flight.heading;
   const slot = m.slots?.[mp.myId] ?? 0;
@@ -3508,7 +3611,7 @@ setInterval(() => {
     menu: !running,
     spd: Math.round(flight.speed * 1.944),
     alt: Math.round((p.y - plane.gearHeight + world.baseElevation) * 3.281),
-    gear: isBot ? 'ROBOT' : plane.hovercraft && isHeli ? 'HOVER' : flight.floats ? 'FLOATS' : isHeli ? 'LEGS' : 'WHEELS',
+    gear: isBot ? 'ROBOT' : flight.isCar ? 'CAR' : plane.hovercraft && isHeli ? 'HOVER' : flight.floats ? 'FLOATS' : isHeli ? 'LEGS' : 'WHEELS',
     bot: isBot,
     turbo: flight.turbo,
     vehicle: isHeli ? 'heli' : ownKind(settings.vehicle), // (hover mode: the phone shows the LIFT slider)
@@ -3552,6 +3655,7 @@ const Y_AXIS = new THREE.Vector3(0, 1, 0);
 function transform() {
   if (!running || autoLand || (!isBot && flight.crashed)) return;
   if (morph) finishMorph(); // changing again mid-change: skip to the end of the first
+  if (!isBot && plane.batmobile && flight.isCar) return batCarToFly(); // car -> flying car -> robot -> car
   const from = plane.group;
   if (!isBot) {
     ensureBotFor(plane);
@@ -3581,6 +3685,8 @@ function transform() {
     flight = vehicle.flight;
     vehicle = null;
     isBot = false;
+    // The Batmobile: the car if the robot stands on the ground, else the flying car.
+    if (plane.batmobile) setBatForm(parked && !batCarLocked());
     parked ? flight.reset() : flight.resetAirborne();
     flight.turbo = turbo || 1;
     flight.pos.set(p.x, p.y + plane.gearHeight + (parked ? 0 : 3), p.z);
@@ -3591,11 +3697,13 @@ function transform() {
       flight.quat.setFromAxisAngle(Y_AXIS, yaw);
       tilt = parked && !plane.level ? GROUND_TILT : 0;
     }
-    if (parked && world.isWater(p.x, p.z)) flight.floats = true; // changing back in a lake: floats out
+    if (flight.isCar) flight.place(p, yaw, 0);
+    if (parked && world.isWater(p.x, p.z) && !plane.batmobile) flight.floats = true; // changing back in a lake: floats out
     input.syncThrottle(flight.throttle);
     input.resetLift();
     wasOnGround.v = flight.onGround;
-    message(parked ? 'Back to the vehicle. Ready for takeoff!' : 'Back to the vehicle. Fly!', 2);
+    message(flight.isCar ? '🚗 Back to the car!<small>Stick or W/S: gas and reverse · steer left and right · change again to fly</small>'
+      : parked ? 'Back to the vehicle. Ready for takeoff!' : 'Back to the vehicle. Fly!', 2);
   }
   morph = { t: 0, from, to: plane.group };
   plane.group.visible = true;
@@ -3658,6 +3766,10 @@ function setBotUi() {
   $('turboChip').textContent = car ? 'HORN' : isBot ? 'SMASH' : flight.turbo > 1 ? turboName(flight.turbo) : 'TURBO';
   $('turboChip').classList.toggle('on', !isBot && flight.turbo > 1);
   $('botChip').classList.toggle('on', isBot);
+  // The transform button names what comes next (the Batmobile has three forms).
+  const next = nextForm();
+  $('botChip').textContent = next.icon;
+  $('botChip').title = next.name;
   $('botTurboChip').textContent = flight.turbo > 1 ? turboName(flight.turbo) : 'TURBO';
   $('botTurboChip').classList.toggle('on', flight.turbo > 1);
   updateBotHud();
@@ -4323,8 +4435,8 @@ function updateDriveButton() {
     if (it && !driveTargetNow) sound.blip('ring');
     driveTargetNow = it;
     if (it === leftBehind) {
-      $('driveName').textContent = { heli: 'your copter', jet: 'your shuttle', plane: 'your plane' }[leftBehind.vehicle];
-      $('driveVerb').textContent = leftBehind.vehicle === 'heli' ? '🚁 FLY' : leftBehind.vehicle === 'jet' ? '🛫 FLY' : '✈️ FLY';
+      $('driveName').textContent = `your ${VEHICLE_SHORT[leftBehind.vehicle]}`;
+      $('driveVerb').textContent = leftBehind.vehicle === 'heli' ? '🚁 FLY' : leftBehind.vehicle === 'jet' ? '🛫 FLY' : leftBehind.vehicle === 'bat' ? '🚗 DRIVE' : '✈️ FLY';
     } else if (it) {
       const info = props.info(it.kind);
       $('driveName').textContent = `the ${info.name}`;
@@ -4456,6 +4568,7 @@ function parkOwnVehicle(x, z, clear) {
   const kind = ownKind(settings.vehicle);
   const model = createOwnModel(kind);
   addNavLights(model, kind);
+  model.setFlight?.(0); // a Batmobile waits as the car (and its aircraft lights off)
   applyPaint(model);
   const y = world.heightAt(px, pz) + model.gearHeight;
   model.group.position.set(px, y, pz);
@@ -4480,7 +4593,7 @@ function rebuildOwnVehicle() {
   scene.add(model.group);
   addNavLights(model, ownKind(settings.vehicle));
   applyPaint(model);
-  vehicle = { model, flight: isHeli ? new HeliFlight(world, model) : new Flight(world, model) };
+  vehicle = { model, flight: newFlight(model, ownKind(settings.vehicle)) };
   input.heliMode = isHeli;
   document.body.classList.toggle('heli', isHeli);
   $('throttleLabel').textContent = isHeli ? 'SPEED' : 'THROTTLE';
@@ -4493,7 +4606,7 @@ function getBackIn() {
   flight.onGround = true;
   transform(); // (clears the parked copy)
   finishMorph();
-  message(`${lb.vehicle === 'heli' ? '🚁' : lb.vehicle === 'jet' ? '🛫' : '✈️'} Back in your ${{ heli: 'copter', jet: 'shuttle', plane: 'plane' }[lb.vehicle]}!`, 2.5);
+  message(`${lb.vehicle === 'heli' ? '🚁' : VEHICLE_ICON[lb.vehicle]} Back in your ${VEHICLE_SHORT[lb.vehicle]}!`, 2.5);
   return true;
 }
 /** Climb into a parked plane: it becomes your plane, in its colour, where it was parked. */
@@ -4505,7 +4618,7 @@ function enterParkedPlane(it) {
   props._write(it);
   mpShareProp('pick', it);
   takenPlane = { it, x: at.x, z: at.z, yaw: at.yaw, prevVehicle: settings.vehicle };
-  if (isHeli || ownStale || settings.vehicle === 'jet') {
+  if (isHeli || ownStale || settings.vehicle === 'jet' || settings.vehicle === 'bat') {
     ownStale = false;
     settings.vehicle = 'plane';
     saveSettings();
@@ -4682,7 +4795,7 @@ function squidPlayer() {
   const kind = isBot ? (rampage.driving ? (flight.boat ? 'boat' : 'car') : 'bot') : flight instanceof HeliFlight ? 'heli' : 'plane';
   const p = flight.pos;
   // Never during the flying lesson, auto-land, a potty break, being carried, or other room games.
-  let el = !flight.crashed && !autoLand && !coach && !morph && potty.sitting <= 0 && !carry.by && prefs.monster !== 'off'
+  let el = !flight.isCar && !flight.crashed && !autoLand && !coach && !morph && potty.sitting <= 0 && !carry.by && prefs.monster !== 'off'
     && !(rgRun && rgRun.game !== 'squid') && !rgFrozen();
   if (el) {
     // Safe on a bridge deck.
@@ -4883,11 +4996,13 @@ function frame() {
       group: plane.group, city: settings.city, vehicle: settings.vehicle, speed: flight.speed,
       turbo: flight.turbo || 1, floats: !!flight.floats, crashed: flight.crashed, bot: isBot,
       size: isBot ? bot.walk.size : 1, sit: potty.sitting > 0, paint: ownPaint(),
+      form: !isBot && plane.batmobile && !flight.isCar ? 'fly' : undefined,
       ride: isBot && rampage.driving ? { kind: rampage.driving.item.kind, tint: rampage.driving.item.tint, scale: rampage.driving.item.scale || 1, em: emState() }
         : !isBot && plane?.parked ? { kind: 'plane', tint: plane.parked.tint, scale: plane.parked.scale, lift: +plane.gearHeight.toFixed(2) } : null,
       cash: beerRun?.active ? beerRun.cash : game?.active ? Math.round(game.total ?? game.next * 100) : undefined,
     });
   }
+  updateBat(dt);
   {
     const t = timer.getElapsed(); // rainbow paint jobs drift (yours, your robot, a parked one, friends')
     for (const m of [plane, bot?.model, vehicle?.model, leftBehind?.model]) driftRainbow(m, t);
@@ -4940,6 +5055,7 @@ function frame() {
     updateBoosters(dt);
     poseAirplane(dt);
     rampage.update(dt, isBot ? flight : null);
+    if (!isBot && flight.isCar) rampage.bump(flight); // the Batmobile shoves traffic and loose things aside
     updateBlockers(dt);
     if (google) props.settle(flight.pos.x, flight.pos.z, 500);
     if (!isHeli && !isBot && !plane.noProp) {

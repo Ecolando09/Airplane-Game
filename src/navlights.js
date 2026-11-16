@@ -19,6 +19,12 @@ const SPECS = {
     beacons: [[0, 2.45, -2.2], [0, -0.5, 2.0]], strobes: [[-5.7, 0.35, 2.2], [5.7, 0.35, 2.2]],
     landing: [[0, 0.1, -7.9]],
   },
+  // The Batmobile as a flying car: wingtips, between the fins, under the nose (shown only when flying).
+  bat: {
+    left: [-5.75, 0.55, 1.9], right: [5.75, 0.55, 1.9], tail: [0, 1.1, 4.8],
+    beacons: [[0, 1.75, 0.4], [0, -0.1, 0.5]], strobes: [[-5.75, 0.55, 2.4], [5.75, 0.55, 2.4]],
+    landing: [[0, 0.35, -4.7]],
+  },
   // The helicopter: lights on the body sides, the tail and under the belly.
   heli: {
     left: [-1.15, 0.5, -0.2], right: [1.15, 0.5, -0.2], tail: [0, 0.75, 9.2],
