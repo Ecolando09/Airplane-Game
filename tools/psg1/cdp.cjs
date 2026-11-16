@@ -67,6 +67,14 @@ async function evaluate(expr) {
 async function main() {
   const [cmd, arg] = process.argv.slice(2);
   if (cmd === 'eval') console.log(JSON.stringify(await evaluate(arg), null, 1));
+  else if (cmd === 'inject') {
+    // Run a script file as-is (default tools/psg1/probe.js: the __t test helpers).
+    const c = await connect();
+    const src = fs.readFileSync(arg || require('node:path').join(__dirname, 'probe.js'), 'utf8');
+    const r = await c.send('Runtime.evaluate', { expression: src, returnByValue: true });
+    c.close();
+    console.log(r.result?.exceptionDetails?.exception?.description || r.result?.result?.value);
+  }
   else if (cmd === 'shot') {
     const c = await connect();
     const r = await c.send('Page.captureScreenshot', { format: 'png' });
