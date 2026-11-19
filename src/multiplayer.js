@@ -113,7 +113,7 @@ export class Multiplayer {
       cash: Number.isFinite(m.cash) ? m.cash : null, // Beer Run money, while they're on a shift
       bot: !!m.bot, // walking around as a robot
       size: Math.min(8, Math.max(0.25, +m.size || 1)), // grown (or shrunk) robot
-      ride: m.ride && typeof m.ride.kind === 'string' ? { kind: m.ride.kind.slice(0, 16), tint: +m.ride.tint || 0, scale: Math.min(4, Math.max(0.25, +m.ride.scale || 1)), lift: Math.min(10, Math.max(0, +m.ride.lift || 0)), em: (+m.ride.em || 0) & 3 } : null,
+      ride: m.ride && typeof m.ride.kind === 'string' ? { kind: m.ride.kind.slice(0, 16), tint: +m.ride.tint || 0, scale: Math.min(4, Math.max(0.25, +m.ride.scale || 1)), lift: Math.min(10, Math.max(0, +m.ride.lift || 0)), em: (+m.ride.em || 0) & 15 } : null,
       sit: !!m.sit, // on the toilet
       paint: typeof m.paint === 'string' ? m.paint.slice(0, 16) : 'classic', // their paint job
     });

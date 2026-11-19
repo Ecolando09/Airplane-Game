@@ -1,5 +1,43 @@
 // All sound is synthesized (no audio files): the engine, wind, booms,
 // splashes, short game blips and an optional background tune.
+/** A note name ('C5', 'F#4', 'Bb3', '-' for a rest) as a frequency in Hz (A4 = 440). */
+export function noteHz(name) {
+  if (!name || name === '-') return 0;
+  const m = /^([A-G])([#b]?)(-?\d)$/.exec(name);
+  if (!m) return 0;
+  const semi = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 }[m[1]] + (m[2] === '#' ? 1 : m[2] === 'b' ? -1 : 0);
+  return 440 * 2 ** ((12 * (+m[3] + 1) + semi - 69) / 12);
+}
+
+// The ice cream truck's songs. step: seconds per step; a number after a colon is
+// the note's length in steps (1 if left out); bar: steps per bar, after a lead-in
+// of `lead` steps (the soft low note marks each bar). Sprinkles was written for
+// this game; the other two are old enough to be free for anyone to use.
+export const SONGS = [
+  { name: 'Sprinkles', step: 0.22, bar: 4, lead: 0,
+    notes: 'E5 G5 C6 G5 A5 G5 E5 C5 D5 E5 F5 D5 G5 -:3 E5 G5 C6 G5 A5 C6 B5 A5 G5 E5 D5 E5 C5 -:3' },
+  { name: 'Pop Goes the Weasel', step: 0.17, bar: 6, lead: 0,
+    notes: 'C5:2 C5 D5:2 D5 E5 G5 E5 C5:2 G4 ' + 'C5:2 C5 D5:2 D5 E5:3 C5:2 G4 '
+      + 'C5:2 C5 D5:2 D5 E5 G5 E5 C5:3 ' + 'A5:3 D5:2 F5 E5:3 C5:3' },
+  { name: 'The Entertainer', step: 0.15, bar: 8, lead: 2,
+    notes: 'D5 D#5 ' + 'E5 C6:2 E5 C6:2 E5 C6:6 C6 D6 D#6 ' + 'E6 C6 D6 E6:2 B5 D6:2 C6:6 D5 D#5 '
+      + 'E5 C6:2 E5 C6:2 E5 C6:7 A5 G5 ' + 'F#5 A5 C6 E6:2 D6 C6 A5 D6:6 D5 D#5 '
+      + 'E5 C6:2 E5 C6:2 E5 C6:6 C6 D6 D#6 ' + 'E6 C6 D6 E6:2 B5 D6:2 C6:6 C6 D6 '
+      + 'E6 C6 D6 E6:2 C6 D6 C6 ' + 'E6 C6 D6 E6:2 C6 D6 C6 ' + 'E6 C6 D6 E6:2 B5 D6:2 C6:6' },
+];
+const parsed = new Map();
+/** A song as notes with their lengths in steps: { step, bar, lead, notes: [{ hz, len }] }. */
+function parseSong(song) {
+  if (!parsed.has(song)) {
+    const notes = song.notes.trim().split(/\s+/).map((w) => {
+      const [n, l] = w.split(':');
+      return { hz: noteHz(n), len: +(l || 1) };
+    });
+    parsed.set(song, { step: song.step, bar: song.bar, lead: song.lead, notes });
+  }
+  return parsed.get(song);
+}
+
 export class EngineSound {
   constructor() {
     this.ctx = null;
@@ -134,75 +172,128 @@ export class EngineSound {
 
   /**
    * Each frame: the siren of the emergency vehicle being driven (or a friend's
-   * nearby). kind: 'police' (fast wail), 'ambulance' (yelp), 'firetruck' (slow,
-   * low wail with a horn tone), or null for silence. vol 0..1.
+   * nearby). kind: 'police' (a quick toy-like "wee-woo"), 'ambulance' (hi-lo),
+   * 'firetruck' (slow, low wail with a horn tone), 'truck' (the ice cream
+   * truck's music: song 0 to 2), or null for silence. vol 0..1.
    */
-  siren(kind, vol = 1) {
+  siren(kind, vol = 1, song = 0) {
     if (!this.ctx) return;
-    this.chime(kind === 'truck' ? vol : 0); // the ice cream truck plays music instead
+    this.chime(kind === 'truck' ? vol : 0, song); // the ice cream truck plays music instead
     if (kind === 'truck') kind = null;
     const ctx = this.ctx;
     if (!this.sirenOsc) {
+      if (!kind) return; // (nothing made until a siren is first heard)
       this.sirenOsc = ctx.createOscillator();
       this.sirenOsc.type = 'sawtooth';
       this.sirenOsc2 = ctx.createOscillator();
       this.sirenOsc2.type = 'square';
-      const f = ctx.createBiquadFilter();
-      f.type = 'lowpass';
-      f.frequency.value = 2600;
+      this.sirenFilter = ctx.createBiquadFilter();
+      this.sirenFilter.type = 'lowpass';
+      this.sirenFilter.frequency.value = 2600;
       this.sirenGain = ctx.createGain();
       this.sirenGain.gain.value = 0;
-      this.sirenOsc.connect(f);
-      this.sirenOsc2.connect(f);
-      f.connect(this.sirenGain).connect(ctx.destination);
+      this.sirenOsc.connect(this.sirenFilter);
+      this.sirenOsc2.connect(this.sirenFilter);
+      this.sirenFilter.connect(this.sirenGain).connect(ctx.destination);
       this.sirenOsc.start();
       this.sirenOsc2.start();
     }
     const t = ctx.currentTime;
     let hz = 0;
-    if (kind === 'police') hz = 750 + 600 * (0.5 - 0.5 * Math.cos((t * Math.PI * 2) / 2.6)); // wail
-    else if (kind === 'ambulance') hz = (t * 3) % 1 < 0.5 ? 960 : 770; // hi-lo
+    if (kind === 'police') {
+      // A quick "wee-woo": up from 650 to 1,250 Hz in 0.2 s, back down in 0.35 s.
+      const p = t % 0.55;
+      hz = p < 0.2 ? 650 + 600 * (p / 0.2) : 1250 - 600 * ((p - 0.2) / 0.35);
+    } else if (kind === 'ambulance') hz = (t * 3) % 1 < 0.5 ? 960 : 770; // hi-lo
     else if (kind === 'firetruck') hz = 420 + 520 * (0.5 - 0.5 * Math.cos((t * Math.PI * 2) / 4.5)); // slow mechanical wail
     if (hz) {
-      this.sirenOsc.frequency.setTargetAtTime(hz, t, 0.02);
-      this.sirenOsc2.frequency.setTargetAtTime(kind === 'firetruck' ? 147 : hz * 1.005, t, 0.02);
+      this.sirenOsc.frequency.setTargetAtTime(hz, t, 0.012);
+      // Police: the second voice an octave down (rounder, no wobble); fire truck: its horn tone.
+      this.sirenOsc2.frequency.setTargetAtTime(kind === 'firetruck' ? 147 : kind === 'police' ? hz / 2 : hz * 1.005, t, 0.012);
+      this.sirenFilter.frequency.setTargetAtTime(kind === 'police' ? 1800 : 2600, t, 0.02);
     }
     this.sirenGain.gain.setTargetAtTime(this.muted || !kind ? 0 : 0.055 * Math.min(1, vol), t, 0.05);
   }
 
   /**
-   * Each frame: the ice cream truck's music, a music-box tune on a loop. vol 0..1 (0: silent).
+   * Each frame: the ice cream truck's music. vol 0..1 (0: off), song 0..2 (SONGS).
+   * Notes are scheduled on the audio clock up to 0.2 s ahead, so the frame rate
+   * changes neither the timing nor the tone. Each note is a small bell that rings
+   * into the next, like a music box; a soft low note marks each bar. Everything
+   * goes through one master volume (chimeGain), set here from vol and mute,
+   * because a scheduled note can't be taken back. this.clock (tests) overrides
+   * the audio clock; this.chimeLog (tests) collects scheduled note times.
    */
-  chime(vol) {
+  chime(vol, song = 0) {
     const ctx = this.ctx;
-    if (!this.chimeOsc) {
-      if (!vol) return;
-      this.chimeOsc = ctx.createOscillator();
-      this.chimeOsc.type = 'triangle';
-      this.chimeOsc2 = ctx.createOscillator();
-      this.chimeOsc2.type = 'sine';
+    const play = !!vol && !this.muted;
+    const now = this.clock ? this.clock() : ctx.currentTime;
+    if (!this.chimeGain) {
+      if (!play) return; // cheap when there's nothing to play: no audio nodes made
       this.chimeGain = ctx.createGain();
       this.chimeGain.gain.value = 0;
-      const g2 = ctx.createGain();
-      g2.gain.value = 0.35; // the bell's ring, an octave up
-      this.chimeOsc.connect(this.chimeGain);
-      this.chimeOsc2.connect(g2).connect(this.chimeGain);
       this.chimeGain.connect(ctx.destination);
-      this.chimeOsc.start();
-      this.chimeOsc2.start();
     }
-    // An original little tune in C (0 = rest), one note every 0.22 s.
-    const E5 = 659, G5 = 784, C6 = 1047, A5 = 880, C5 = 523, D5 = 587, F5 = 698, B5 = 988;
-    const TUNE = [E5, G5, C6, G5, A5, G5, E5, C5, D5, E5, F5, D5, G5, 0, 0, 0, E5, G5, C6, G5, A5, C6, B5, A5, G5, E5, D5, E5, C5, 0, 0, 0];
-    const t = ctx.currentTime;
-    const step = t / 0.22;
-    const hz = TUNE[Math.floor(step) % TUNE.length];
-    if (hz) {
-      this.chimeOsc.frequency.setTargetAtTime(hz, t, 0.005);
-      this.chimeOsc2.frequency.setTargetAtTime(hz * 2, t, 0.005);
+    const cs = this.chimeState;
+    song = SONGS[song] ? song : 0;
+    if (cs && (!play || cs.song !== song)) {
+      // Off, or another song: fade what's already scheduled, start over next time.
+      cs.gain.gain.setTargetAtTime(0, ctx.currentTime, 0.015);
+      const g = cs.gain;
+      setTimeout(() => g.disconnect(), 400);
+      this.chimeState = null;
     }
-    const ring = hz ? Math.exp(-(step % 1) * 2.5) : 0; // each note rings and fades, like a music box
-    this.chimeGain.gain.setTargetAtTime(this.muted || !vol ? 0 : 0.09 * Math.min(1, vol) * ring, t, 0.012);
+    this.chimeGain.gain.setTargetAtTime(this.muted || !vol ? 0 : 0.11 * Math.min(1, vol), ctx.currentTime, 0.03);
+    if (!play) return;
+    if (!this.chimeState) {
+      const gain = ctx.createGain(); // this play-through's own fader (see above)
+      gain.connect(this.chimeGain);
+      this.chimeState = { song, gain, next: now + 0.05, i: 0, pos: 0 };
+    }
+    const st = this.chimeState;
+    const tune = parseSong(SONGS[song]);
+    if (st.next < now - 0.05) st.next = now + 0.03; // fell behind (hidden tab, long frame): carry on from now, no burst
+    const lite = !!this.lite;
+    const at = this.clock ? ctx.currentTime - now : 0; // test clock -> audio clock
+    while (st.next < now + 0.2) {
+      const n = tune.notes[st.i];
+      const len = n.len * tune.step;
+      if (n.hz) {
+        const downbeat = st.pos >= tune.lead && (st.pos - tune.lead) % tune.bar === 0;
+        this._bell(st.gain, n.hz, st.next + at, lite, downbeat && !lite);
+        this.chimeLog?.push(+st.next.toFixed(4));
+      }
+      st.next += len;
+      st.pos += n.len;
+      st.i++;
+      if (st.i >= tune.notes.length) {
+        st.i = 0;
+        st.pos = 0;
+      }
+    }
+  }
+
+  /** One music-box note at time t: a sine, a quieter one an octave up, a faint quick one at 3x; optionally a soft low note. */
+  _bell(out, hz, t, lite, bass) {
+    const ctx = this.ctx;
+    const t0 = Math.max(t, ctx.currentTime);
+    const voice = (type, f, amp, fade) => {
+      const o = ctx.createOscillator();
+      o.type = type;
+      o.frequency.value = f;
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0, t0);
+      g.gain.linearRampToValueAtTime(amp, t0 + 0.005);
+      g.gain.exponentialRampToValueAtTime(0.0005, t0 + fade);
+      o.connect(g).connect(out);
+      o.start(t0);
+      o.stop(t0 + fade + 0.02);
+      o.onended = () => g.disconnect();
+    };
+    voice('sine', hz, 0.55, 0.7);
+    voice('sine', hz * 2, 0.2, 0.5);
+    if (!lite) voice('sine', hz * 3, 0.07, 0.12);
+    if (bass) voice('triangle', hz / 4, 0.3, 0.6);
   }
 
   /** Short game sounds: 'load' (rising), 'cash' (cha-ching), 'miss' (falling), 'break' (crunch). */

@@ -9,7 +9,7 @@ import { GoogleWorld } from './google3d.js';
 import { setLook, NIGHT } from './lego.js';
 import { Flight } from './flight.js';
 import { Input } from './input.js';
-import { EngineSound } from './sound.js';
+import { EngineSound, SONGS } from './sound.js';
 import { legoMaterial } from './lego.js';
 import { RemoteLink } from './remote.js';
 import { Traffic } from './traffic.js';
@@ -102,6 +102,7 @@ const settings = (() => {
     vehicle: pick('vehicle', (v) => v in VEHICLE_NAMES, 'plane'),
     look: pick('look', (v) => v in LOOK_NAMES && (v !== 'google' || HAS_GOOGLE), 'lego'),
     mode: pick('mode', (v) => v in MODES, 'free'),
+    song: [0, 1, 2].includes(saved.song) ? saved.song : 0, // the ice cream truck's song, last picked
   };
 })();
 function saveSettings() {
@@ -3442,7 +3443,7 @@ input.on('dDown', () => (isBot ? running && rampage.resize(flight, 0.5) && updat
 // D-pad left/right: potty and "not now"; in a police car, ambulance or fire truck, lights and siren
 // (in the ice cream truck, lights and music).
 input.on('dLeft', () => (emVehicle() ? toggleEmLights() : goPotty()));
-input.on('dRight', () => (emVehicle() ? toggleSiren() : potty.need ? skipPotty() : coach && nextCoach()));
+input.on('dRight', () => (emVehicle() ? padSong() : potty.need ? skipPotty() : coach && nextCoach()));
 // A controller plugged into a phone (like a GameSir) or a computer: once it's
 // used, the on-screen touch buttons go away so more of the screen is visible,
 // and hints name the controller's buttons (Xbox layout). Unplugging it, or
@@ -4470,9 +4471,11 @@ const emVehicle = () => {
 const emLit = (dr) => lightsOn(dr.item, props.kinds[dr.item.kind]);
 const emState = () => {
   const dr = emVehicle();
-  return dr ? (emLit(dr) ? 1 : 0) | (dr.item.siren ? 2 : 0) : 0;
+  return dr ? (emLit(dr) ? 1 : 0) | (dr.item.siren ? 2 : 0) | (isTruck(dr) ? songOf(dr.item) << 2 : 0) : 0; // (bits 2-3: the truck's song)
 };
 const isTruck = (dr) => !!props.kinds[dr.item.kind]?.chime;
+/** The song a truck plays: its own pick, or your last pick. */
+const songOf = (item) => item.song ?? settings.song ?? 0;
 function toggleEmLights() {
   const dr = emVehicle();
   if (!dr) return;
@@ -4489,6 +4492,28 @@ function toggleSiren() {
   message(isTruck(dr) ? (dr.item.siren ? '🎵 Ice cream music on' : 'Music off') : dr.item.siren ? '📢 Siren on' : 'Siren off', 1.2);
   updateEmButtons();
 }
+/** The truck's next song (1 -> 2 -> 3 -> 1); switches the music on. Remembered as your favourite. */
+function nextSong() {
+  const dr = emVehicle();
+  if (!dr || !isTruck(dr)) return;
+  dr.item.song = dr.item.siren ? (songOf(dr.item) + 1) % SONGS.length : songOf(dr.item);
+  dr.item.siren = true;
+  settings.song = dr.item.song;
+  saveSettings();
+  message(`🎵 Song ${dr.item.song + 1} of ${SONGS.length}: ${SONGS[dr.item.song].name}`, 2);
+  updateEmButtons();
+}
+/** D-pad right in the truck (no spare direction on a controller): off -> song 1 -> 2 -> 3 -> off. */
+function padSong() {
+  const dr = emVehicle();
+  if (!isTruck(dr)) return toggleSiren();
+  if (!dr.item.siren) {
+    dr.item.song = 0;
+    return nextSong();
+  }
+  if (songOf(dr.item) < SONGS.length - 1) return nextSong();
+  toggleSiren();
+}
 function updateEmButtons() {
   const dr = emVehicle();
   $('emBtns').hidden = !dr;
@@ -4501,17 +4526,22 @@ function updateEmButtons() {
   $('emSirenBtn').firstChild.textContent = truck ? '🎵 Music' : '📢 Siren';
   $('emLightsBtn').querySelector('kbd').textContent = pad ? '◀' : 'O';
   $('emSirenBtn').querySelector('kbd').textContent = pad ? '▶' : 'U';
+  $('emSongBtn').hidden = !truck || pad; // (a controller steps through the songs with D-pad right)
 }
 $('emLightsBtn').onclick = toggleEmLights;
 $('emSirenBtn').onclick = toggleSiren;
 input.on('elights', toggleEmLights);
 input.on('siren', toggleSiren);
+$('emSongBtn').onclick = nextSong;
+input.on('song', nextSong);
 /** Each frame: my siren, or else the loudest friend's siren nearby (fading with distance). */
 function updateSiren() {
   const dr = emVehicle();
-  if (dr?.item.siren) return sound.siren(dr.item.kind, 1);
+  sound.lite = prefs.low || isPsg1(); // simpler music-box notes
+  if (dr?.item.siren) return sound.siren(dr.item.kind, 1, songOf(dr.item));
   let best = null;
   let vol = 0;
+  let song = 0;
   if (running && mp.room) {
     for (const p of mp.players.values()) {
       if (!(p.ride?.em & 2) || p.city !== settings.city || !p.pos) continue;
@@ -4519,10 +4549,11 @@ function updateSiren() {
       if (v > vol && v > 0.08) {
         vol = v;
         best = p.ride.kind;
+        song = (p.ride.em >> 2) & 3; // the song their truck plays
       }
     }
   }
-  sound.siren(best, vol);
+  sound.siren(best, vol, song);
 }
 input.on('drive', enterVehicle);
 let takenPlane = null; // a parked plane this player flew off in (put back on restart)
@@ -5124,7 +5155,7 @@ if (new URLSearchParams(location.search).has('debug')) {
   window.__game = {
     get world() { return world; }, get flight() { return flight; }, get plane() { return plane; }, get google() { return google; },
     get running() { return running; }, get perf() { return perf; }, renderer, applySky, get nightLights() { return nightLights; }, get traffic() { return traffic; }, get isBot() { return isBot; }, get coach() { return coach; },
-    mp, camera, input, prefs, padNav, logbook, potty, start, goPotty, skipPotty, updatePotty, transform, finishMorph, botSmash, botGrab, applyPrefs,
+    mp, camera, input, prefs, padNav, sound, settings, emState, logbook, potty, start, goPotty, skipPotty, updatePotty, transform, finishMorph, botSmash, botGrab, applyPrefs,
     autoLandApi: { start: (l) => { autoLandTarget = l; startAutoLand(); }, step: (dt) => autoLand && updateAutoLand(dt), active: () => !!autoLand },
     step: (dt, ctl) => flight.update(dt, ctl), beer: () => beerRun, gameObj: () => game,
     bot: () => ({ isBot, walk: bot.walk, rampage, props }),
