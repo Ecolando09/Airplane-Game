@@ -1,11 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Lego Sky for Android: a full-screen window onto https://play.latlas.lol/legoplane/.
-     The game itself lives on the website, so game updates need no new APK.
+<!-- Lego Sky for Android: a full-screen window onto https://play.latlas.lol/legoplane/,
+     with a copy of the game inside for when the phone is offline.
+     Online it shows the website, so game updates need no new APK (the offline copy updates with a new APK).
      Bump versionCode/versionName only when this app shell changes. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="lol.latlas.legosky"
-    android:versionCode="2"
-    android:versionName="1.1">
+    android:versionCode="3"
+    android:versionName="1.2">
 
     <uses-sdk android:minSdkVersion="24" android:targetSdkVersion="34" />
     <uses-permission android:name="android.permission.INTERNET" />

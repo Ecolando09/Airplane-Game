@@ -3558,12 +3558,12 @@ window.legoSkyBack = () => {
   const link = $('androidLink');
   if (appVersion) {
     // In the app: offer the newer APK when the server has one.
-    fetch('/downloads/lego-sky.json', { cache: 'no-store' })
+    fetch(new URL('/downloads/lego-sky.json', SITE), { cache: 'no-store' }) // (the server's, also from the built-in copy)
       .then((r) => r.json())
       .then((latest) => {
         if (latest.versionCode > appVersion) {
           link.textContent = `📲 Update the app (version ${latest.versionName})`;
-          link.href = '/downloads/lego-sky.apk';
+          link.href = new URL('/downloads/lego-sky.apk', SITE).href;
           link.hidden = false;
         }
       })

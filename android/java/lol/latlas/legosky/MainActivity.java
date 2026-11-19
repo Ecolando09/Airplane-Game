@@ -39,6 +39,12 @@ import java.util.Map;
  * Lego Sky: shows the live game from play.latlas.lol full screen and in landscape.
  * Pages on play.latlas.lol stay in the app; other links open in the browser.
  *
+ * The phone app also carries a copy of the game (the `npm run build:app` build, in
+ * assets/game/). When play.latlas.lol can't be reached (no internet: on a plane),
+ * it opens that copy instead, so the game still plays; rooms and leaderboards come
+ * back when the phone is online and the app is opened again. Without a built-in
+ * copy (an older build) it shows "Can't reach play.latlas.lol" as before.
+ *
  * The same code builds the PSG1 app (deploy/build-apk.sh OUT.apk psg1), which sets
  * the resource bool "psg1". That app carries the whole game inside it (the PSG1
  * build from `npm run build:psg1`, in assets/game/) and serves it to the web view
@@ -58,6 +64,9 @@ public class MainActivity extends Activity {
     static final String ASSET_HOST = "appassets.androidplatform.net";
 
     private boolean psg1;
+    private boolean builtIn; // the app carries a copy of the game (assets/game/)
+    private boolean local; // showing that copy
+    static final String LOCAL = "https://" + ASSET_HOST + "/index.html";
     private String home = SITE;
     // The gamepad's state in the browser's standard order: buttons 0 bottom,
     // 1 right, 2 left, 3 top, 4/5 shoulders, 6/7 triggers, 8 select, 9 start,
@@ -73,7 +82,11 @@ public class MainActivity extends Activity {
     protected void onCreate(Bundle saved) {
         super.onCreate(saved);
         psg1 = getResources().getBoolean(R.bool.psg1);
-        if (psg1) home = "https://" + ASSET_HOST + "/index.html";
+        builtIn = hasBuiltInGame();
+        if (psg1) {
+            home = LOCAL;
+            local = true;
+        }
         Window w = getWindow();
         w.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         if (Build.VERSION.SDK_INT >= 28) {
@@ -117,7 +130,7 @@ public class MainActivity extends Activity {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest req) {
                 Uri u = req.getUrl();
-                if (psg1 && ASSET_HOST.equals(u.getHost())) return false;
+                if (builtIn && ASSET_HOST.equals(u.getHost())) return false;
                 if (HOST.equals(u.getHost()) && !u.getPath().endsWith(".apk")) return false;
                 openOutside(u);
                 return true;
@@ -126,13 +139,21 @@ public class MainActivity extends Activity {
             @Override
             public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest req) {
                 Uri u = req.getUrl();
-                if (!psg1 || !ASSET_HOST.equals(u.getHost())) return null; // everything else: the network
+                if (!builtIn || !ASSET_HOST.equals(u.getHost())) return null; // everything else: the network
                 return serveAsset(u.getPath());
             }
 
             @Override
             public void onReceivedError(WebView view, WebResourceRequest req, WebResourceError err) {
-                if (req.isForMainFrame() && !psg1) error.setVisibility(View.VISIBLE);
+                if (!req.isForMainFrame() || psg1) return;
+                if (builtIn && !local) playBuiltIn(); // offline: the copy inside the app
+                else error.setVisibility(View.VISIBLE);
+            }
+
+            @Override
+            public void onReceivedHttpError(WebView view, WebResourceRequest req, WebResourceResponse res) {
+                // The server is down (or a hotspot's sign-in page answers instead): the copy inside the app.
+                if (req.isForMainFrame() && !psg1 && builtIn && !local && res.getStatusCode() >= 500) playBuiltIn();
             }
 
             @Override
@@ -155,7 +176,27 @@ public class MainActivity extends Activity {
         root.addView(web, 0, new FrameLayout.LayoutParams(-1, -1));
     }
 
-    // ------------------------------------------------------------ built-in game (PSG1)
+    /** Does the app carry its own copy of the game? */
+    private boolean hasBuiltInGame() {
+        try {
+            InputStream in = getAssets().open("game/index.html");
+            in.close();
+            return true;
+        } catch (IOException e) {
+            return false;
+        }
+    }
+
+    /** No internet: play the copy of the game inside the app. */
+    private void playBuiltIn() {
+        local = true;
+        home = LOCAL;
+        error.setVisibility(View.GONE);
+        web.stopLoading();
+        web.loadUrl(LOCAL);
+    }
+
+    // ------------------------------------------------------------ built-in game (PSG1, and the phone offline)
     private static String mimeFor(String path) {
         String p = path.toLowerCase();
         if (p.endsWith(".html")) return "text/html";

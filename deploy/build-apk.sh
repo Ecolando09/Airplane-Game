@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Builds the Lego Sky Android app (android/) into a signed APK.
-#   bash deploy/build-apk.sh OUT.apk          the phone app (lol.latlas.legosky)
+#   bash deploy/build-apk.sh OUT.apk          the phone app (lol.latlas.legosky): the live
+#       game, plus a copy of it for when the phone is offline (run
+#       `npm run build:app` first: it packs dist-app/; without it, online only)
 #   bash deploy/build-apk.sh OUT.apk psg1     the PSG1 app (lol.latlas.legosky.psg1):
 #       its own name and package, with the whole game inside it (run
 #       `npm run build:psg1` first: it packs dist-psg1/), so it plays offline;
@@ -52,6 +54,17 @@ mkdir -p "$W/gen" "$W/classes"
 RES=$SRC/res
 RENAME=()
 ASSETS=()
+if [ "$VARIANT" = phone ]; then
+  GAME=${APP_GAME:-$SRC/../dist-app}
+  if [ -s "$GAME/index.html" ]; then
+    mkdir -p "$W/assets"
+    cp -r "$GAME" "$W/assets/game"
+    rm -f "$W/assets/game/config.js" # no Google key in the app (it only works on the website)
+    ASSETS=(-A "$W/assets")
+  else
+    echo "No phone game build at $GAME (npm run build:app): the app will need the internet"
+  fi
+fi
 if [ "$VARIANT" = psg1 ]; then
   GAME=${PSG1_GAME:-$SRC/../dist-psg1}
   [ -s "$GAME/index.html" ] || { echo "No PSG1 game build at $GAME: run npm run build:psg1 first"; exit 1; }

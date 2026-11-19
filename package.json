@@ -10,6 +10,7 @@
     "relay": "node server/relay.js",
     "build:play": "vite build --outDir play-dist/legoplane --emptyOutDir && cp -r homepage/. play-dist/",
     "build:psg1": "vite build --mode psg1 --emptyOutDir",
+    "build:app": "vite build --mode app --emptyOutDir",
     "preview:psg1": "vite preview --mode psg1 --port 4174"
   },
   "dependencies": {

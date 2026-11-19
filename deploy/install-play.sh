@@ -89,16 +89,19 @@ if [ -s "$KEY_FILE" ]; then
   printf "window.LEGOSKY_CONFIG = { googleMapsKey: '%s' };\n" "$(tr -dc 'A-Za-z0-9_-' < "$KEY_FILE")" > "$WEB/legoplane/config.js"
 fi
 
-# Android app: a window onto the live game, so it only needs rebuilding when the
-# app itself (android/) changes. Kept between runs; a failure here doesn't stop the update.
+# Android apps: kept between runs, rebuilt only when what they carry changes;
+# a failure here doesn't stop the update.
 say "Android apps"
 APK_DIR=/opt/latlas-play/apk
 mkdir -p "$APK_DIR"
-# The phone app is a window onto the website: rebuilt only when the app itself changes.
-APK_HASH=$(find android deploy/build-apk.sh -type f | sort | xargs sha256sum | sha256sum | cut -c1-16)
+# The phone app shows the live website, and carries a copy of the game for when the
+# phone is offline, so it is rebuilt whenever the game changes (where the build tools are here).
+GAME_SRC=""
+if [ -f vite.config.js ] && [ -d node_modules/vite ]; then GAME_SRC="src public index.html vite.config.js package-lock.json"; fi
+APK_HASH=$(find android deploy/build-apk.sh $GAME_SRC -type f | sort | xargs sha256sum | sha256sum | cut -c1-16)
 if [ -s "$APK_DIR/lego-sky.apk" ] && [ "$(cat "$APK_DIR/hash" 2>/dev/null)" = "$APK_HASH" ]; then
   echo "Phone app: up to date"
-elif bash deploy/build-apk.sh "$APK_DIR/lego-sky.apk"; then
+elif { rm -rf dist-app; [ -z "$GAME_SRC" ] || npm run -s build:app >/dev/null || echo "!! Couldn't build the phone app's offline copy"; } && bash deploy/build-apk.sh "$APK_DIR/lego-sky.apk"; then
   echo "$APK_HASH" > "$APK_DIR/hash"
 else
   echo "!! Couldn't build the phone app; the website is updated anyway."

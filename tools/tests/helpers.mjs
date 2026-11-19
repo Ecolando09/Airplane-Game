@@ -46,11 +46,11 @@ export async function launch(viewport = { width: 1100, height: 700 }) {
  * app does: served from https://appassets.androidplatform.net/ with every other
  * address blocked, as on a device with no internet.
  */
-export async function openApp(page, query = '', { online = false } = {}) {
+export async function openApp(page, query = '', { online = false, dir = 'dist-psg1' } = {}) {
   const { readFile } = await import('node:fs/promises');
   const path = await import('node:path');
   const { fileURLToPath } = await import('node:url');
-  const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../dist-psg1');
+  const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..', dir); // dist-app: the phone app's offline copy
   const types = { html: 'text/html', js: 'text/javascript', css: 'text/css', json: 'application/json', jpg: 'image/jpeg', png: 'image/png' };
   await page.route('**/*', async (route) => {
     const u = new URL(route.request().url());
