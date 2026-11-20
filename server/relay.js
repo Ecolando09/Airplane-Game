@@ -570,6 +570,23 @@ function joinFlight(ws, code, wanted) {
       for (const sock of room.values()) if (sock.readyState === 1) sock.send(out); // the host gets it back too
       return;
     }
+    // A new city or look for the whole room: host only (split screen's player 1
+    // keeps the menu). Everyone, the host too, gets it back and rebuilds.
+    if (m.t === 'room-settings') {
+      if (rmeta.host !== id) return;
+      const ok = (v) => typeof v === 'string' && /^[a-z]{1,24}$/.test(v);
+      const cur = roomSettings.get(code) || {};
+      const next = { ...cur, ...(ok(m.city) ? { city: m.city } : {}), ...(ok(m.look) ? { look: m.look } : {}) };
+      if (next.city !== cur.city) {
+        rmeta.props = new Map(); // moved things and knocked-down buildings belong to the old city
+        rmeta.smashed = new Set();
+        rmeta.cars = new Set();
+      }
+      roomSettings.set(code, next);
+      const out = JSON.stringify({ t: 'room-settings', settings: next, id });
+      for (const sock of room.values()) if (sock.readyState === 1) sock.send(out);
+      return;
+    }
     // Remember the shared world for players who join later: where moved or
     // resized objects ended up, and which buildings are down (capped).
     if (m.t === 'prop' || m.t === 'pick') {

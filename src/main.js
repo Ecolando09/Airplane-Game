@@ -32,7 +32,7 @@ import { wsUrl, SITE, SERVER_OK } from './server.js';
 import { SquidPlay, SquidHunt } from './squidplay.js';
 import { Melons, MELON_COOLDOWN } from './melon.js';
 import { nearestShore } from './squid.js';
-import { SplitScreen, PLAYER_PAINTS } from './splitscreen.js';
+import { SplitScreen, SPLIT_CHILD } from './splitscreen.js';
 
 const $ = (id) => document.getElementById(id);
 const SKY = 0x9fd0ff;
@@ -68,7 +68,8 @@ const MODES = { free: 'Free flight', rings: 'Ring Race', rampage: 'Rampage', bee
 // Preferences that stay on this device (not shared with a room). The PSG1 keeps
 // its own (see usePsg1Prefs) and starts on Low graphics: on the PSG1 that is the
 // PSG1 preset (see pixelRatio).
-let PREFS_KEY = __PSG1__ ? 'legosky.psg1.prefs' : 'legosky.prefs';
+let PREFS_KEY = (__PSG1__ ? 'legosky.psg1.prefs' : 'legosky.prefs') + (SPLIT_CHILD ? `.p${SPLIT_CHILD}` : '');
+const SETTINGS_KEY = `legosky.settings${SPLIT_CHILD ? `.p${SPLIT_CHILD}` : ''}`; // (players 2-4 in split screen have their own)
 const prefs = { sens: 100, invert: false, sound: true, music: false, low: __PSG1__, sky: 'day', paint: 'classic', potty: 'off', monster: 'on', ...(() => {
   try {
     return JSON.parse(localStorage.getItem(PREFS_KEY) || '{}');
@@ -76,6 +77,13 @@ const prefs = { sens: 100, invert: false, sound: true, music: false, low: __PSG1
     return {};
   }
 })() };
+// Split screen's players 2-4 start with sound off: four engines at once is a lot (Settings turns it on).
+if (SPLIT_CHILD) {
+  try {
+    if (!localStorage.getItem(PREFS_KEY)) prefs.sound = false;
+  } catch {}
+  document.body.classList.add('split-child');
+}
 function savePrefs() {
   try {
     localStorage.setItem(PREFS_KEY, JSON.stringify(prefs));
@@ -95,7 +103,7 @@ const settings = (() => {
   const q = new URLSearchParams(location.search);
   let saved = {};
   try {
-    saved = JSON.parse(localStorage.getItem('legosky.settings') || '{}');
+    saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}');
   } catch {}
   const pick = (k, ok, def) => (ok(q.get(k)) ? q.get(k) : ok(saved[k]) ? saved[k] : def);
   return {
@@ -108,7 +116,7 @@ const settings = (() => {
 })();
 function saveSettings() {
   try {
-    localStorage.setItem('legosky.settings', JSON.stringify(settings));
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
   } catch {}
   const q = new URLSearchParams(location.search);
   for (const k of ['city', 'vehicle', 'look']) q.set(k, settings[k]);
@@ -213,27 +221,34 @@ const mp = new Multiplayer({
   onRoomSettings: (r) => applyRoomSettings(r),
 });
 /** Small notification in the top-right corner (who joined/left the room). */
-// Local split screen: players 2-4 join with their own controllers (see splitscreen.js).
+// Local split screen: players 2-4 join with their own controllers, each in a
+// full copy of the game in their quarter of the screen (see splitscreen.js).
+let splitRoom = false; // the room was made just for split screen (left again when everyone's gone)
 const split = new SplitScreen({
-  scene, camera, input,
-  getWorld: () => world,
-  makeModel: (kind, n, paint) => {
-    const model = createOwnModel(kind);
-    scene.add(model.group);
-    addNavLights(model, kind);
-    applyPaint(model, paint || PLAYER_PAINTS[n - 1] || 'classic', kind);
-    return model;
+  camera, input,
+  ensureRoom: () => {
+    if (!MP_OK) return null; // (no relay: everyone plays, but they can't see each other)
+    if (!mp.room) {
+      splitRoom = true;
+      mp.join(randomRoomCode(), mpName || 'Player 1');
+    }
+    return mp.room;
   },
-  // Paint jobs unlocked on this device, plus the player colours (blue, green, gold) so everyone looks different.
-  paints: () => PAINTS.filter((x) => x.need(logCount()) || PLAYER_PAINTS.includes(x.id)).map((x) => ({ id: x.id, name: x.name, color: x.rainbow ? 'rainbow' : x.color == null ? null : hex6(x.color) })),
-  newFlight: (model, kind) => newFlight(model, kind),
-  getP1: () => (plane && flight ? { pos: plane.group.position, heading: flight.heading, kind: isBot ? 'plane' : settings.vehicle } : null),
-  prefs: () => prefs,
+  releaseRoom: () => {
+    if (splitRoom && mp.room) mp.leave();
+    splitRoom = false;
+  },
+  frameUrl: (n, pad, room) => {
+    const q = new URLSearchParams({ player: n, pad, city: settings.city, look: settings.look, vehicle: settings.vehicle });
+    if (room) q.set('room', room);
+    if (DEBUG) q.set('debug', ''); // (tests look inside the copies too)
+    return `${location.pathname}?${q}`;
+  },
+  others: () => mp.visible(settings.city).map((pl) => pl.pos),
   toast: (text, color) => toast(text, color),
-  dispose: (objs) => disposeObjects(objs),
   onLayout: (r) => {
-    // Player 1's HUD and labels fit inside player 1's part of the screen.
-    for (const id of ['hud', 'labels']) {
+    // Player 1's HUD, labels and menu fit inside player 1's part of the screen.
+    for (const id of ['hud', 'labels', 'menu']) {
       Object.assign($(id).style, r ? { left: `${r.x}px`, top: `${r.y}px`, width: `${r.w}px`, height: `${r.h}px` } : { left: '', top: '', width: '', height: '' });
     }
     if (!r) {
@@ -244,8 +259,8 @@ const split = new SplitScreen({
   },
 });
 /** The size of player 1's view (the whole screen unless split). */
-const viewW = () => (split.active && running ? parseFloat($('hud').style.width) || innerWidth : innerWidth);
-const viewH = () => (split.active && running ? parseFloat($('hud').style.height) || innerHeight : innerHeight);
+const viewW = () => (split.active ? parseFloat($('hud').style.width) || innerWidth : innerWidth);
+const viewH = () => (split.active ? parseFloat($('hud').style.height) || innerHeight : innerHeight);
 
 function toast(text, color) {
   const el = document.createElement('div');
@@ -1242,24 +1257,6 @@ function drawMinimap() {
     mctx.stroke();
   }
 
-  // Split-screen players
-  for (const d of split.dots()) {
-    let [x, y] = toMap(d.x, d.z);
-    const off = x < 12 || y < 12 || x > W - 12 || y > W - 12;
-    if (off) {
-      const f = (W / 2 - 14) / Math.max(Math.abs(x - W / 2), Math.abs(y - W / 2));
-      x = W / 2 + (x - W / 2) * f;
-      y = W / 2 + (y - W / 2) * f;
-    }
-    mctx.fillStyle = d.color;
-    mctx.strokeStyle = '#fff';
-    mctx.lineWidth = 3;
-    mctx.beginPath();
-    mctx.arc(x, y, off ? 7 : 10, 0, Math.PI * 2);
-    mctx.fill();
-    mctx.stroke();
-  }
-
   // Plane arrow
   mctx.translate(W / 2, W / 2);
   mctx.rotate(THREE.MathUtils.degToRad(flight.heading));
@@ -1648,12 +1645,12 @@ function updateMenu() {
       const on = b.dataset.v === settings[key];
       b.classList.toggle('on', on);
       b.setAttribute('aria-pressed', String(on));
-      const locked = mp.room && mp.settings && key !== 'vehicle';
+      const locked = mp.room && mp.settings && key !== 'vehicle' && !mp.isHost; // (the host changes them for everyone)
       b.disabled = building || locked || (b.dataset.v === 'google' && !HAS_GOOGLE);
       b.title = locked ? 'Set by the room. Leave the room to change it.' : '';
     }
   }
-  $('roomLock').hidden = !(mp.room && mp.settings);
+  $('roomLock').hidden = !(mp.room && mp.settings) || mp.isHost; // (the host can change them for everyone)
   // Games: Beer Run only where the city has it.
   const mode = gameMode();
   for (const b of $('segMode').querySelectorAll('button')) {
@@ -1704,6 +1701,11 @@ async function applyRoomSettings(r) {
 }
 async function applySettings(changes, { force = false } = {}) {
   const roomLocked = mp.room && mp.settings && !force;
+  if (roomLocked && mp.isHost) {
+    // The room's host changes the city or look for everyone (it comes back from the relay).
+    const share = Object.fromEntries(Object.entries(changes).filter(([k, v]) => (k === 'city' || k === 'look') && settings[k] !== v));
+    if (Object.keys(share).length) mp.send({ t: 'room-settings', ...share });
+  }
   const next = Object.entries(changes).filter(([k, v]) => settings[k] !== v && !(roomLocked && k !== 'vehicle'));
   if (building || !next.length) return;
   for (const [k, v] of next) settings[k] = v;
@@ -1720,7 +1722,6 @@ async function applySettings(changes, { force = false } = {}) {
   try {
     if (key !== 'vehicle') await buildWorld();
     buildVehicle();
-    if (key !== 'vehicle') split.rebuild();
   } finally {
     building = false;
     $('loading').hidden = true;
@@ -1899,7 +1900,10 @@ $('mpCopy').onclick = async () => {
 };
 {
   const code = (new URLSearchParams(location.search).get('room') || '').toUpperCase();
-  if (MP_OK && /^[A-Z]{4}$/.test(code)) joinRoom(code);
+  if (MP_OK && /^[A-Z]{4}$/.test(code)) {
+    if (SPLIT_CHILD) mp.join(code, `Player ${SPLIT_CHILD}`);
+    else joinRoom(code);
+  }
   watchLobby();
   updateMpUi();
 }
@@ -5073,8 +5077,7 @@ function frame() {
   }
   input.skipPads = split.padIndexes;
   input.pollButtons(!!navRoot());
-  split.update(dt, running && !building, timer.getElapsed());
-  split.setVisible(running);
+  if (!SPLIT_CHILD) split.update(!building);
   world.update(timer.getElapsed());
   if (beerRun && !beerRun.active) beerRun.update(dt, {}); // finish the kegs' flight animations
   if (google) google.update(renderer);
@@ -5160,7 +5163,7 @@ function frame() {
     // The map moves well under a pixel in 1/15 s, and redrawing every street and
     // name each frame cost the PSG1 about a third of its time.
     mapClock += dt;
-    if (mapClock >= 1 / 15 && !split.active) { // (no map in split screen)
+    if (mapClock >= 1 / 15 && !split.active && !SPLIT_CHILD) { // (no map in split screen)
       mapClock = 0;
       drawMinimap();
     }
@@ -5181,14 +5184,14 @@ function frame() {
       camera.up.set(0, 1, 0);
       camera.lookAt(p.x, p.y + (isBot ? 7 : 1), p.z);
       const side = $('menuPanel').getBoundingClientRect().width;
-      const wide = innerWidth > side * 1.6;
+      const wide = !split.active && !SPLIT_CHILD && innerWidth > side * 1.6;
       if (wide) camera.setViewOffset(innerWidth, innerHeight, -side / 2, 0, innerWidth, innerHeight);
       else camera.clearViewOffset();
     }
   }
   sun.target.position.copy(running ? plane.group.position : camera.position);
   sun.position.copy(sun.target.position).addScaledVector(SUN_DIR, 800);
-  if (running && split.active) {
+  if (split.active && plane) {
     split.render(renderer, scene, { p1Pos: plane.group.position, sun, sunDir: SUN_DIR, dt, cull: (pos) => world && !google && world.cullFar(pos, scene.fog.far + 200) });
     return;
   }

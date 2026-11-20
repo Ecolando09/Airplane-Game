@@ -7,6 +7,7 @@
 // step the simulation directly instead of waiting for real frames.
 import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
 
 // Playwright is installed globally on the test machine (require() finds it, import doesn't).
 const { chromium } = createRequire(import.meta.url)('playwright');
@@ -25,11 +26,15 @@ async function up() {
 /** Start `vite preview` unless something already serves the site. */
 export async function serve() {
   if (await up()) return () => {};
-  const p = spawn('npx', ['vite', 'preview', '--port', String(PORT), '--strictPort'], { stdio: 'ignore', detached: true });
+  // Vite's own script run by this Node (npx can't be spawned directly on Windows).
+  const vite = fileURLToPath(new URL('../../node_modules/vite/bin/vite.js', import.meta.url));
+  const win = process.platform === 'win32';
+  const p = spawn(process.execPath, [vite, 'preview', '--port', String(PORT), '--strictPort', '--host', '127.0.0.1'], { stdio: 'ignore', detached: !win });
   for (let i = 0; i < 60 && !(await up()); i++) await new Promise((r) => setTimeout(r, 500));
   return () => {
     try {
-      process.kill(-p.pid);
+      if (win) p.kill();
+      else process.kill(-p.pid);
     } catch {}
   };
 }

@@ -1,6 +1,13 @@
 import { isPsg1 } from './psg1.js';
 import { Tilt } from './tilt.js';
 
+// Split screen's players 2-4 run a copy of the game in a frame; each reads only
+// its own controller (?pad=), through the main page, which has the focus.
+const SPLIT_PAD = (() => {
+  const q = new URLSearchParams(location.search);
+  return q.has('pad') && q.has('player') && window.parent !== window ? +q.get('pad') : null;
+})();
+
 // Keyboard, touch and gamepad input merged into one control state.
 export class Input {
   constructor() {
@@ -72,6 +79,14 @@ export class Input {
     if (__PSG1__) {
       const v = window.legoSkyPad;
       if (v.app || performance.now() - v.t < 5000) return v; // the app's buttons (tests set it too)
+    }
+    if (SPLIT_PAD != null) {
+      try {
+        const gp = window.parent.navigator.getGamepads?.()[SPLIT_PAD];
+        return gp && gp.connected !== false ? gp : null;
+      } catch {
+        return null;
+      }
     }
     // Player 1 keeps the first controller that pressed something; with split
     // screen the other controllers belong to players 2-4 (skipPads).

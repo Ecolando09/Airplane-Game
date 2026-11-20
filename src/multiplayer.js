@@ -78,6 +78,12 @@ export class Multiplayer {
           this.onRoomSettings?.(m.settings);
         }
         this.onChange?.();
+      } else if (m.t === 'room-settings') {
+        // The host picked a new city or look for everyone.
+        if (m.settings?.city) {
+          this.settings = m.settings;
+          this.onRoomSettings?.(m.settings);
+        }
       } else if (m.t === 'state') this._onState(m);
       else if (m.t === 'host') {
         this.host = m.host;
