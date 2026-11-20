@@ -32,6 +32,7 @@ import { wsUrl, SITE, SERVER_OK } from './server.js';
 import { SquidPlay, SquidHunt } from './squidplay.js';
 import { Melons, MELON_COOLDOWN } from './melon.js';
 import { nearestShore } from './squid.js';
+import { SplitScreen, PLAYER_PAINTS } from './splitscreen.js';
 
 const $ = (id) => document.getElementById(id);
 const SKY = 0x9fd0ff;
@@ -212,6 +213,40 @@ const mp = new Multiplayer({
   onRoomSettings: (r) => applyRoomSettings(r),
 });
 /** Small notification in the top-right corner (who joined/left the room). */
+// Local split screen: players 2-4 join with their own controllers (see splitscreen.js).
+const split = new SplitScreen({
+  scene, camera, input,
+  getWorld: () => world,
+  makeModel: (kind, n, paint) => {
+    const model = createOwnModel(kind);
+    scene.add(model.group);
+    addNavLights(model, kind);
+    applyPaint(model, paint || PLAYER_PAINTS[n - 1] || 'classic', kind);
+    return model;
+  },
+  // Paint jobs unlocked on this device, plus the player colours (blue, green, gold) so everyone looks different.
+  paints: () => PAINTS.filter((x) => x.need(logCount()) || PLAYER_PAINTS.includes(x.id)).map((x) => ({ id: x.id, name: x.name, color: x.rainbow ? 'rainbow' : x.color == null ? null : hex6(x.color) })),
+  newFlight: (model, kind) => newFlight(model, kind),
+  getP1: () => (plane && flight ? { pos: plane.group.position, heading: flight.heading, kind: isBot ? 'plane' : settings.vehicle } : null),
+  prefs: () => prefs,
+  toast: (text, color) => toast(text, color),
+  dispose: (objs) => disposeObjects(objs),
+  onLayout: (r) => {
+    // Player 1's HUD and labels fit inside player 1's part of the screen.
+    for (const id of ['hud', 'labels']) {
+      Object.assign($(id).style, r ? { left: `${r.x}px`, top: `${r.y}px`, width: `${r.w}px`, height: `${r.h}px` } : { left: '', top: '', width: '', height: '' });
+    }
+    if (!r) {
+      camera.aspect = innerWidth / innerHeight;
+      camera.updateProjectionMatrix();
+    }
+    dashView = -1;
+  },
+});
+/** The size of player 1's view (the whole screen unless split). */
+const viewW = () => (split.active && running ? parseFloat($('hud').style.width) || innerWidth : innerWidth);
+const viewH = () => (split.active && running ? parseFloat($('hud').style.height) || innerHeight : innerHeight);
+
 function toast(text, color) {
   const el = document.createElement('div');
   el.className = 'toast';
@@ -758,7 +793,7 @@ function setDashView(d) {
 function updateDashboard() {
   const dr = isBot && rampage?.driving;
   let type = null;
-  if (running && CAMS[camMode] === 'cockpit' && !flight.crashed && !window.__game?.photo) {
+  if (running && CAMS[camMode] === 'cockpit' && !flight.crashed && !window.__game?.photo && !split.active) {
     if (dr) type = driveInfo(dr.item)?.dash || 'car';
     else type = isBot ? 'robot' : plane.batmobile ? 'bat' : plane.jet ? 'jet' : isHeli ? 'heli' : 'plane';
   }
@@ -1207,6 +1242,24 @@ function drawMinimap() {
     mctx.stroke();
   }
 
+  // Split-screen players
+  for (const d of split.dots()) {
+    let [x, y] = toMap(d.x, d.z);
+    const off = x < 12 || y < 12 || x > W - 12 || y > W - 12;
+    if (off) {
+      const f = (W / 2 - 14) / Math.max(Math.abs(x - W / 2), Math.abs(y - W / 2));
+      x = W / 2 + (x - W / 2) * f;
+      y = W / 2 + (y - W / 2) * f;
+    }
+    mctx.fillStyle = d.color;
+    mctx.strokeStyle = '#fff';
+    mctx.lineWidth = 3;
+    mctx.beginPath();
+    mctx.arc(x, y, off ? 7 : 10, 0, Math.PI * 2);
+    mctx.fill();
+    mctx.stroke();
+  }
+
   // Plane arrow
   mctx.translate(W / 2, W / 2);
   mctx.rotate(THREE.MathUtils.degToRad(flight.heading));
@@ -1363,15 +1416,15 @@ function vehicleScreenRect() {
   _v.copy(p).project(camera);
   if (_v.z > 1) return null;
   const dist = camera.position.distanceTo(p);
-  const focal = innerHeight / 2 / Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
+  const focal = viewH() / 2 / Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
   const r = (5 / Math.max(dist, 1)) * focal + 8; // vehicle radius in pixels, plus a margin
-  const x = (_v.x * 0.5 + 0.5) * innerWidth;
-  const y = (-_v.y * 0.5 + 0.5) * innerHeight;
+  const x = (_v.x * 0.5 + 0.5) * viewW();
+  const y = (-_v.y * 0.5 + 0.5) * viewH();
   return [x - r, y - r, x + r, y + r];
 }
 function updateLabels() {
   const p = plane.group.position;
-  const maxDist = innerHeight < 500 ? 2500 : 5000;
+  const maxDist = viewH() < 500 ? 2500 : 5000;
   const items = [];
   const shift = !!play() && gameMode() !== 'rampage'; // during a game the target is the only place tagged
   world.locators.forEach((l, i) => {
@@ -1445,8 +1498,8 @@ function updateLabels() {
       it.el.style.display = 'none';
       continue;
     }
-    const x = (_v.x * 0.5 + 0.5) * innerWidth;
-    const y = (-_v.y * 0.5 + 0.5) * innerHeight;
+    const x = (_v.x * 0.5 + 0.5) * viewW();
+    const y = (-_v.y * 0.5 + 0.5) * viewH();
     it.el.style.display = '';
     const w = it.el.offsetWidth;
     const h = it.el.offsetHeight + 6;
@@ -1667,6 +1720,7 @@ async function applySettings(changes, { force = false } = {}) {
   try {
     if (key !== 'vehicle') await buildWorld();
     buildVehicle();
+    if (key !== 'vehicle') split.rebuild();
   } finally {
     building = false;
     $('loading').hidden = true;
@@ -4440,7 +4494,7 @@ function updateDriveButton() {
       $('driveVerb').textContent = leftBehind.vehicle === 'heli' ? '🚁 FLY' : leftBehind.vehicle === 'jet' ? '🛫 FLY' : leftBehind.vehicle === 'bat' ? '🚗 DRIVE' : '✈️ FLY';
     } else if (it) {
       const info = props.info(it.kind);
-      $('driveName').textContent = `the ${info.name}`;
+      $('driveName').textContent = `${info.proper ? '' : 'the '}${info.name}`;
       $('driveVerb').textContent = info.fly ? '✈️ FLY' : info.water ? '⛵ SAIL' : '🚗 DRIVE';
     }
   }
@@ -5017,7 +5071,10 @@ function frame() {
     pendingCatchup = pendingCatchup.filter((m) => m.city !== settings.city && mp.room);
     ready.forEach(applyCatchup);
   }
+  input.skipPads = split.padIndexes;
   input.pollButtons(!!navRoot());
+  split.update(dt, running && !building, timer.getElapsed());
+  split.setVisible(running);
   world.update(timer.getElapsed());
   if (beerRun && !beerRun.active) beerRun.update(dt, {}); // finish the kegs' flight animations
   if (google) google.update(renderer);
@@ -5103,7 +5160,7 @@ function frame() {
     // The map moves well under a pixel in 1/15 s, and redrawing every street and
     // name each frame cost the PSG1 about a third of its time.
     mapClock += dt;
-    if (mapClock >= 1 / 15) {
+    if (mapClock >= 1 / 15 && !split.active) { // (no map in split screen)
       mapClock = 0;
       drawMinimap();
     }
@@ -5131,6 +5188,11 @@ function frame() {
   }
   sun.target.position.copy(running ? plane.group.position : camera.position);
   sun.position.copy(sun.target.position).addScaledVector(SUN_DIR, 800);
+  if (running && split.active) {
+    split.render(renderer, scene, { p1Pos: plane.group.position, sun, sunDir: SUN_DIR, dt, cull: (pos) => world && !google && world.cullFar(pos, scene.fog.far + 200) });
+    return;
+  }
+  split.endLayout();
   if (world && !google) world.cullFar(camera.position, scene.fog.far + 200); // past the fog everything is sky-colored
   renderer.render(scene, camera);
 }
@@ -5178,7 +5240,7 @@ if (new URLSearchParams(location.search).has('debug')) {
     },
     get game() { return game; }, huntPlace, carCollisions,
     throwMelon, get melons() { return melons; }, melonPrompt,
-    respawnHere, rollTap,
+    respawnHere, rollTap, split,
   };
   window.__tilt = input.tilt;
   window.__traffic = traffic;

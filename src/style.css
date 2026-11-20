@@ -2778,3 +2778,176 @@ body.is-touch #emBtns button {
   padding: 12px 16px;
   font-size: 17px;
 }
+
+/* ------------------------------------------------------------ split screen */
+/* Player 1's HUD and labels are boxed into player 1's view; the
+   transform makes their fixed-position children place themselves inside it. */
+body.split #hud,
+body.split #labels {
+  position: fixed;
+  right: auto;
+  bottom: auto;
+  transform: translateZ(0);
+  overflow: hidden;
+}
+/* No street map in split screen: it covers too much of a small view. */
+body.split #minimap {
+  display: none;
+}
+#split {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 5;
+}
+.split-line {
+  position: absolute;
+  background: #111;
+}
+.split-hud {
+  position: absolute;
+  color: #fff;
+  font-family: system-ui, sans-serif;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.6);
+}
+.split-badge {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px 6px 6px;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.45);
+  font-weight: 700;
+  font-size: 16px;
+}
+.split-badge b {
+  background: var(--pc);
+  border-radius: 8px;
+  padding: 2px 8px;
+  font-size: 18px;
+  text-shadow: none;
+}
+.split-stats {
+  position: absolute;
+  top: 58px;
+  left: 12px;
+  display: flex;
+  gap: 14px;
+  padding: 6px 12px;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.45);
+  font-size: 13px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.split-stats b { font-size: 20px; }
+.split-msg {
+  position: absolute;
+  top: 35%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  font-size: 28px;
+  font-weight: 800;
+}
+.split-msg small {
+  display: block;
+  font-size: 16px;
+  font-weight: 600;
+  margin-top: 6px;
+}
+.split-help {
+  position: absolute;
+  bottom: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.5);
+  font-size: 14px;
+  white-space: nowrap;
+}
+.split-tag {
+  position: absolute;
+  transform: translate(-50%, -100%);
+  padding: 2px 8px;
+  border-radius: 8px;
+  border: 2px solid #fff;
+  background: var(--pc);
+  color: #fff;
+  font: 800 14px system-ui, sans-serif;
+  white-space: nowrap;
+}
+.split-tag.edge { transform: translate(-50%, -50%); opacity: 0.85; }
+.split-overview {
+  position: absolute;
+  padding: 6px 12px;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.45);
+  color: #fff;
+  font: 700 16px system-ui, sans-serif;
+}
+.split-menu {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(360px, 90%);
+  padding: 14px 16px;
+  border-radius: 16px;
+  border: 3px solid var(--pc);
+  background: rgba(20, 24, 32, 0.92);
+  font-size: 16px;
+  text-shadow: none;
+}
+.split-menu h3 {
+  margin: 0 0 8px;
+  font-size: 18px;
+  color: var(--pc);
+}
+.split-menu .row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px;
+  border-radius: 10px;
+}
+.split-menu .row.sel {
+  background: var(--pc);
+}
+.split-menu .row b {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+.split-menu .sw {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  border: 2px solid #fff;
+}
+.split-menu .sw.classic { background: #f2cd37; }
+.split-menu .sw.rainbow { background: linear-gradient(90deg, #ff2a2a, #ffd21f, #2fc44a, #2f7fe0, #8a3fd0); }
+.split-menu small {
+  display: block;
+  margin-top: 8px;
+  opacity: 0.75;
+  font-size: 13px;
+}
+/* Split screen: no speed / elevation / heading panels, to keep each view clear. */
+body.split #instruments,
+.split-stats {
+  display: none;
+}
+.split-tag { z-index: 0; }
+.split-hud { z-index: 1; }
+.split-menu {
+  max-height: 96%;
+  overflow: auto;
+}

@@ -93,6 +93,7 @@ const OTHER = {
   tanker: { L: 9.6, W: 2.7, eye: [-0.6, 2.8, -3.9], lampY: 1.2, dash: 'car' },
   cart: { L: 3.0, W: 1.7, eye: [-0.4, 1.9, 0.3], lampY: 0.9, dash: 'car' },
   boat: { L: 8.0, W: 2.7, eye: [0, 2.85, 0.5], lampY: 1.6, dash: 'boat' }, // standing, eyes over the windscreen
+  pontoon: { L: 9.4, W: 3.6, eye: [1.0, 3.05, -0.9], lampY: 1.5, dash: 'boat' }, // Nan's pontoon: seated at the helm, under the canopy
   police: { L: 5.6, W: 2.3, eye: [-0.5, 1.55, -0.1], lampY: 1.0, dash: 'police' },
   ambulance: { L: 7.0, W: 2.6, eye: [-0.6, 2.05, -2.2], lampY: 1.0, dash: 'ambulance' },
   firetruck: { L: 10.0, W: 2.8, eye: [-0.65, 2.5, -3.7], lampY: 1.1, dash: 'fire' },
@@ -260,6 +261,46 @@ export function otherModel(kind, style, opts = {}) {
     P.push(colour(hg, WHITE));
     P.push(box(2.3, 0.15, 5.2, LEGO.tan, 0, 1.35, 0.6), box(2.0, 0.7, 0.08, GLASS, 0, 1.75, -0.6), box(0.8, 0.5, 0.8, LEGO.white, -0.5, 1.6, 0.6), box(0.8, 0.5, 0.8, LEGO.white, 0.5, 1.6, 0.6));
     P.push(box(0.5, 0.9, 0.5, DARK, 0, 1.1, 3.6)); // outboard motor
+  } else if (kind === 'pontoon') {
+    // Nan's pontoon: two silver tubes, a flat deck, a fence all round, a striped
+    // canopy over the couches, a helm console and a big outboard on the back.
+    const TUBE = real ? 0xc4cad0 : LEGO.lightGray;
+    const FENCE = LEGO.white;
+    const STRIPE = LEGO.blue;
+    const CANOPY = 0x1f3a6b;
+    const SEAT = LEGO.tan;
+    const seg = real ? 18 : 8;
+    for (const sx of [-1.2, 1.2]) {
+      P.push(colour(new THREE.CylinderGeometry(0.48, 0.48, 7.8, seg).rotateX(Math.PI / 2).translate(sx, 0.4, 0.35), TUBE));
+      P.push(colour(new THREE.ConeGeometry(0.48, 1.1, seg).rotateX(-Math.PI / 2).translate(sx, 0.4, -4.1), TUBE)); // pointed noses
+      P.push(colour(new THREE.CylinderGeometry(0.48, 0.48, 0.06, seg).rotateX(Math.PI / 2).translate(sx, 0.4, 4.27), DARK)); // end caps
+    }
+    P.push(box(3.6, 0.2, 8.6, real ? 0x6d6a64 : LEGO.darkGray, 0, 0.98, 0.1)); // deck
+    P.push(box(3.66, 0.12, 8.66, LEGO.black, 0, 0.84, 0.1)); // deck edge trim
+    // The fence: side panels, and front and back panels with a gate in the middle.
+    const fy = 1.5;
+    for (const s of [-1, 1]) {
+      P.push(box(0.08, 0.8, 7.4, FENCE, s * 1.76, fy, 0.1), box(0.1, 0.16, 7.4, STRIPE, s * 1.77, fy - 0.12, 0.1));
+      P.push(box(0.14, 0.08, 7.5, CHROME, s * 1.76, fy + 0.44, 0.1)); // top rail
+      P.push(box(1.0, 0.8, 0.08, FENCE, s * 1.3, fy, -3.6), box(1.0, 0.08, 0.14, CHROME, s * 1.3, fy + 0.44, -3.6)); // bow panels
+      P.push(box(1.0, 0.8, 0.08, FENCE, s * 1.3, fy, 3.8), box(1.0, 0.08, 0.14, CHROME, s * 1.3, fy + 0.44, 3.8)); // stern panels
+    }
+    // Couches: a U at the back and a bench at the bow.
+    P.push(box(3.0, 0.45, 0.8, SEAT, 0, 1.3, 3.2), box(3.0, 0.6, 0.2, SEAT, 0, 1.75, 3.55));
+    for (const s of [-1, 1]) P.push(box(0.8, 0.45, 2.6, SEAT, s * 1.2, 1.3, 1.6), box(0.2, 0.6, 2.6, SEAT, s * 1.55, 1.75, 1.6));
+    P.push(box(3.0, 0.45, 0.8, SEAT, 0, 1.3, -2.9));
+    // The helm: a console on the starboard side with a wheel and a little windscreen, and a captain's chair.
+    P.push(box(0.8, 0.95, 0.75, FENCE, 1.1, 1.55, -1.5), box(0.7, 0.06, 0.6, DARK, 1.1, 2.04, -1.5));
+    P.push(colour(new THREE.TorusGeometry(0.22, 0.04, 6, real ? 16 : 8).rotateX(-0.9).translate(1.1, 2.15, -1.15), DARK));
+    P.push(box(0.8, 0.22, 0.05, GLASS, 1.1, 2.15, -1.86)); // windscreen
+    P.push(box(0.6, 0.4, 0.6, SEAT, 1.1, 1.4, -0.45), box(0.6, 0.55, 0.12, SEAT, 1.1, 1.85, -0.18));
+    // The canopy (bimini top) on four posts, over the back couches.
+    for (const [x, z] of [[-1.6, 0.2], [1.6, 0.2], [-1.6, 3.7], [1.6, 3.7]]) P.push(box(0.08, 1.9, 0.08, CHROME, x, 2.0, z));
+    P.push(box(3.4, 0.14, 3.8, CANOPY, 0, 3.0, 1.95), box(3.44, 0.2, 0.12, FENCE, 0, 2.88, 0.05), box(3.44, 0.2, 0.12, FENCE, 0, 2.88, 3.85));
+    if (!real) P.push(...studs(4, 4, 0.8, 3.07, 0, 1.95, CANOPY));
+    // The outboard: a cowling on the transom, the leg down into the water, a propeller.
+    P.push(box(0.7, 0.8, 0.8, DARK, 0, 1.55, 4.75), box(0.72, 0.12, 0.82, LEGO.white, 0, 1.75, 4.75));
+    P.push(box(0.22, 1.1, 0.3, DARK, 0, 0.75, 4.85), box(0.08, 0.6, 0.18, DARK, 0, 0.25, 5.05));
   } else if (kind === 'police') {
     // A black-and-white patrol car: the sedan, black doors and hood, a light bar, a gold star.
     const m = carModel('sedan', style);

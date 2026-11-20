@@ -48,7 +48,7 @@ export function vehicleLights(kind, model) {
   const fz = -v.L / 2 - 0.05;
   const bz = v.L / 2 + 0.05;
   const x = v.W / 2 - 0.35;
-  if (kind === 'boat') {
+  if (kind === 'boat' || kind === 'pontoon') {
     glow(g, PORT, 1.6, -v.W / 2 + 0.2, v.lampY, fz + 1.4);
     glow(g, STARBOARD, 1.6, v.W / 2 - 0.2, v.lampY, fz + 1.4);
     glow(g, 0xffffff, 1.4, 0, v.lampY + 1.6, bz - 1.2);

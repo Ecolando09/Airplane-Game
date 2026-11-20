@@ -62,6 +62,15 @@ const KINDS = {
     box(0.3, 1.6, 3.6, LEGO.brown, -1.5, 0.8, 0), box(0.3, 1.6, 3.6, LEGO.brown, 1.5, 0.8, 0)] },
   boulder: { name: 'boulder', r: 2.6, make: () => [part(new THREE.DodecahedronGeometry(2.6, 0), 0x8d8f8a, 0, 1.9, 0)] },
   log: { name: 'log', r: 3, make: () => [cyl(0.9, 7, LEGO.reddishBrown, 0, 0.9, 0, 'x'), cyl(0.7, 0.2, LEGO.tan, 3.55, 0.9, 0, 'x'), cyl(0.7, 0.2, LEGO.tan, -3.55, 0.9, 0, 'x')] },
+  // Horses (Papa Doug's place): body, legs, neck and head take the coat color; mane, tail and hooves stay dark.
+  horse: { name: 'horse', r: 2.6, tint: true, make: () => [
+    box(3.2, 1.5, 1.3, WHITE, 0, 2.6, 0),
+    ...[[-1.2, -0.42], [-1.2, 0.42], [1.2, -0.42], [1.2, 0.42]].flatMap(([x, z]) => [box(0.38, 1.9, 0.38, WHITE, x, 0.95, z), box(0.42, 0.3, 0.42, LEGO.black, x, 0.15, z)]),
+    part(new THREE.BoxGeometry(0.7, 1.8, 0.65).rotateZ(-0.55), WHITE, 1.85, 3.6, 0),
+    part(new THREE.BoxGeometry(0.2, 1.8, 0.3).rotateZ(-0.55), LEGO.black, 1.55, 3.85, 0),
+    box(1.3, 0.62, 0.6, WHITE, 2.55, 4.3, 0),
+    box(0.18, 0.4, 0.14, WHITE, 2.15, 4.75, -0.18), box(0.18, 0.4, 0.14, WHITE, 2.15, 4.75, 0.18),
+    part(new THREE.BoxGeometry(0.3, 1.6, 0.3).rotateZ(-0.35), LEGO.black, -1.85, 2.3, 0)] },
   hay: { name: 'hay bale', r: 2, make: () => [cyl(1.8, 2.6, 0xd8b84a, 0, 1.8, 0, 'x'), cyl(1.85, 0.2, 0xb8962a, 0, 1.8, 0, 'x')] },
   cart: { drive: true, name: 'golf cart', r: 2, make: detailed('cart') },
   ball: { name: 'giant soccer ball', r: 2.2, bouncy: true, make: () => [
@@ -69,6 +78,9 @@ const KINDS = {
   umbrella: { name: 'beach umbrella', r: 2.4, tint: true, make: () => [
     cyl(0.12, 4, LEGO.lightGray, 0, 2, 0), part(new THREE.ConeGeometry(2.6, 1.2, 8), WHITE, 0, 4.3, 0)] },
   boat: { drive: true, water: true, name: 'boat', r: 3.6, tint: true, floats: true, make: detailed('boat') },
+  // One of a kind, on Horsetooth Reservoir in Fort Collins. proper: a name, so no "the";
+  // label: a name sign floats over it while it's tied up.
+  pontoon: { drive: true, water: true, name: "Nan's pontoon", proper: true, label: "Nan's pontoon", r: 4.4, floats: true, make: detailed('pontoon') },
   keg: { name: 'beer keg', r: 1.6, make: () => [
     cyl(1.3, 2.6, 0xc0c6cc, 0, 1.3, 0), cyl(1.36, 0.25, 0x8d949b, 0, 0.5, 0), cyl(1.36, 0.25, 0x8d949b, 0, 2.1, 0)] },
   plane: { drive: true, fly: true, name: 'parked plane', r: 5, tint: true, make: detailed('plane') },
@@ -235,6 +247,89 @@ export class Props {
       const l = d.landmarks[k % Math.max(1, d.landmarks.length)];
       if (l) put(kind, l.x, l.z, 120);
     });
+    // Nan's pontoon, last so everything else keeps its place (and its shared id).
+    const res = d.landmarks.find((l) => /horsetooth reservoir/i.test(l.name));
+    const spot = res && this._shoreSpot(res.x, res.z);
+    if (spot) this.items.push({ kind: 'pontoon', x: spot.x, z: spot.z, yaw: spot.yaw, tint: LEGO.white });
+    // Horses grazing on the north side of Papa Doug's House (north is -z), with a couple of hay bales.
+    const doug = (d.locators || []).find((l) => /papa doug/i.test(l.name));
+    if (doug) {
+      const coats = [LEGO.reddishBrown, LEGO.brown, LEGO.black, LEGO.white, LEGO.tan, LEGO.reddishBrown];
+      coats.forEach((tint, k) => {
+        const x = doug.x + ((k % 3) - 1) * 22;
+        const z = doug.z - 45 - Math.floor(k / 3) * 22;
+        if (put('horse', x, z, 8)) this.items[this.items.length - 1].tint = tint;
+      });
+      for (let k = 0; k < 2; k++) put('hay', doug.x + (k ? 30 : -30), doug.z - 35, 8);
+    }
+  }
+
+  /**
+   * Open water just off the shore nearest (x0, z0), close enough to step aboard
+   * from the bank: { x, z, yaw } lying alongside the shore, or null.
+   */
+  _shoreSpot(x0, z0) {
+    const w = this.world;
+    const T = Math.PI * 2;
+    for (let rad = 0; rad < 3000; rad += 10) {
+      const n = Math.max(8, Math.round((rad * T) / 10));
+      for (let a = 0; a < n; a++) {
+        const x = x0 + Math.cos((a / n) * T) * rad;
+        const z = z0 + Math.sin((a / n) * T) * rad;
+        if (Math.abs(x) > w.halfX - 20 || Math.abs(z) > w.halfZ - 20 || !w.isWater(x, z)) continue;
+        let shore = null;
+        let clear = true;
+        for (let b = 0; b < 16 && clear; b++) {
+          const ang = (b / 16) * T;
+          const cx = Math.cos(ang);
+          const cz = Math.sin(ang);
+          if (!w.isWater(x + cx * 7, z + cz * 7)) clear = false; // room for the hull
+          else if (shore == null && !w.isWater(x + cx * 14, z + cz * 14)) shore = ang;
+        }
+        if (!clear || shore == null) continue;
+        // Open water to drive off into: out from the bank, and along it both ways.
+        const sx = Math.cos(shore);
+        const sz = Math.sin(shore);
+        const wet = (d, s) => w.isWater(x - sx * d - sz * s, z - sz * d + sx * s);
+        if (![[30, 0], [60, 0], [100, 0], [3, 30], [3, -30], [30, 60], [30, -60]].every(([d, s]) => wet(d, s))) continue;
+        if (this.items.some((it) => Math.hypot(it.x - x, it.z - z) < 12)) continue;
+        if (w.hitsObstacle({ x, y: w.surfaceAt(x, z) + 2, z }, 5)) continue;
+        return { x, z, yaw: -shore }; // bow along the shore, side to the bank
+      }
+    }
+    return null;
+  }
+
+  /** A name sign over an object that has one (Nan's pontoon), following it while it's on the ground. */
+  _sign(it) {
+    const text = this.kinds[it.kind].label;
+    const c = document.createElement('canvas');
+    const g = c.getContext('2d');
+    const font = 'bold 64px "Trebuchet MS", sans-serif';
+    g.font = font;
+    const tw = Math.ceil(g.measureText(text).width);
+    c.width = tw + 64;
+    c.height = 104;
+    g.font = font;
+    g.fillStyle = 'rgba(20, 40, 80, 0.85)';
+    g.beginPath();
+    g.roundRect(4, 4, c.width - 8, c.height - 8, 26);
+    g.fill();
+    g.lineWidth = 6;
+    g.strokeStyle = '#f2c200';
+    g.stroke();
+    g.fillStyle = '#ffffff';
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    g.fillText(text, c.width / 2, c.height / 2 + 3);
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthWrite: false }));
+    const h = 1.8;
+    s.scale.set((h * c.width) / c.height, h, 1);
+    s.renderOrder = 2;
+    this.scene.add(s);
+    return s;
   }
 
   _write(it) {
@@ -243,6 +338,11 @@ export class Props {
     const sc = it.scale || 1;
     k.im.setMatrixAt(it.idx, it.held ? this._m.makeScale(0, 0, 0) : this._m.compose(new THREE.Vector3(it.x, it.y, it.z), this._q, new THREE.Vector3(sc, sc, sc)));
     k.im.instanceMatrix.needsUpdate = true;
+    if (k.label) {
+      it.sign ||= this._sign(it);
+      it.sign.visible = !it.held;
+      it.sign.position.set(it.x, it.y + 5.2 * sc, it.z);
+    }
   }
 
   /** Lay an object on the ground. Returns it, or null when that kind is full. */
@@ -386,5 +486,6 @@ export class Props {
 
   dispose() {
     for (const k of Object.values(this.kinds)) this.scene.remove(k.im);
+    for (const it of this.items) if (it.sign) this.scene.remove(it.sign);
   }
 }

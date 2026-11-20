@@ -15,6 +15,8 @@ export class Input {
     this.touchRudder = 0; // helicopter LIFT slider: -1 descend .. 0 hold .. +1 climb
     this.touchBrake = false;
     this.remote = null;
+    this.padIndex = null; // player 1's controller (gamepad index), once it's used
+    this.skipPads = new Set(); // controllers split-screen guests own
     this.tilt = new Tilt();
 
     const actions = {
@@ -71,7 +73,15 @@ export class Input {
       const v = window.legoSkyPad;
       if (v.app || performance.now() - v.t < 5000) return v; // the app's buttons (tests set it too)
     }
-    return navigator.getGamepads?.().find((g) => g && g.connected !== false) || null;
+    // Player 1 keeps the first controller that pressed something; with split
+    // screen the other controllers belong to players 2-4 (skipPads).
+    const pads = [...(navigator.getGamepads?.() || [])].filter((g) => g && g.connected !== false && !this.skipPads?.has(g.index));
+    const pinned = pads.find((g) => g.index === this.padIndex);
+    if (pinned) return pinned;
+    this.padIndex = null;
+    const used = pads.find((g) => g.buttons.some((b) => b.pressed) || g.axes.some((a) => Math.abs(a) > 0.5));
+    if (used) this.padIndex = used.index;
+    return used || pads[0] || null;
   }
 
 

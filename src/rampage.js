@@ -297,7 +297,7 @@ export class Rampage {
     this.burst(it.held ? bot.pos.x : it.x, y, it.held ? bot.pos.z : it.z, 4 * scale, factor > 1 ? 0x4fd8ff : 0xc06bff, 8);
     const size = scale === 1 ? 'normal size' : scale > 1 ? `${scale}× bigger` : `${1 / scale}× smaller`;
     const tip = info.drive && scale >= 2 * (bot.size || 1) && !it.held && !this.driving ? ` Big enough to drive: press ${this._keys().drive} to get in!` : '';
-    this.hooks.message(`${factor > 1 ? '🔍 Supersized' : '🔬 Shrunk'} the ${info.name}: ${size}.${tip}`);
+    this.hooks.message(`${factor > 1 ? '🔍 Supersized' : '🔬 Shrunk'} ${info.proper ? '' : 'the '}${info.name}: ${size}.${tip}`);
     return true;
   }
 
@@ -323,7 +323,7 @@ export class Rampage {
     const k = this._keys();
     const info = this.props.info(it.kind);
     const big = (it.scale || 1) >= 2;
-    this.hooks.message(`${info.water ? '⛵' : '🚗'} Driving the ${info.name}!${info.water ? ' Water only.' : big ? ' Nothing can stop you.' : ''} ${k.horn} for a boost, ${k.exit} to get out`);
+    this.hooks.message(`${info.water ? '⛵' : '🚗'} Driving ${info.proper ? '' : 'the '}${info.name}!${info.water ? ' Water only.' : big ? ' Nothing can stop you.' : ''} ${k.horn} for a boost, ${k.exit} to get out`);
     this.hooks.driving?.(true);
   }
 
