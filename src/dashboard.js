@@ -193,6 +193,24 @@ const BUILD = {
     <text id="tMode" x="500" y="193" style="fill:#ff3b3b;font-size:20px">CAR</text>
     <text id="tSpd" x="500" y="240" style="fill:#ff3b3b;font-size:26px">0</text>
     <path d="M470 262 L500 250 L530 262 L515 262 L500 256 L485 262 Z" fill="#f5c518"/>`,
+  // The hot air balloon: a wicker-brown panel with the altimeter, a climb meter
+  // (variometer), the burner's flame bar, a compass with the wind's arrow, and
+  // readouts of the height above the ground and the wind.
+  balloon: () => `
+    <path d="M-3000 300 L-3000 128 L0 128 Q500 56 1000 128 L4000 128 L4000 300 Z" fill="#6b4524"/>
+    <path d="M-3000 128 L0 128 Q500 56 1000 128 L4000 128 L4000 138 L1000 138 Q500 66 0 138 L-3000 138 Z" fill="#f5c518"/>
+    ${dial(170, 205, 50, 'ALT ×100 FT', 'nAlt', { a0: 0, a1: 324, ticks: 10 })}
+    ${dial(300, 205, 50, 'CLIMB', 'nVs', { a0: -150, a1: -30, ticks: 7 })}
+    <rect x="378" y="150" width="34" height="120" rx="8" fill="#1b1f23" stroke="#3b4148" stroke-width="3"/>
+    <rect id="nBurn" x="384" y="264" width="22" height="0" rx="5" fill="#ff7a1a"/>
+    <text class="small" x="395" y="290">BURNER</text>
+    ${dial(490, 205, 50, 'HEADING', null, { a0: -180, a1: 180, ticks: 13, face: '#efe6cf' })}
+    <g id="nCompass"><text x="490" y="172" style="fill:#c0281e">N</text></g>
+    <g id="nWind"><path d="M490 168 L479 196 L490 189 L501 196 Z" fill="#1e5aa8"/></g>
+    <rect x="575" y="160" width="120" height="44" rx="6" fill="#0b1014" stroke="#3b4148" stroke-width="3"/>
+    <text id="tAgl" x="635" y="189" style="fill:#7dffb0;font-size:17px">0 FT</text>
+    <text class="small" x="635" y="222">ABOVE GROUND</text>
+    <text id="tWind" x="635" y="252" style="fill:#9fd3ff;font-size:14px">WIND 0 MPH</text>`,
   plane: (tint) => `
     <path d="M-3000 300 L-3000 95 L0 95 Q500 30 1000 95 L4000 95 L4000 300 Z" fill="#2c3238"/>
     <path d="M-3000 95 L0 95 Q500 30 1000 95 L4000 95 L4000 110 L1000 110 Q500 46 0 110 L-3000 110 Z" fill="${tint}"/>
@@ -251,7 +269,7 @@ export class Dashboard {
     const top = m ? Math.round((+m[1] + +m[2]) / 2) - 6 : 60;
     this.el.innerHTML = `<svg xmlns="${NS}" viewBox="0 ${top} 1000 ${300 - top}" preserveAspectRatio="xMidYMax meet">${body}</svg>`;
     this.n = {};
-    for (const id of ['nSpeed', 'nRpm', 'nAlt', 'nVs', 'nAtt', 'nCompass', 'nWheel', 'nThrottle', 'tGear', 'nAir', 'nWater', 'iLights', 'iSiren', 'iFlash', 'iFlashA', 'iFlashB', 'tEcg', 'tBpm', 'tPlate', 'nRadar', 'tSize', 'tSmash', 'tAlt', 'nJet', 'nRpm2', 'tSpd', 'tAltJ', 'tMode']) this.n[id] = this.el.querySelector(`#${id}`);
+    for (const id of ['nSpeed', 'nRpm', 'nAlt', 'nVs', 'nAtt', 'nCompass', 'nWheel', 'nThrottle', 'tGear', 'nAir', 'nWater', 'iLights', 'iSiren', 'iFlash', 'iFlashA', 'iFlashB', 'tEcg', 'tBpm', 'tPlate', 'nRadar', 'tSize', 'tSmash', 'tAlt', 'nJet', 'nRpm2', 'tSpd', 'tAltJ', 'tMode', 'nBurn', 'nWind', 'tAgl', 'tWind']) this.n[id] = this.el.querySelector(`#${id}`);
   }
 
   /** How much of the screen's height the dashboard covers, in pixels (0 when hidden). */
@@ -272,7 +290,7 @@ export class Dashboard {
     const rot = (el, deg, cx, cy) => el?.setAttribute('transform', `rotate(${deg.toFixed(1)} ${cx} ${cy})`);
     const sweep = (v, a0 = -135, a1 = 135) => a0 + (a1 - a0) * Math.max(0, Math.min(1, v));
     const t = this.type;
-    const c = { bat: { sp: [300, 200], rpm: [700, 200] }, robot: { sp: [320, 205], comp: [440, 205] }, jet: { att: [212, 196], comp: [411, 205], rpm: [540, 180], wheel: [60, 330] }, car: { sp: [250, 190], rpm: [400, 190], wheel: [320, 300] }, police: { sp: [250, 190], rpm: [400, 190], wheel: [320, 300] },
+    const c = { balloon: { alt: [170, 205], comp: [490, 205] }, bat: { sp: [300, 200], rpm: [700, 200] }, robot: { sp: [320, 205], comp: [440, 205] }, jet: { att: [212, 196], comp: [411, 205], rpm: [540, 180], wheel: [60, 330] }, car: { sp: [250, 190], rpm: [400, 190], wheel: [320, 300] }, police: { sp: [250, 190], rpm: [400, 190], wheel: [320, 300] },
       ambulance: { sp: [250, 192], rpm: [395, 195], wheel: [320, 300] }, fire: { sp: [225, 190], rpm: [575, 178], wheel: [300, 310] }, boat: { sp: [200, 210], wheel: [430, 330], comp: [635, 205] },
       plane: { sp: [120, 170], rpm: [680, 175], alt: [350, 170], vs: [580, 170], att: [235, 170], comp: [465, 170], wheel: [400, 330] },
       heli: { sp: [220, 205], rpm: [670, 210], alt: [450, 205], att: [335, 205], comp: [565, 205], wheel: [100, 330] } }[t];
@@ -294,6 +312,16 @@ export class Dashboard {
     if (n.nRpm2) rot(n.nRpm2, sweep(s.throttle), 620, 180);
     if (n.tSpd) n.tSpd.textContent = String(Math.round(t === 'bat' ? s.mph : s.mph * 0.869));
     if (n.tAltJ) n.tAltJ.textContent = String(Math.round(s.altFt / 10) * 10);
+    // The balloon: climb meter (balloons climb slowly, so a finer scale), burner bar, wind, height.
+    if (t === 'balloon') {
+      rot(n.nVs, sweep(0.5 + s.vs / 2600, -150, -30), 300, 205);
+      const h = 108 * Math.max(0, Math.min(1, s.burner || 0));
+      n.nBurn?.setAttribute('y', (264 - h).toFixed(1));
+      n.nBurn?.setAttribute('height', h.toFixed(1));
+      if (s.wind) rot(n.nWind, s.wind.dir - s.heading, 490, 205);
+      if (n.tAgl) n.tAgl.textContent = `${Math.round((s.agl2 || 0) / 10) * 10} FT`;
+      if (n.tWind) n.tWind.textContent = `WIND ${Math.round(s.wind?.mph || 0)} MPH`;
+    }
     if (n.tMode) {
       n.tMode.textContent = s.form || (s.hover ? 'HOVER' : 'FLIGHT');
       n.tMode.style.fill = t === 'bat' ? (s.form === 'CAR' ? '#ff3b3b' : '#ffb300') : s.hover ? '#4fc3ff' : '#7df0a0';

@@ -54,7 +54,7 @@ try {
     card: !!document.querySelector('#segVehicle [data-v=bat]'), on: document.querySelector('#segVehicle [data-v=bat]')?.classList.contains('on'),
     cards: document.querySelectorAll('#segVehicle button').length, room: !!document.querySelector('#rgVehicle option[value=bat]'),
   }));
-  check('the menu offers the Batmobile (four vehicle cards)', menu.card && menu.on && menu.cards === 4, JSON.stringify(menu));
+  check('the menu offers the Batmobile (among the vehicle cards)', menu.card && menu.on && menu.cards >= 4, JSON.stringify(menu));
   check('room games can pick the Batmobile', menu.room);
 
   // ---- car form: starts as the car at the runway, drives fast along it.

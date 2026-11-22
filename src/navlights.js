@@ -25,6 +25,12 @@ const SPECS = {
     beacons: [[0, 1.75, 0.4], [0, -0.1, 0.5]], strobes: [[-5.75, 0.55, 2.4], [5.75, 0.55, 2.4]],
     landing: [[0, 0.35, -4.7]],
   },
+  // The hot air balloon: lights on the basket's corners, a white light on the crown, a flashing beacon under the basket.
+  balloon: {
+    left: [-1.3, 1.3, -1.3], right: [1.3, 1.3, -1.3], tail: [0, 24.2, 0],
+    beacons: [[0, -0.1, 0]], strobes: [],
+    landing: [[0, 0.25, -1.3]],
+  },
   // The helicopter: lights on the body sides, the tail and under the belly.
   heli: {
     left: [-1.15, 0.5, -0.2], right: [1.15, 0.5, -0.2], tail: [0, 0.75, 9.2],

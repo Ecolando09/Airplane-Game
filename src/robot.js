@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { LEGO, legoMaterial } from './lego.js';
 import { createBoosters } from './boosters.js';
 import { JET_ACCENT } from './jet.js';
+import { BALLOON_YELLOW } from './balloon.js';
 
 // Robot mode: the vehicle unfolds into a 13 m robot that walks, jumps, smashes
 // buildings and throws things. Every robot shares one skeleton (hips, legs,
@@ -18,6 +19,7 @@ const PALETTES = {
   heli: { main: LEGO.white, accent: 0xf0368f, dark: 0x6a2fc9, trim: 0x8ee3ef, glass: LEGO.transBlue },
   jet: { main: JET_ACCENT, accent: LEGO.white, dark: LEGO.darkGray, trim: LEGO.lightGray, glass: LEGO.blue },
   bat: { main: 0x1e2126, accent: BAT_ACCENT, dark: 0x111317, trim: 0x3b4048, glass: 0x22303e },
+  balloon: { main: 0x9a6a35, accent: BALLOON_YELLOW, dark: 0x5e3d1c, trim: 0xd01712, glass: LEGO.transBlue },
 };
 // Proportions inside the same height: torso width, shoulder spread, limb
 // thickness, hip spread, waist width, and the shoulder block's colour key.
@@ -26,11 +28,12 @@ const SHAPES = {
   heli: { torsoW: 4.6, shoulder: 3.15, limb: 0.74, hipX: 1.25, waistW: 1.9, shoulderKey: 'trim' }, // slim, light on its feet
   jet: { torsoW: 6.4, shoulder: 4.25, limb: 1.3, hipX: 1.85, waistW: 3.6, shoulderKey: 'main' }, // broad and stocky
   bat: { torsoW: 6.4, shoulder: 4.35, limb: 1.0, hipX: 1.45, waistW: 1.7, shoulderKey: 'main', taper: true }, // tall shoulders, narrow waist
+  balloon: { torsoW: 5.8, shoulder: 3.8, limb: 0.92, hipX: 1.45, waistW: 2.8, shoulderKey: 'accent' }, // a round wicker body
 };
 export const ROBOT_HEIGHT = 13;
 
 /**
- * Build the robot for a vehicle kind ('plane', 'heli', 'jet' or 'bat'). Origin
+ * Build the robot for a vehicle kind ('plane', 'heli', 'jet', 'bat' or 'balloon'). Origin
  * at the feet, facing -Z. opts.tint: a parked plane you took (the bush-plane
  * kit in that plane's colour).
  */
@@ -459,6 +462,59 @@ const KITS = {
   // tail fins as a cape-like pair on the back, the four fat wheels on the
   // shoulders and hips, the dark canopy as a visor, pointed ears, and the jet
   // exhaust on the back.
+  // Hot air balloon: the wicker basket as the body, a little striped balloon
+  // on its back (it bobs as it walks), the burner on its head (the flame roars
+  // when it jet-jumps), striped shoulder pads, and ropes down to the hands.
+  balloon(c) {
+    const { pal, box, cyl, pivot, torso, head, arms, fold, mat } = c;
+    boxHead(c, false);
+    // Basket weave across the body.
+    for (let i = 0; i < 4; i++) box(torso, c.P.torsoW + 0.06, 0.16, 2.86, pal.dark, 0, 0.45 + i * 0.75, 0);
+    box(torso, c.P.torsoW + 0.3, 0.45, 3.1, pal.dark, 0, 3.15, 0); // padded rim
+    // The burner on the head: a frame, two burners and a flame.
+    const burner = pivot(head, 0, 2.0, 0);
+    box(burner, 1.9, 0.16, 1.9, 0x9aa0a6, 0, 0, 0);
+    for (const x of [-0.4, 0.4]) cyl(burner, 0.26, 0.55, 0x5a5f66, x, 0.3, 0, 'y', 10);
+    const flameGeo = new THREE.ConeGeometry(1, 1, 12, 1, true).translate(0, 0.5, 0);
+    const flame = new THREE.Mesh(flameGeo, new THREE.MeshBasicMaterial({ color: 0xff8a1a, transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
+    flame.position.y = 0.55;
+    burner.add(flame);
+    fold(burner, { x: 0.8 });
+    // A little striped balloon on the back, on a mast.
+    const back = pivot(torso, 0, 3.4, 1.9);
+    box(back, 0.35, 3.2, 0.35, 0x9aa0a6, 0, 1.6, 0);
+    const env = pivot(back, 0, 3.4, 0.4);
+    const pts = [[0.5, 0], [1.1, 0.6], [1.9, 1.7], [2.3, 2.9], [2.2, 3.9], [1.6, 4.7], [0.6, 5.1], [0.02, 5.2]].map(([r, y]) => new THREE.Vector2(r, y));
+    const stripes = [0xd01712, 0x1e5aa8, 0x2b9e3e, 0x7a3fd0];
+    const pair = (Math.PI * 2) / 8;
+    for (let i = 0; i < 8; i++) {
+      env.add(new THREE.Mesh(new THREE.LatheGeometry(pts, 3, i * pair, pair * 0.64), mat(pal.accent)));
+      env.add(new THREE.Mesh(new THREE.LatheGeometry(pts, 2, i * pair + pair * 0.64, pair * 0.36), mat(stripes[i % 4])));
+    }
+    fold(back, { x: 1.3 });
+    // Striped pads on the shoulders, and a rope from each down to the hand.
+    arms.forEach((arm, i) => {
+      const sx = i ? 1 : -1;
+      const pad = pivot(arm, 0, 1.1, 0);
+      box(pad, 2.3, 0.4, 2.4, pal.accent, 0, 0, 0);
+      box(pad, 0.5, 0.42, 2.42, stripes[i], 0, 0, 0);
+      fold(pad, { z: -sx * 0.9 });
+      cyl(arm, 0.07, 5.6, 0x3a2a1a, sx * 1.0, -3.0, 0.9, 'y', 6);
+    });
+    let t = 0;
+    return {
+      // The balloon bobs as it walks; the flame roars when it jet-jumps.
+      animate(s, dt, phase, amount) {
+        t += dt;
+        env.rotation.z = Math.sin(phase * 0.5) * 0.08 * (0.3 + amount);
+        env.position.y = 3.4 + Math.sin(t * 2) * 0.12;
+        const roar = !s.onGround && s.vy > -8 ? 1 : 0.15;
+        const f = 1 + 0.15 * Math.sin(t * 31);
+        flame.scale.set(0.25 + 0.3 * roar, (0.4 + 2.6 * roar) * f, 0.25 + 0.3 * roar);
+      },
+    };
+  },
+
   bat(c) {
     const { pal, box, cyl, pivot, torso, head, arms, legs, fold, mat, glassMat } = c;
     box(head, 1.9, 1.7, 1.9, pal.main, 0, 0.85, 0);
