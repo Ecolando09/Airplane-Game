@@ -1306,6 +1306,7 @@ function updateHud(dt) {
   $('hdg').textContent = compass(hdg);
   $('hdgDeg').textContent = `${String(hdg).padStart(3, '0')}°`;
   $('thrFill').style.width = `${Math.round((flight.throttle || 0) * 100)}%`;
+  $('compassRose').style.setProperty('--h', flight.heading.toFixed(1)); // N points north, up is where you're heading
   updateBuddies();
   updateAutoLandButton();
   updateDriveButton();

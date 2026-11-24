@@ -1205,15 +1205,24 @@ body.is-touch .crash-actions kbd {
   white-space: nowrap;
 }
 
+/* Big and bold so it reads from the couch: a white ring, a shadow, and a
+   chunky outlined arrow. */
 .buddy .arrow {
-  width: 28px;
-  height: 28px;
+  width: 42px;
+  height: 42px;
+  flex: none;
   border-radius: 50%;
   display: grid;
   place-items: center;
   background: var(--c);
-  font-size: 16px;
+  border: 3px solid #fff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.55);
+  box-sizing: border-box;
+  color: #fff;
+  font-size: 26px;
+  font-weight: 900;
   line-height: 1;
+  text-shadow: 0 0 2px #000, 0 0 3px #000, 0 1px 2px #000;
 }
 
 .buddy .far {
@@ -2800,6 +2809,74 @@ body.split-child #minimap,
 body.split-child #phoneChip,
 body.split-child #fsChip {
   display: none;
+}
+/* Other players' chips: out of the middle of the view, stacked in the bottom
+   right corner (where the street map sits when it's not split). */
+body.split #buddies,
+body.split-child #buddies {
+  top: auto;
+  left: auto;
+  right: 10px;
+  bottom: 10px;
+  transform: none;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  max-width: 60%;
+}
+/* A compass in the top left instead of the heading panel: the ring turns so
+   N points north; the yellow pointer at the top is the way you're going. */
+#compass {
+  display: none;
+  position: fixed;
+  top: 10px;
+  left: 10px;
+  width: 76px;
+  height: 76px;
+  pointer-events: none;
+}
+body.split #compass,
+body.split-child #compass {
+  display: block;
+}
+#compassRose {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: rgba(20, 28, 36, 0.72);
+  border: 3px solid #fff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+  box-sizing: border-box;
+}
+#compassRose {
+  transform: rotate(calc(-1deg * var(--h, 0)));
+}
+/* Letters at the rim, kept upright by turning back against the ring. */
+#compassRose b {
+  position: absolute;
+  transform: translate(-50%, -50%) rotate(calc(1deg * var(--h, 0)));
+  font: 900 15px/1 system-ui, sans-serif;
+  color: #fff;
+  text-shadow: 0 1px 2px #000;
+}
+#compassRose .n { left: 50%; top: 20%; color: #ff5a4f; font-size: 19px; }
+#compassRose .e { left: 80%; top: 50%; }
+#compassRose .s { left: 50%; top: 80%; }
+#compassRose .w { left: 20%; top: 50%; }
+#compass > i {
+  position: absolute;
+  left: 50%;
+  top: -4px;
+  margin-left: -8px;
+  border: 8px solid transparent;
+  border-top: 12px solid var(--yellow, #ffd43b);
+  border-bottom: 0;
+  filter: drop-shadow(0 1px 1px #000);
+}
+body.split .buddy,
+body.split-child .buddy {
+  font-size: 15px;
+  padding: 3px 12px 3px 3px;
 }
 #split {
   position: fixed;
